@@ -15,6 +15,7 @@ You are an autonomous coding agent working on a software project.
 9. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
 10. Update the PRD to set `passes: true` for the completed story
 11. Append your progress to `{{PROGRESS_FILE}}`
+12. When ALL stories are complete, stop and signal completion without merging; merge is handled separately by `/ralph-commit`
 
 ## Progress Report Format
 
@@ -93,7 +94,11 @@ A frontend story is NOT complete until browser verification passes.
 
 After completing a user story, check if ALL stories have `passes: true`.
 
-If ALL stories are complete and passing, reply with:
+If ALL stories are complete and passing:
+1. Ensure all final changes are committed on the PRD branch.
+2. Do not merge into `master`/`main` from this loop.
+3. Append a progress note that work is complete and ready for `/ralph-commit`.
+4. Reply with:
 <promise>COMPLETE</promise>
 
 If there are still stories with `passes: false`, end your response normally (another iteration will pick up the next story).
@@ -104,3 +109,4 @@ If there are still stories with `passes: false`, end your response normally (ano
 - Commit frequently
 - Keep CI green
 - Read the Codebase Patterns section in progress.txt before starting
+- If files changed outside the Ralph loop, treat those changes as the current baseline and continue; do not block on them unless they directly conflict with the active story.

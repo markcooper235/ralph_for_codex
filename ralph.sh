@@ -1,10 +1,11 @@
 #!/bin/bash
 # Ralph Wiggum - Long-running AI agent loop
-# Usage: ./ralph.sh [max_iterations]
+# Usage: ./ralph.sh [max_iterations] [--bootstrap-prd]
 
 set -euo pipefail
 
-MAX_ITERATIONS=${1:-10}
+MAX_ITERATIONS=10
+BOOTSTRAP_PRD=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
@@ -12,8 +13,41 @@ ARCHIVE_DIR="$SCRIPT_DIR/archive"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
+CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
+
+for arg in "$@"; do
+  case "$arg" in
+    --bootstrap-prd)
+      BOOTSTRAP_PRD=true
+      ;;
+    -h|--help)
+      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd]"
+      echo ""
+      echo "Options:"
+      echo "  --bootstrap-prd     Attempt to auto-generate scripts/ralph/prd.json when missing/empty."
+      echo ""
+      echo "Environment:"
+      echo "  RALPH_BOOTSTRAP_PRD=1  Enable PRD bootstrap behavior."
+      exit 0
+      ;;
+    *)
+      if [[ "$arg" =~ ^[0-9]+$ ]]; then
+        MAX_ITERATIONS="$arg"
+      else
+        echo "Unknown argument: $arg" >&2
+        echo "Use --help for usage." >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [ "${RALPH_BOOTSTRAP_PRD:-0}" = "1" ] || [ "${RALPH_BOOTSTRAP_PRD:-}" = "true" ]; then
+  BOOTSTRAP_PRD=true
+fi
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -62,6 +96,80 @@ prd_all_passes() {
   jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$PRD_FILE" >/dev/null 2>&1
 }
 
+is_prd_empty() {
+  [ ! -f "$PRD_FILE" ] || [ ! -s "$PRD_FILE" ] || ! grep -q '[^[:space:]]' "$PRD_FILE"
+}
+
+prd_is_valid_json() {
+  [ -f "$PRD_FILE" ] && jq -e '.' "$PRD_FILE" >/dev/null 2>&1
+}
+
+build_codex_exec_args() {
+  local output_last_message_file="${1:-}"
+  local -n out_args_ref="$2"
+
+  if supports_codex_yolo; then
+    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+  else
+    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+  fi
+
+  if [ -n "$output_last_message_file" ]; then
+    out_args_ref+=("--output-last-message" "$output_last_message_file")
+  fi
+}
+
+bootstrap_prd_json() {
+  local bootstrap_prompt bootstrap_output codex_args=()
+  bootstrap_prompt=$(
+    cat <<'EOF'
+`scripts/ralph/prd.json` is missing or empty.
+
+Use the `prd` skill to generate a concise PRD from current repository context, then use the `ralph` skill to convert it to `scripts/ralph/prd.json`.
+
+Requirements:
+- Produce valid JSON in `scripts/ralph/prd.json`
+- Include: `project`, `branchName`, `description`, `userStories`
+- Keep stories small and execution-ready for Ralph loop iterations
+EOF
+  )
+
+  echo "PRD is missing/empty. Bootstrapping via Codex (prd + ralph skills)..."
+  build_codex_exec_args "$CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE" codex_args
+  bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${codex_args[@]}" 2>&1 | tee /dev/stderr) || true
+
+  if echo "$bootstrap_output" | grep -qi "error"; then
+    echo "Warning: bootstrap run reported errors; validating prd.json..."
+  fi
+
+  if is_prd_empty || ! prd_is_valid_json; then
+    echo "PRD bootstrap failed: scripts/ralph/prd.json is still missing/empty/invalid JSON." >&2
+    return 1
+  fi
+
+  echo "PRD bootstrap complete."
+}
+
+ensure_prd_ready() {
+  if is_prd_empty; then
+    if [ "$BOOTSTRAP_PRD" = "true" ]; then
+      bootstrap_prd_json || return 1
+    else
+      echo "PRD file is missing or empty: $PRD_FILE" >&2
+      echo "Create a PRD before running Ralph (then convert to scripts/ralph/prd.json)." >&2
+      echo "Or rerun with --bootstrap-prd (or RALPH_BOOTSTRAP_PRD=1) to auto-bootstrap." >&2
+      return 1
+    fi
+  fi
+
+  if ! prd_is_valid_json; then
+    echo "Invalid PRD JSON: $PRD_FILE" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 require_cmd jq
 require_cmd git
 require_cmd sed
@@ -84,8 +192,8 @@ if [ ! -f "$SCRIPT_DIR/prompt.md" ]; then
   exit 1
 fi
 
-if [ ! -f "$PRD_FILE" ]; then
-  echo "Missing PRD file: $PRD_FILE" >&2
+if ! ensure_prd_ready; then
+  echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
   exit 1
 fi
 
@@ -103,8 +211,56 @@ if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
     
     echo "Archiving previous run: $LAST_BRANCH"
     mkdir -p "$ARCHIVE_FOLDER"
+    MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
+
+    ITER_SOURCE_COUNT=0
+    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+      [ -f "$iter_log" ] || continue
+      ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
+    done
+
+    PLAYWRIGHT_SOURCE_PRESENT=0
+    [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
+
     [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
     [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
+    [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
+    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+      [ -f "$iter_log" ] || continue
+      cp "$iter_log" "$ARCHIVE_FOLDER/"
+    done
+    [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
+
+    ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
+    PLAYWRIGHT_ARCHIVE_PRESENT=0
+    [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
+
+    {
+      echo "archive_time=$(date -Iseconds)"
+      echo "source_branch=$LAST_BRANCH"
+      echo "source_iter_logs=$ITER_SOURCE_COUNT"
+      echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
+      echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
+      echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
+    } > "$MANIFEST_FILE"
+
+    if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
+      echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
+      echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
+      exit 1
+    fi
+
+    if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
+      echo "Archive verification failed: .playwright-cli missing from archive output." >&2
+      echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
+      exit 1
+    fi
+
+    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+      [ -f "$iter_log" ] || continue
+      rm -f "$iter_log"
+    done
+    [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
     echo "   Archived to: $ARCHIVE_FOLDER"
     
     # Reset progress file for new run
@@ -140,12 +296,12 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   CODEX_ITER_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-iter-$i.txt"
 
-  CODEX_ARGS=(exec -C "$WORKSPACE_ROOT" - --output-last-message "$CODEX_ITER_LAST_MESSAGE_FILE")
-  if supports_codex_yolo; then
-    CODEX_ARGS=(--yolo "${CODEX_ARGS[@]}")
-  else
-    CODEX_ARGS=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" - --output-last-message "$CODEX_ITER_LAST_MESSAGE_FILE")
+  if ! ensure_prd_ready; then
+    echo "Iteration $i aborted: PRD file is not ready."
+    exit 1
   fi
+
+  build_codex_exec_args "$CODEX_ITER_LAST_MESSAGE_FILE" CODEX_ARGS
 
   # Run Codex with the Ralph prompt (fresh context every iteration)
   OUTPUT=$(render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
