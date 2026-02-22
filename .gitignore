@@ -1,7 +1,35 @@
 # Ralph working files (generated during runs)
-prd.json
-progress.txt
-.last-branch
+scripts/ralph/.last-branch
+scripts/ralph/.codex-last-message*.txt
+scripts/ralph/prd.json
+scripts/ralph/progress.txt
+
+# Temporary folders
+tmp/
+temp/
+
+# Test results
+test-results/
+playwright-report/
+test-results.xml
+output/
+.playwright-cli/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Archive is optional to commit
 # archive/
