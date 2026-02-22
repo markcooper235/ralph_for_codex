@@ -165,20 +165,19 @@ EOF
 fi
 
 # Keep generated files out of git noise.
-GITIGNORE_PATH=".gitignore"
-if [ ! -f "$GITIGNORE_PATH" ]; then
-  : > "$GITIGNORE_PATH"
+GITIGNORE_SOURCE="$SOURCE_DIR/.gitignore"
+GITIGNORE_DEST=".gitignore"
+[ -f "$GITIGNORE_SOURCE" ] || fail "Missing source file: $GITIGNORE_SOURCE"
+
+if [ ! -f "$GITIGNORE_DEST" ]; then
+  copy_file "$GITIGNORE_SOURCE" "$GITIGNORE_DEST"
+else
+  while IFS= read -r line || [ -n "$line" ]; do
+    if ! grep -qxF "$line" "$GITIGNORE_DEST"; then
+      printf "%s\n" "$line" >> "$GITIGNORE_DEST"
+    fi
+  done < "$GITIGNORE_SOURCE"
 fi
-
-ensure_gitignore_line() {
-  local line="$1"
-  if ! grep -qxF "$line" "$GITIGNORE_PATH" 2>/dev/null; then
-    printf "%s\n" "$line" >> "$GITIGNORE_PATH"
-  fi
-}
-
-ensure_gitignore_line "$DEST_DIR_REL/.last-branch"
-ensure_gitignore_line "$DEST_DIR_REL/.codex-last-message*.txt"
 
 if [ "$INSTALL_SKILLS" -eq 1 ]; then
   if [ -z "${HOME:-}" ]; then
