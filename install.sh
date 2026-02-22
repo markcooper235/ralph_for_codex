@@ -16,6 +16,7 @@ DEST_DIR_REL="scripts/ralph"
 FORCE=0
 WITH_EXAMPLE_PRD=1
 INSTALL_SKILLS=0
+INSTALL_PROMPTS=0
 SKIP_GIT_CHECK=0
 
 usage() {
@@ -28,12 +29,13 @@ Options:
   --force               Overwrite existing prd.json and progress.txt (runner files always overwritten)
   --no-example-prd      Do not create prd.json if missing
   --install-skills      Copy skills into ~/.codex/skills
+  --install-prompts     Copy /command prompts to Global prompts directory
   --skip-git-check      Allow installing outside a git repo
   -h, --help            Show help
 
 Examples:
   bash /path/to/ralph/install.sh
-  bash /path/to/ralph/install.sh --project ~/code/myapp --install-skills
+  bash /path/to/ralph/install.sh --project ~/code/myapp --install-skills --install-prompts
 EOF
 }
 
@@ -58,6 +60,8 @@ while [[ $# -gt 0 ]]; do
       WITH_EXAMPLE_PRD=0; shift;;
     --install-skills)
       INSTALL_SKILLS=1; shift;;
+      --install-prompts)
+      INSTALL_PROMPTS=1; shift;;
     --skip-git-check)
       SKIP_GIT_CHECK=1; shift;;
     -h|--help)
@@ -110,10 +114,18 @@ copy_file() {
 
 copy_file "$SOURCE_DIR/ralph.sh" "$DEST_DIR_REL/ralph.sh"
 copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
+copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
+copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
+copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 
-chmod +x "$DEST_DIR_REL/ralph.sh" "$DEST_DIR_REL/doctor.sh"
+chmod +x \
+  "$DEST_DIR_REL/ralph.sh" \
+  "$DEST_DIR_REL/doctor.sh" \
+  "$DEST_DIR_REL/ralph-archive.sh" \
+  "$DEST_DIR_REL/ralph-cleanup.sh" \
+  "$DEST_DIR_REL/ralph-commit.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -182,6 +194,22 @@ if [ "$INSTALL_SKILLS" -eq 1 ]; then
     cp -r "$dir" "$CODEX_SKILLS_DIR/"
     echo "Installed Codex skill: $name"
   done < <(find "$SOURCE_DIR/skills" -mindepth 1 -maxdepth 1 -type d -print0)
+fi
+
+if [ "$INSTALL_PROMPTS" -eq 1 ]; then
+  if [ -z "${HOME:-}" ]; then
+    fail "HOME is not set; cannot install prompts"
+  fi
+  CODEX_GLOBAL_PROMPTS_DIR="${HOME}/.codex/prompts"
+  mkdir -p "$CODEX_GLOBAL_PROMPTS_DIR"
+  [ -d "$SOURCE_DIR/prompts" ] || fail "Missing command_prompts directory: $SOURCE_DIR/prompts"
+
+  while IFS= read -r -d '' file; do
+    name="$(basename "$file")"
+    [ -f "$file" ] || continue
+    cp "$file" "$CODEX_GLOBAL_PROMPTS_DIR/"
+    echo "Installed Codex prompt: $name"
+  done < <(find "$SOURCE_DIR/prompts" -type f -print0)
 fi
 
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
