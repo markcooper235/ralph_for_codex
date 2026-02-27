@@ -72,6 +72,39 @@ escape_sed_replacement() {
   printf '%s' "$1" | sed -e 's/[\\/&]/\\&/g'
 }
 
+slugify_branch() {
+  printf '%s' "$1" \
+    | sed 's|^ralph/||' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's|[^a-z0-9._-]+|-|g' \
+    | sed -E 's|^-+||; s|-+$||'
+}
+
+has_archived_run_for_branch() {
+  local branch="$1"
+  local manifest
+  [ -d "$ARCHIVE_DIR" ] || return 1
+
+  while IFS= read -r manifest; do
+    [ -f "$manifest" ] || continue
+    if [ "$(awk -F= '/^source_branch=/{print $2}' "$manifest" | tail -n 1)" = "$branch" ]; then
+      return 0
+    fi
+  done < <(find "$ARCHIVE_DIR" -maxdepth 2 -type f -name 'archive-manifest.txt' 2>/dev/null | sort)
+
+  return 1
+}
+
+has_live_run_artifacts() {
+  local iter_log
+  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+    [ -f "$iter_log" ] && return 0
+  done
+
+  [ -d "$PLAYWRIGHT_CLI_DIR" ] && return 0
+  return 1
+}
+
 render_prompt() {
   local ralph_dir prd_file progress_file
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
@@ -174,6 +207,9 @@ require_cmd jq
 require_cmd git
 require_cmd sed
 require_cmd tee
+require_cmd awk
+require_cmd find
+require_cmd tr
 require_cmd "$CODEX_BIN"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -203,70 +239,85 @@ if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
   LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
   
   if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
-    # Archive the previous run
-    DATE=$(date +%Y-%m-%d)
-    # Strip "ralph/" prefix from branch name for folder
-    FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^ralph/||')
-    ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
-    
-    echo "Archiving previous run: $LAST_BRANCH"
-    mkdir -p "$ARCHIVE_FOLDER"
-    MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
+    if has_archived_run_for_branch "$LAST_BRANCH"; then
+      echo "Previous run ($LAST_BRANCH) already archived; continuing."
+      if has_live_run_artifacts; then
+        for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+          [ -f "$iter_log" ] || continue
+          rm -f "$iter_log"
+        done
+        [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+        echo "   Removed stale local run artifacts from already-archived run."
+      fi
+    else
+      # Archive the previous run
+      DATE=$(date +%Y-%m-%d)
+      FOLDER_NAME=$(slugify_branch "$LAST_BRANCH")
+      [ -n "$FOLDER_NAME" ] || FOLDER_NAME="ralph-run"
+      ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
+      if [ -e "$ARCHIVE_FOLDER" ]; then
+        ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME-$(date +%H%M%S)"
+      fi
+      
+      echo "Archiving previous run: $LAST_BRANCH"
+      mkdir -p "$ARCHIVE_FOLDER"
+      MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
 
-    ITER_SOURCE_COUNT=0
-    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-      [ -f "$iter_log" ] || continue
-      ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
-    done
+      ITER_SOURCE_COUNT=0
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
+      done
 
-    PLAYWRIGHT_SOURCE_PRESENT=0
-    [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
+      PLAYWRIGHT_SOURCE_PRESENT=0
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
 
-    [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
-    [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
-    [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
-    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-      [ -f "$iter_log" ] || continue
-      cp "$iter_log" "$ARCHIVE_FOLDER/"
-    done
-    [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
+      [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
+      [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
+      [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        cp "$iter_log" "$ARCHIVE_FOLDER/"
+      done
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
 
-    ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
-    PLAYWRIGHT_ARCHIVE_PRESENT=0
-    [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
+      ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
+      PLAYWRIGHT_ARCHIVE_PRESENT=0
+      [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
 
-    {
-      echo "archive_time=$(date -Iseconds)"
-      echo "source_branch=$LAST_BRANCH"
-      echo "source_iter_logs=$ITER_SOURCE_COUNT"
-      echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
-      echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
-      echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
-    } > "$MANIFEST_FILE"
+      {
+        echo "archive_time=$(date -Iseconds)"
+        echo "source_branch=$LAST_BRANCH"
+        echo "source_iter_logs=$ITER_SOURCE_COUNT"
+        echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
+        echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
+        echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
+      } > "$MANIFEST_FILE"
 
-    if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
-      echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
-      echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
-      exit 1
+      if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
+        echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
+        echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
+        exit 1
+      fi
+
+      if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
+        echo "Archive verification failed: .playwright-cli missing from archive output." >&2
+        echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
+        exit 1
+      fi
+
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        rm -f "$iter_log"
+      done
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+      echo "   Archived to: $ARCHIVE_FOLDER"
+      
+      # Reset progress file for new run
+      echo "# Ralph Progress Log" > "$PROGRESS_FILE"
+      echo "Started: $(date)" >> "$PROGRESS_FILE"
+      echo "---" >> "$PROGRESS_FILE"
     fi
-
-    if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
-      echo "Archive verification failed: .playwright-cli missing from archive output." >&2
-      echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
-      exit 1
-    fi
-
-    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-      [ -f "$iter_log" ] || continue
-      rm -f "$iter_log"
-    done
-    [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
-    echo "   Archived to: $ARCHIVE_FOLDER"
-    
-    # Reset progress file for new run
-    echo "# Ralph Progress Log" > "$PROGRESS_FILE"
-    echo "Started: $(date)" >> "$PROGRESS_FILE"
-    echo "---" >> "$PROGRESS_FILE"
   fi
 fi
 
