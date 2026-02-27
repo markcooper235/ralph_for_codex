@@ -113,6 +113,7 @@ copy_file() {
 }
 
 copy_file "$SOURCE_DIR/ralph.sh" "$DEST_DIR_REL/ralph.sh"
+copy_file "$SOURCE_DIR/ralph-prd.sh" "$DEST_DIR_REL/ralph-prd.sh"
 copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
 copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
@@ -122,6 +123,7 @@ copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
+  "$DEST_DIR_REL/ralph-prd.sh" \
   "$DEST_DIR_REL/doctor.sh" \
   "$DEST_DIR_REL/ralph-archive.sh" \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
@@ -214,4 +216,5 @@ fi
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
-echo "  2) ./$DEST_DIR_REL/ralph.sh 10"
+echo "  2) ./$DEST_DIR_REL/ralph-prd.sh"
+echo "  3) ./$DEST_DIR_REL/ralph.sh 10"
