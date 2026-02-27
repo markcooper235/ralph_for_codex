@@ -27,6 +27,7 @@ From your project root:
 ```bash
 bash /path/to/ralph/install.sh
 ./scripts/ralph/doctor.sh
+./scripts/ralph/ralph-prd.sh
 ./scripts/ralph/ralph.sh 10
 ```
 
@@ -53,10 +54,12 @@ Copy the ralph files into your project:
 # From your project root
 mkdir -p scripts/ralph
 cp /path/to/ralph/ralph.sh scripts/ralph/
+cp /path/to/ralph/ralph-prd.sh scripts/ralph/
 cp /path/to/ralph/doctor.sh scripts/ralph/
 cp /path/to/ralph/prompt.md scripts/ralph/
 cp /path/to/ralph/install.sh scripts/ralph/
 chmod +x scripts/ralph/ralph.sh
+chmod +x scripts/ralph/ralph-prd.sh
 chmod +x scripts/ralph/doctor.sh
 chmod +x scripts/ralph/install.sh
 ```
@@ -73,27 +76,36 @@ cp -r skills/ralph ~/.codex/skills/
 
 ## Workflow
 
-### 1. Create a PRD
+### 1. Generate PRD + prd.json (wrapper)
 
-Use the PRD skill to generate a detailed requirements document:
+Use the wrapper to collect your feature concept, generate `tasks/prd-[feature-name].md`, and convert to `scripts/ralph/prd.json` in one flow:
 
-```
-Load the prd skill and create a PRD for [your feature description]
-```
-
-Answer the clarifying questions. The skill saves output to `tasks/prd-[feature-name].md`.
-
-### 2. Convert PRD to Ralph format
-
-Use the Ralph skill to convert the markdown PRD to JSON:
-
-```
-Load the ralph skill and convert tasks/prd-[feature-name].md to scripts/ralph/prd.json
+```bash
+./scripts/ralph/ralph-prd.sh
 ```
 
-This creates `scripts/ralph/prd.json` with user stories structured for autonomous execution.
+Optional modes:
 
-### 3. Run Ralph
+```bash
+# Non-interactive (minimal)
+./scripts/ralph/ralph-prd.sh --feature "Add saved filters to search"
+
+# Add hard constraints without extra prompts
+./scripts/ralph/ralph-prd.sh --feature "Add saved filters to search" --constraints "Must use existing DB schema"
+
+# Force 3 quick clarifier questions
+./scripts/ralph/ralph-prd.sh --quick-questions
+
+# Skip clarifier questions entirely
+./scripts/ralph/ralph-prd.sh --no-questions
+
+# Quieter wrapper logs
+./scripts/ralph/ralph-prd.sh --quiet
+```
+
+The wrapper enforces small, ordered stories and requires completion criteria like typecheck, lint, and tests.
+
+### 2. Run Ralph
 
 ```bash
 ./scripts/ralph/doctor.sh
@@ -116,6 +128,7 @@ Ralph will:
 
 | File | Purpose |
 |------|---------|
+| `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `prompt.md` | Instructions given to each Codex run |
 | `prd.json` | User stories with `passes` status (the task list) |
