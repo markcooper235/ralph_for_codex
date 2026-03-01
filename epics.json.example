@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "project": "YourProject",
+  "activeEpicId": null,
+  "epics": [
+    {
+      "id": "EPIC-001",
+      "title": "Foundation Epic",
+      "priority": 1,
+      "status": "ready",
+      "dependsOn": [],
+      "prdPaths": [
+        "tasks/prd-foundation.md"
+      ],
+      "goal": "Define and deliver the first production-ready slice of work.",
+      "openQuestions": []
+    },
+    {
+      "id": "EPIC-002",
+      "title": "Follow-on Epic",
+      "priority": 2,
+      "status": "planned",
+      "dependsOn": [
+        "EPIC-001"
+      ],
+      "prdPaths": [
+        "tasks/prd-follow-on.md"
+      ],
+      "goal": "Build on foundational capabilities after EPIC-001 is done.",
+      "openQuestions": []
+    }
+  ]
+}

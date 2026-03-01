@@ -124,6 +124,23 @@ Ralph will:
 7. Append learnings to `scripts/ralph/progress.txt`
 8. Repeat until all stories pass or max iterations reached
 
+### Epic-level sequencing
+
+Use epic backlog sequencing to decide what to run next before preparing each loop:
+
+```bash
+./scripts/ralph/ralph-epic.sh list
+./scripts/ralph/ralph-epic.sh next
+./scripts/ralph/ralph-epic.sh start-next
+./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
+```
+
+Recommended cycle:
+1. Select next epic (`start-next`)
+2. Build/refresh `scripts/ralph/prd.json` for that epic
+3. Run `ralph.sh`
+4. Mark epic `done` when complete
+
 ## Key Files
 
 | File | Purpose |
@@ -133,6 +150,9 @@ Ralph will:
 | `prompt.md` | Instructions given to each Codex run |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
+| `epics.json` | Epic backlog with priority/dependencies/activeEpicId |
+| `epics.json.example` | Example epic backlog template |
+| `ralph-epic.sh` | CLI to list/select/activate epic order |
 | `progress.txt` | Append-only learnings for future iterations |
 | `skills/prd/` | Skill for generating PRDs |
 | `skills/ralph/` | Skill for converting PRDs to JSON |

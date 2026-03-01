@@ -118,8 +118,10 @@ copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
 copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
+copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
+copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
 
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
@@ -127,7 +129,8 @@ chmod +x \
   "$DEST_DIR_REL/doctor.sh" \
   "$DEST_DIR_REL/ralph-archive.sh" \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
-  "$DEST_DIR_REL/ralph-commit.sh"
+  "$DEST_DIR_REL/ralph-commit.sh" \
+  "$DEST_DIR_REL/ralph-epic.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -164,6 +167,10 @@ if [ ! -f "$DEST_DIR_REL/progress.txt" ] || [ "$FORCE" -eq 1 ]; then
 Started: $(date)
 ---
 EOF
+fi
+
+if [ ! -f "$DEST_DIR_REL/epics.json" ] || [ "$FORCE" -eq 1 ]; then
+  cp "$DEST_DIR_REL/epics.json.example" "$DEST_DIR_REL/epics.json"
 fi
 
 # Keep generated files out of git noise.
@@ -216,5 +223,7 @@ fi
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
-echo "  2) ./$DEST_DIR_REL/ralph-prd.sh"
-echo "  3) ./$DEST_DIR_REL/ralph.sh 10"
+echo "  2) ./$DEST_DIR_REL/ralph-epic.sh list"
+echo "  3) ./$DEST_DIR_REL/ralph-epic.sh start-next"
+echo "  4) ./$DEST_DIR_REL/ralph-prd.sh"
+echo "  5) ./$DEST_DIR_REL/ralph.sh 10"

@@ -41,7 +41,10 @@ This installs into `/absolute/path/to/target-project/scripts/ralph/`:
 - `doctor.sh` (sanity checks)
 - `prompt.md` (agent instructions)
 - `prd.json.example`
+- `epics.json.example`
+- `ralph-epic.sh` (epic sequencing helper)
 - (optional) smoke `prd.json` + `progress.txt` if missing
+- `epics.json` if missing
 
 ### C) Verify installation
 
@@ -80,6 +83,20 @@ Expected outcome:
 
 ```bash
 ./scripts/ralph/ralph.sh 10
+```
+
+### Epic sequencing before each loop
+
+```bash
+./scripts/ralph/ralph-epic.sh list
+./scripts/ralph/ralph-epic.sh next
+./scripts/ralph/ralph-epic.sh start-next
+```
+
+After an epic completes:
+
+```bash
+./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
 ```
 
 ## Notes
