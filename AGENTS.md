@@ -19,18 +19,40 @@ cd flowchart && npm run build
 # Install Ralph into a target project
 ./install.sh --project /path/to/your/project
 
-# Run Ralph (from your project that has prd.json)
+# Generate and convert PRD into scripts/ralph/prd.json
+./ralph-prd.sh
+
+# Epic backlog sequencing helpers
+./ralph-epic.sh list
+./ralph-epic.sh start-next
+
+# Prime prd.json for active/next eligible epic
+./ralph-prime.sh
+
+# Run Ralph loop (from your project that has prd.json)
 ./ralph.sh [max_iterations]
 ```
 
 ## Key Files
 
+- `ralph-prd.sh` - Interactive/non-interactive wrapper to create PRDs and convert to `prd.json`
 - `ralph.sh` - The bash loop that spawns fresh Codex runs
+- `ralph-prime.sh` - Auto-selects/uses active epic and primes `prd.json` for loop startup
+- `ralph-epic.sh` - CLI to list/select/update epic order and status
 - `doctor.sh` - Sanity checks for a target repo
 - `install.sh` - One-command installer into `scripts/ralph`
 - `prompt.md` - Instructions given to each Codex run
 - `prd.json.example` - Example PRD format
+- `epics.json.example` - Example epic backlog template
 - `flowchart/` - Interactive React Flow diagram explaining how Ralph works
+
+## Recommended Flow
+
+1. Run `./doctor.sh`
+2. Select next epic via `./ralph-epic.sh start-next`
+3. Prime loop input via `./ralph-prime.sh`
+4. Run loop via `./ralph.sh [max_iterations]`
+5. Mark epic complete via `./ralph-epic.sh set-status EPIC-XXX done`
 
 ## Flowchart
 
