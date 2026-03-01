@@ -17,6 +17,7 @@ PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
+PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
 
 for arg in "$@"; do
   case "$arg" in
@@ -203,6 +204,14 @@ ensure_prd_ready() {
   return 0
 }
 
+try_prime_prd() {
+  if [ ! -x "$PRIME_CMD" ]; then
+    return 0
+  fi
+
+  "$PRIME_CMD" --auto
+}
+
 require_cmd jq
 require_cmd git
 require_cmd sed
@@ -211,6 +220,11 @@ require_cmd awk
 require_cmd find
 require_cmd tr
 require_cmd "$CODEX_BIN"
+
+if ! try_prime_prd; then
+  echo "Unable to prime PRD for next loop." >&2
+  exit 1
+fi
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Ralph must be run inside a git repository." >&2

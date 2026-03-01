@@ -43,6 +43,7 @@ This installs into `/absolute/path/to/target-project/scripts/ralph/`:
 - `prd.json.example`
 - `epics.json.example`
 - `ralph-epic.sh` (epic sequencing helper)
+- `ralph-prime.sh` (auto-prime helper)
 - (optional) smoke `prd.json` + `progress.txt` if missing
 - `epics.json` if missing
 
@@ -91,6 +92,7 @@ Expected outcome:
 ./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-epic.sh next
 ./scripts/ralph/ralph-epic.sh start-next
+./scripts/ralph/ralph-prime.sh
 ```
 
 After an epic completes:

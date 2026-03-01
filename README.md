@@ -109,6 +109,7 @@ The wrapper enforces small, ordered stories and requires completion criteria lik
 
 ```bash
 ./scripts/ralph/doctor.sh
+./scripts/ralph/ralph-prime.sh
 ./scripts/ralph/ralph.sh [max_iterations]
 ```
 
@@ -137,7 +138,7 @@ Use epic backlog sequencing to decide what to run next before preparing each loo
 
 Recommended cycle:
 1. Select next epic (`start-next`)
-2. Build/refresh `scripts/ralph/prd.json` for that epic
+2. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
 3. Run `ralph.sh`
 4. Mark epic `done` when complete
 
@@ -146,6 +147,7 @@ Recommended cycle:
 | File | Purpose |
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
+| `ralph-prime.sh` | Auto-select next eligible epic and prime `prd.json` for loop startup |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `prompt.md` | Instructions given to each Codex run |
 | `prd.json` | User stories with `passes` status (the task list) |

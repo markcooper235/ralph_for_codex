@@ -119,6 +119,7 @@ copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
 copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
+copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
@@ -130,7 +131,8 @@ chmod +x \
   "$DEST_DIR_REL/ralph-archive.sh" \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-commit.sh" \
-  "$DEST_DIR_REL/ralph-epic.sh"
+  "$DEST_DIR_REL/ralph-epic.sh" \
+  "$DEST_DIR_REL/ralph-prime.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -225,5 +227,6 @@ echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
 echo "  2) ./$DEST_DIR_REL/ralph-epic.sh list"
 echo "  3) ./$DEST_DIR_REL/ralph-epic.sh start-next"
-echo "  4) ./$DEST_DIR_REL/ralph-prd.sh"
-echo "  5) ./$DEST_DIR_REL/ralph.sh 10"
+echo "  4) ./$DEST_DIR_REL/ralph-prime.sh"
+echo "  5) ./$DEST_DIR_REL/ralph-prd.sh"
+echo "  6) ./$DEST_DIR_REL/ralph.sh 10"
