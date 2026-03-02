@@ -96,6 +96,24 @@ resolve_ralph_conflicts_or_fail() {
   fi
 }
 
+enforce_transient_files_untracked() {
+  local tracked
+  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" || true)"
+  if [ -z "$tracked" ]; then
+    return 0
+  fi
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    git rm --cached -- "$path" >/dev/null 2>&1 || true
+  done <<< "$tracked"
+
+  if ! git diff --cached --quiet; then
+    git commit -m "chore(ralph): keep transient Ralph files untracked"
+    echo "Removed transient Ralph files from git tracking on target branch."
+  fi
+}
+
 validate_archive_before_merge() {
   local archive_dir manifest_file source_playwright archived_playwright source_iter archived_iter
   archive_dir="$1"
@@ -306,5 +324,7 @@ if ! git -c merge.renames=false merge --no-ff "$FEATURE_BRANCH" -m "merge: Ralph
   fi
   git commit --no-edit
 fi
+
+enforce_transient_files_untracked
 
 echo "Merge complete: $FEATURE_BRANCH -> $TARGET_BRANCH"

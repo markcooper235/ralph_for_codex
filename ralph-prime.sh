@@ -75,6 +75,14 @@ prd_all_passes() {
   prd_is_valid_json && jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$PRD_FILE" >/dev/null 2>&1
 }
 
+ensure_transient_files_not_tracked() {
+  local tracked
+  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" || true)"
+  if [ -n "$tracked" ]; then
+    fail "Ralph transient files are tracked in git. Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt"
+  fi
+}
+
 find_next_epic_id() {
   [ -f "$EPIC_CLI" ] || return 1
   bash "$EPIC_CLI" next 2>/dev/null | sed -n 's/^Next epic: \([^ ]*\).*/\1/p' | head -n 1
@@ -183,7 +191,9 @@ main() {
   require_cmd jq
   require_cmd sed
   require_cmd tr
+  require_cmd git
   require_cmd "$CODEX_BIN"
+  ensure_transient_files_not_tracked
 
   if prd_has_unfinished_stories; then
     echo "PRD already has unfinished stories; keeping current scripts/ralph/prd.json."

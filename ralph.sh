@@ -242,6 +242,37 @@ ensure_backlog_inputs_committed() {
   return 0
 }
 
+commit_prime_epic_state_if_needed() {
+  local status_line epic_id epic_title
+  status_line="$(git status --porcelain -- "$EPICS_FILE" || true)"
+  [ -n "$status_line" ] || return 0
+
+  if ! jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1; then
+    echo "Cannot auto-commit primed epic state: invalid $EPICS_FILE" >&2
+    return 1
+  fi
+
+  epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
+  if [ -n "$epic_id" ]; then
+    epic_title="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .title // empty' "$EPICS_FILE")"
+  else
+    epic_title=""
+  fi
+
+  git add "$EPICS_FILE"
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  if [ -n "$epic_id" ]; then
+    git commit -m "chore(ralph): prime $epic_id active for loop startup"
+    echo "Committed primed epic state: $epic_id ${epic_title:+- $epic_title}"
+  else
+    git commit -m "chore(ralph): sync epic backlog state before loop"
+    echo "Committed epic backlog state before loop start."
+  fi
+}
+
 infer_epic_id_from_prd_branch() {
   local prd_branch="$1"
   if [[ "$prd_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
@@ -313,6 +344,11 @@ fi
 
 if ! try_prime_prd; then
   echo "Unable to prime PRD for next loop." >&2
+  exit 1
+fi
+
+if ! commit_prime_epic_state_if_needed; then
+  echo "Unable to commit primed epic state before loop." >&2
   exit 1
 fi
 
