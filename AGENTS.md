@@ -7,12 +7,6 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 ## Commands
 
 ```bash
-# Run the flowchart dev server
-cd flowchart && npm run dev
-
-# Build the flowchart
-cd flowchart && npm run build
-
 # Install skills globally for Codex
 ./install.sh --install-skills
 
@@ -44,7 +38,6 @@ cd flowchart && npm run build
 - `prompt.md` - Instructions given to each Codex run
 - `prd.json.example` - Example PRD format
 - `epics.json.example` - Example epic backlog template
-- `flowchart/` - Interactive React Flow diagram explaining how Ralph works
 
 ## Recommended Flow
 
@@ -58,16 +51,7 @@ Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
 - `./ralph-epic.sh remove EPIC-XXX` permanently removes an already-abandoned epic
 
-## Flowchart
-
-The `flowchart/` directory contains an interactive visualization built with React Flow. It's designed for presentations - click through to reveal each step with animations.
-
-To run locally:
-```bash
-cd flowchart
-npm install
-npm run dev
-```
+Flowchart assets/source were removed because they are no longer valid for this repository. A new repo-specific flowchart may be added in the future.
 
 ## Patterns
 
