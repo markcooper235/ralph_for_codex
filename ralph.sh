@@ -9,6 +9,7 @@ BOOTSTRAP_PRD=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
+EPICS_FILE="$SCRIPT_DIR/epics.json"
 ARCHIVE_DIR="$SCRIPT_DIR/archive"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 
@@ -130,6 +131,11 @@ prd_all_passes() {
   jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$PRD_FILE" >/dev/null 2>&1
 }
 
+prd_has_unfinished_stories() {
+  [ -f "$PRD_FILE" ] || return 1
+  jq -e '(.userStories | length) > 0 and any(.userStories[]; .passes != true)' "$PRD_FILE" >/dev/null 2>&1
+}
+
 is_prd_empty() {
   [ ! -f "$PRD_FILE" ] || [ ! -s "$PRD_FILE" ] || ! grep -q '[^[:space:]]' "$PRD_FILE"
 }
@@ -205,11 +211,91 @@ ensure_prd_ready() {
 }
 
 try_prime_prd() {
-  if [ ! -x "$PRIME_CMD" ]; then
+  if [ ! -f "$PRIME_CMD" ]; then
     return 0
   fi
 
-  "$PRIME_CMD" --auto
+  bash "$PRIME_CMD" --auto
+}
+
+ensure_transient_files_not_tracked() {
+  local tracked
+  tracked="$(git ls-files -- "$PRD_FILE" "$PROGRESS_FILE" || true)"
+  if [ -n "$tracked" ]; then
+    echo "Ralph transient files must not be git-tracked:" >&2
+    printf '%s\n' "$tracked" >&2
+    echo "Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
+    return 1
+  fi
+  return 0
+}
+
+ensure_backlog_inputs_committed() {
+  local pending
+  pending="$(git status --porcelain -- "$EPICS_FILE" "$WORKSPACE_ROOT/tasks" || true)"
+  if [ -n "$pending" ]; then
+    echo "Commit backlog inputs before starting Ralph loop (epics.json/tasks):" >&2
+    printf '%s\n' "$pending" >&2
+    echo "Required: commit scripts/ralph/epics.json and tasks PRD changes first." >&2
+    return 1
+  fi
+  return 0
+}
+
+infer_epic_id_from_prd_branch() {
+  local prd_branch="$1"
+  if [[ "$prd_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
+    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+    return 0
+  fi
+  printf ''
+  return 1
+}
+
+ensure_epic_status_synced_with_prd() {
+  local prd_branch epic_id epic_status
+
+  [ -f "$EPICS_FILE" ] || return 0
+  jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1 || return 0
+  prd_is_valid_json || return 0
+
+  prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE")"
+  [ -n "$prd_branch" ] || return 0
+
+  epic_id="$(infer_epic_id_from_prd_branch "$prd_branch" || true)"
+  [ -n "$epic_id" ] || return 0
+
+  if ! jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1; then
+    echo "PRD branch $prd_branch does not map to an epic present in scripts/ralph/epics.json." >&2
+    return 1
+  fi
+
+  epic_status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .status // ""' "$EPICS_FILE")"
+
+  if prd_all_passes; then
+    case "$epic_status" in
+      done|abandoned|aborted)
+        return 0
+        ;;
+      *)
+        echo "PRD is complete but epic $epic_id is status '$epic_status'." >&2
+        echo "Run ./scripts/ralph/ralph-commit.sh (or set status) before starting a new loop." >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  if prd_has_unfinished_stories; then
+    case "$epic_status" in
+      done|abandoned|aborted)
+        echo "PRD has unfinished stories but epic $epic_id is status '$epic_status'." >&2
+        echo "Re-prime or set the epic back to active/planned before loop start." >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  return 0
 }
 
 require_cmd jq
@@ -220,6 +306,10 @@ require_cmd awk
 require_cmd find
 require_cmd tr
 require_cmd "$CODEX_BIN"
+
+if ! ensure_transient_files_not_tracked; then
+  exit 1
+fi
 
 if ! try_prime_prd; then
   echo "Unable to prime PRD for next loop." >&2
@@ -244,6 +334,14 @@ fi
 
 if ! ensure_prd_ready; then
   echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
+  exit 1
+fi
+
+if ! ensure_backlog_inputs_committed; then
+  exit 1
+fi
+
+if ! ensure_epic_status_synced_with_prd; then
   exit 1
 fi
 
