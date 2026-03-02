@@ -52,7 +52,11 @@ cd flowchart && npm run build
 2. Select next epic via `./ralph-epic.sh start-next`
 3. Prime loop input via `./ralph-prime.sh`
 4. Run loop via `./ralph.sh [max_iterations]`
-5. Mark epic complete via `./ralph-epic.sh set-status EPIC-XXX done`
+5. Run `./ralph-commit.sh` to archive + merge (it auto-marks the matching epic `done`)
+
+Epic lifecycle helpers:
+- `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
+- `./ralph-epic.sh remove EPIC-XXX` permanently removes an already-abandoned epic
 
 ## Flowchart
 

@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
+EPICS_FILE="$SCRIPT_DIR/epics.json"
 ARCHIVE_CMD="$SCRIPT_DIR/ralph-archive.sh"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
@@ -31,6 +32,17 @@ require_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   fi
+}
+
+infer_epic_id_from_feature_branch() {
+  local feature_branch="$1"
+  if [[ "$feature_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
+    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+    return 0
+  fi
+
+  printf ''
+  return 1
 }
 
 ensure_clean_worktree() {
@@ -112,6 +124,65 @@ validate_archive_before_merge() {
   if [ "$source_playwright" = "1" ] && [ -d "$PLAYWRIGHT_CLI_DIR" ]; then
     echo "Archive validation failed: .playwright-cli still exists after archive." >&2
     exit 1
+  fi
+}
+
+sync_epic_status_for_completed_prd() {
+  local feature_branch="$1"
+  local epic_id epic_status tmp_file
+
+  if [ ! -f "$EPICS_FILE" ] || ! jq -e '.epics and (.epics | type == "array")' "$EPICS_FILE" >/dev/null 2>&1; then
+    echo "Skipping epic status sync: missing or invalid $EPICS_FILE"
+    return 0
+  fi
+
+  epic_id="$(infer_epic_id_from_feature_branch "$feature_branch" || true)"
+  if [ -z "$epic_id" ]; then
+    epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
+  fi
+
+  if [ -z "$epic_id" ]; then
+    echo "Skipping epic status sync: unable to infer epic ID from $feature_branch"
+    return 0
+  fi
+
+  if ! jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1; then
+    echo "Skipping epic status sync: $epic_id not found in $EPICS_FILE"
+    return 0
+  fi
+
+  epic_status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | (.status // "")' "$EPICS_FILE")"
+  case "$epic_status" in
+    done)
+      echo "Epic already done: $epic_id"
+      return 0
+      ;;
+    abandoned|aborted)
+      echo "Epic is $epic_status: $epic_id (leaving status unchanged)"
+      return 0
+      ;;
+  esac
+
+  tmp_file="$(mktemp)"
+  jq --arg id "$epic_id" '
+    .epics = (
+      .epics
+      | map(
+          if .id == $id then
+            .status = "done"
+          else
+            .
+          end
+        )
+    )
+    | if .activeEpicId == $id then .activeEpicId = null else . end
+  ' "$EPICS_FILE" > "$tmp_file"
+  mv "$tmp_file" "$EPICS_FILE"
+
+  if ! git diff --quiet -- "$EPICS_FILE"; then
+    git add "$EPICS_FILE"
+    git commit -m "chore(ralph): mark $epic_id done after PRD completion"
+    echo "Epic status synced: $epic_id -> done"
   fi
 }
 
@@ -223,6 +294,8 @@ fi
 if [ "$CURRENT_BRANCH" != "$FEATURE_BRANCH" ]; then
   git checkout "$FEATURE_BRANCH"
 fi
+
+sync_epic_status_for_completed_prd "$FEATURE_BRANCH"
 
 git checkout "$TARGET_BRANCH"
 if ! git -c merge.renames=false merge --no-ff "$FEATURE_BRANCH" -m "merge: Ralph run $FEATURE_BRANCH"; then

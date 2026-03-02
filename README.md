@@ -134,13 +134,19 @@ Use epic backlog sequencing to decide what to run next before preparing each loo
 ./scripts/ralph/ralph-epic.sh next
 ./scripts/ralph/ralph-epic.sh start-next
 ./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
+./scripts/ralph/ralph-epic.sh abandon EPIC-009 "superseded by EPIC-011"
+./scripts/ralph/ralph-epic.sh remove EPIC-009
 ```
 
 Recommended cycle:
 1. Select next epic (`start-next`)
 2. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
 3. Run `ralph.sh`
-4. Mark epic `done` when complete
+4. Run `ralph-commit.sh` to archive + merge; it auto-marks the matching epic `done`
+
+Notes:
+- `abandon` keeps an epic in backlog history but excludes it from eligibility.
+- `remove` permanently deletes only epics already marked `abandoned`.
 
 ## Key Files
 

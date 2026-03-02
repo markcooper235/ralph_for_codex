@@ -13,7 +13,9 @@ Commands:
   list                      List all epics ordered by priority
   next                      Show the next eligible epic
   start-next                Mark next eligible epic as active
-  set-status <ID> <STATUS>  Set epic status (planned|ready|blocked|active|done)
+  set-status <ID> <STATUS>  Set epic status (planned|ready|blocked|active|done|abandoned)
+  abandon <ID> [REASON]     Mark epic as abandoned (kept for historical reference)
+  remove <ID>               Remove an abandoned epic from epics.json
   show <ID>                 Show full epic JSON
 
 Eligibility for "next":
@@ -99,11 +101,16 @@ show_epic() {
 set_status() {
   local epic_id="$1"
   local status="$2"
+  local original_status="$status"
+  if [ "$status" = "aborted" ]; then
+    status="abandoned"
+  fi
+
   case "$status" in
-    planned|ready|blocked|active|done)
+    planned|ready|blocked|active|done|abandoned)
       ;;
     *)
-      fail "Invalid status '$status'. Use: planned|ready|blocked|active|done"
+      fail "Invalid status '$original_status'. Use: planned|ready|blocked|active|done|abandoned"
       ;;
   esac
 
@@ -118,6 +125,7 @@ set_status() {
       | map(
           if .id == $id then
             .status = $status
+            | if $status != "abandoned" then del(.abandonedAt, .abandonReason) else . end
           elif $status == "active" and .status == "active" then
             .status = "ready"
           else
@@ -130,6 +138,57 @@ set_status() {
   mv "$tmp_file" "$EPICS_FILE"
 
   echo "Updated $epic_id -> $status"
+}
+
+abandon_epic() {
+  local epic_id="$1"
+  local reason="${2:-}"
+  jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1 || fail "Epic not found: $epic_id"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  jq --arg id "$epic_id" --arg reason "$reason" --arg ts "$(date -Iseconds)" '
+    .activeEpicId = (if .activeEpicId == $id then null else .activeEpicId end)
+    | .epics = (
+      .epics
+      | map(
+          if .id == $id then
+            .status = "abandoned"
+            | .abandonedAt = $ts
+            | if ($reason | length) > 0 then .abandonReason = $reason else . end
+          else
+            .
+          end
+        )
+    )
+  ' "$EPICS_FILE" > "$tmp_file"
+  mv "$tmp_file" "$EPICS_FILE"
+
+  if [ -n "$reason" ]; then
+    echo "Updated $epic_id -> abandoned (reason recorded)"
+  else
+    echo "Updated $epic_id -> abandoned"
+  fi
+}
+
+remove_epic() {
+  local epic_id="$1"
+  local status tmp_file
+  jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1 || fail "Epic not found: $epic_id"
+
+  status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .status // empty' "$EPICS_FILE")"
+  if [ "$status" != "abandoned" ]; then
+    fail "Epic $epic_id is status '$status'. Only abandoned epics can be removed."
+  fi
+
+  tmp_file="$(mktemp)"
+  jq --arg id "$epic_id" '
+    .epics = [.epics[] | select(.id != $id)]
+    | if .activeEpicId == $id then .activeEpicId = null else . end
+  ' "$EPICS_FILE" > "$tmp_file"
+  mv "$tmp_file" "$EPICS_FILE"
+
+  echo "Removed epic: $epic_id"
 }
 
 start_next() {
@@ -169,6 +228,14 @@ main() {
     set-status)
       [ $# -eq 3 ] || fail "Usage: set-status <ID> <STATUS>"
       set_status "$2" "$3"
+      ;;
+    abandon)
+      [ $# -ge 2 ] || fail "Usage: abandon <ID> [REASON]"
+      abandon_epic "$2" "${*:3}"
+      ;;
+    remove)
+      [ $# -eq 2 ] || fail "Usage: remove <ID>"
+      remove_epic "$2"
       ;;
     show)
       [ $# -eq 2 ] || fail "Usage: show <ID>"
