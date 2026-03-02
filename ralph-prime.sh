@@ -76,28 +76,33 @@ prd_all_passes() {
 }
 
 find_next_epic_id() {
-  [ -x "$EPIC_CLI" ] || return 1
-  "$EPIC_CLI" next 2>/dev/null | sed -n 's/^Next epic: \([^ ]*\).*/\1/p' | head -n 1
+  [ -f "$EPIC_CLI" ] || return 1
+  bash "$EPIC_CLI" next 2>/dev/null | sed -n 's/^Next epic: \([^ ]*\).*/\1/p' | head -n 1
 }
 
 choose_primary_prd_path_for_epic() {
   local epic_id="$1"
   jq -r --arg id "$epic_id" '
-    .epics[]
-    | select(.id == $id)
-    | (
-        [(.prdPaths // [])[] | select(test("^tasks/prd-epic-"))] +
-        [(.prdPaths // [])[]]
-      )
-    | unique
-    | .[0] // empty
+    (.epics[] | select(.id == $id) | (.prdPaths // [])) as $paths
+    | (($paths[] | select(test("^tasks/prd-epic-"))) // ($paths[0] // empty))
   ' "$EPICS_FILE"
 }
 
 set_epic_active() {
   local epic_id="$1"
-  [ -x "$EPIC_CLI" ] || return 0
-  "$EPIC_CLI" set-status "$epic_id" active >/dev/null 2>&1 || true
+  [ -f "$EPIC_CLI" ] || return 0
+  bash "$EPIC_CLI" set-status "$epic_id" active >/dev/null
+}
+
+validate_generated_prd() {
+  prd_is_valid_json || return 1
+  jq -e '
+    (.project | type == "string" and length > 0) and
+    (.branchName | type == "string" and length > 0) and
+    (.description | type == "string") and
+    (.userStories | type == "array" and length > 0)
+  ' "$PRD_FILE" >/dev/null 2>&1 || return 1
+  return 0
 }
 
 slugify_branch_segment() {
@@ -212,8 +217,8 @@ main() {
   set_epic_active "$next_epic"
   convert_markdown_prd_to_json "$source_prd" "$next_epic"
 
-  if ! prd_is_valid_json; then
-    fail "Generated PRD JSON is invalid: $PRD_FILE"
+  if ! validate_generated_prd; then
+    fail "Generated PRD JSON missing required structure: $PRD_FILE"
   fi
 
   local remaining
