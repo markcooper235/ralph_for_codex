@@ -4,9 +4,16 @@
 
 Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repeatedly until all PRD items are complete. Each iteration is a fresh Codex run with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
 
-This repo is a Codex-focused variant of the original Ralph implementation:
-- Upstream: https://github.com/snarktank/ralph (Amp-based)
-- This repo: replaces Amp with Codex, and adds `install.sh` + `doctor.sh` for reliable setup/smoke checks.
+## Project Origin
+
+This repository was based on Ryan Carson's Snarktank Ralph work:
+- Upstream: https://github.com/snarktank/ralph
+
+It has since been significantly modified into what it is now. It retains the same basic functionality (with major improvements in this version), but it is not the same project.
+
+This repo is a Codex-focused Ralph variant:
+- Replaces Amp with Codex
+- Adds `install.sh` + `doctor.sh` for more reliable setup and smoke checks
 
 Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
