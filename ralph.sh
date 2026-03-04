@@ -6,11 +6,16 @@ set -euo pipefail
 
 MAX_ITERATIONS=10
 BOOTSTRAP_PRD=false
+ALLOW_EPIC_FALLBACK=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
-EPICS_FILE="$SCRIPT_DIR/epics.json"
-ARCHIVE_DIR="$SCRIPT_DIR/archive"
+ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+SPRINTS_DIR="$SCRIPT_DIR/sprints"
+TASKS_DIR="$SCRIPT_DIR/tasks"
+ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+EPICS_FILE=""
+ARCHIVE_DIR="$TASKS_DIR/archive"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -25,11 +30,15 @@ for arg in "$@"; do
     --bootstrap-prd)
       BOOTSTRAP_PRD=true
       ;;
+    --allow-epic-fallback)
+      ALLOW_EPIC_FALLBACK=true
+      ;;
     -h|--help)
-      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd]"
+      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd] [--allow-epic-fallback]"
       echo ""
       echo "Options:"
       echo "  --bootstrap-prd     Attempt to auto-generate scripts/ralph/prd.json when missing/empty."
+      echo "  --allow-epic-fallback  Allow switching from completed standalone PRD back into epic priming."
       echo ""
       echo "Environment:"
       echo "  RALPH_BOOTSTRAP_PRD=1  Enable PRD bootstrap behavior."
@@ -50,12 +59,36 @@ done
 if [ "${RALPH_BOOTSTRAP_PRD:-0}" = "1" ] || [ "${RALPH_BOOTSTRAP_PRD:-}" = "true" ]; then
   BOOTSTRAP_PRD=true
 fi
+if [ "${RALPH_ALLOW_EPIC_FALLBACK:-0}" = "1" ] || [ "${RALPH_ALLOW_EPIC_FALLBACK:-}" = "true" ]; then
+  ALLOW_EPIC_FALLBACK=true
+fi
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
     exit 1
   fi
+}
+
+get_active_sprint() {
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_sprint_paths() {
+  local active_sprint
+  active_sprint="$(get_active_sprint || true)"
+  if [ -z "$active_sprint" ]; then
+    EPICS_FILE=""
+    ARCHIVE_DIR="$TASKS_DIR/archive"
+    return 0
+  fi
+  EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
+  ARCHIVE_DIR="$TASKS_DIR/archive/$active_sprint"
+  return 0
 }
 
 supports_codex_yolo() {
@@ -144,6 +177,58 @@ prd_is_valid_json() {
   [ -f "$PRD_FILE" ] && jq -e '.' "$PRD_FILE" >/dev/null 2>&1
 }
 
+get_active_prd_mode() {
+  [ -f "$ACTIVE_PRD_FILE" ] || return 1
+  jq -r '.mode // empty' "$ACTIVE_PRD_FILE" 2>/dev/null
+}
+
+standalone_prd_is_active() {
+  [ "$(get_active_prd_mode || true)" = "standalone" ]
+}
+
+infer_prd_mode_from_branch() {
+  local prd_branch
+  prd_is_valid_json || return 1
+  prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]]; then
+    printf 'epic\n'
+  else
+    printf 'standalone\n'
+  fi
+}
+
+write_active_prd_state() {
+  local mode="$1"
+  local source_path="${2:-scripts/ralph/prd.json}"
+  local epic_id=""
+  if [ "$mode" = "epic" ]; then
+    local prd_branch
+    prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+    if [[ "$prd_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
+      epic_id="$(printf 'EPIC-%03d' "$((10#${BASH_REMATCH[1]}))")"
+    fi
+  fi
+  cat >"$ACTIVE_PRD_FILE" <<EOF
+{
+  "mode": "$mode",
+  "sourcePath": "$source_path",
+  "epicId": "${epic_id}",
+  "activatedAt": "$(date -Iseconds)"
+}
+EOF
+}
+
+sync_active_prd_mode_with_current_prd() {
+  local inferred_mode active_mode
+  inferred_mode="$(infer_prd_mode_from_branch || true)"
+  [ -n "$inferred_mode" ] || return 0
+  active_mode="$(get_active_prd_mode || true)"
+  if [ -z "$active_mode" ] || [ "$active_mode" != "$inferred_mode" ]; then
+    write_active_prd_state "$inferred_mode" "scripts/ralph/prd.json"
+    echo "Updated scripts/ralph/.active-prd mode to '$inferred_mode' based on current PRD branch."
+  fi
+}
+
 build_codex_exec_args() {
   local output_last_message_file="${1:-}"
   local -n out_args_ref="$2"
@@ -211,6 +296,16 @@ ensure_prd_ready() {
 }
 
 try_prime_prd() {
+  if standalone_prd_is_active && prd_has_unfinished_stories; then
+    echo "Standalone PRD is active with unfinished stories; skipping epic prime."
+    return 0
+  fi
+  if standalone_prd_is_active && prd_all_passes && [ "$ALLOW_EPIC_FALLBACK" != "true" ]; then
+    echo "Standalone PRD is complete. Refusing implicit epic fallback." >&2
+    echo "Run ./scripts/ralph/ralph-commit.sh for standalone completion, then rerun with --allow-epic-fallback when ready." >&2
+    return 1
+  fi
+
   if [ ! -f "$PRIME_CMD" ]; then
     return 0
   fi
@@ -231,18 +326,24 @@ ensure_transient_files_not_tracked() {
 }
 
 ensure_backlog_inputs_committed() {
+  [ -n "${EPICS_FILE:-}" ] || return 0
+  [ -f "$EPICS_FILE" ] || return 0
+
   local pending
   pending="$(git status --porcelain -- "$EPICS_FILE" || true)"
   if [ -n "$pending" ]; then
     echo "Commit epic backlog state before starting Ralph loop:" >&2
     printf '%s\n' "$pending" >&2
-    echo "Required: commit scripts/ralph/epics.json changes first." >&2
+    echo "Required: commit active sprint epics.json changes first." >&2
     return 1
   fi
   return 0
 }
 
 commit_prime_epic_state_if_needed() {
+  [ -n "${EPICS_FILE:-}" ] || return 0
+  [ -f "$EPICS_FILE" ] || return 0
+
   local status_line epic_id epic_title
   status_line="$(git status --porcelain -- "$EPICS_FILE" || true)"
   [ -n "$status_line" ] || return 0
@@ -297,7 +398,7 @@ ensure_epic_status_synced_with_prd() {
   [ -n "$epic_id" ] || return 0
 
   if ! jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1; then
-    echo "PRD branch $prd_branch does not map to an epic present in scripts/ralph/epics.json." >&2
+    echo "PRD branch $prd_branch does not map to an epic present in active sprint epics.json." >&2
     return 1
   fi
 
@@ -339,6 +440,12 @@ require_cmd tr
 require_cmd "$CODEX_BIN"
 
 if ! ensure_transient_files_not_tracked; then
+  exit 1
+fi
+
+sync_active_prd_mode_with_current_prd
+
+if ! resolve_sprint_paths; then
   exit 1
 fi
 

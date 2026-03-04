@@ -120,6 +120,7 @@ copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
 copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
 copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
+copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
@@ -132,7 +133,8 @@ chmod +x \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-commit.sh" \
   "$DEST_DIR_REL/ralph-epic.sh" \
-  "$DEST_DIR_REL/ralph-prime.sh"
+  "$DEST_DIR_REL/ralph-prime.sh" \
+  "$DEST_DIR_REL/ralph-sprint.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -171,8 +173,20 @@ Started: $(date)
 EOF
 fi
 
-if [ ! -f "$DEST_DIR_REL/epics.json" ] || [ "$FORCE" -eq 1 ]; then
-  cp "$DEST_DIR_REL/epics.json.example" "$DEST_DIR_REL/epics.json"
+# Sprint-aware bootstrap directories and default active sprint.
+mkdir -p \
+  "$DEST_DIR_REL/sprints/sprint-1" \
+  "$DEST_DIR_REL/tasks/sprint-1" \
+  "$DEST_DIR_REL/tasks/prds" \
+  "$DEST_DIR_REL/tasks/archive/sprint-1" \
+  "$DEST_DIR_REL/tasks/archive/prds"
+
+if [ ! -f "$DEST_DIR_REL/sprints/sprint-1/epics.json" ] || [ "$FORCE" -eq 1 ]; then
+  cp "$DEST_DIR_REL/epics.json.example" "$DEST_DIR_REL/sprints/sprint-1/epics.json"
+fi
+
+if [ ! -f "$DEST_DIR_REL/.active-sprint" ] || [ "$FORCE" -eq 1 ]; then
+  printf 'sprint-1\n' > "$DEST_DIR_REL/.active-sprint"
 fi
 
 # Keep generated files out of git noise.
@@ -225,8 +239,7 @@ fi
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
-echo "  2) ./$DEST_DIR_REL/ralph-epic.sh list"
-echo "  3) ./$DEST_DIR_REL/ralph-epic.sh start-next"
-echo "  4) ./$DEST_DIR_REL/ralph-prime.sh"
-echo "  5) ./$DEST_DIR_REL/ralph-prd.sh"
-echo "  6) ./$DEST_DIR_REL/ralph.sh 10"
+echo "  2) ./$DEST_DIR_REL/ralph-sprint.sh status"
+echo "  3) ./$DEST_DIR_REL/ralph-epic.sh list"
+echo "  4) ./$DEST_DIR_REL/ralph-prd.sh  (standalone flow) OR ./$DEST_DIR_REL/ralph-prime.sh  (epic flow)"
+echo "  5) ./$DEST_DIR_REL/ralph.sh 10"

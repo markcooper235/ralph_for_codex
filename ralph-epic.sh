@@ -3,7 +3,31 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EPICS_FILE="${RALPH_EPICS_FILE:-$SCRIPT_DIR/epics.json}"
+SPRINTS_DIR="$SCRIPT_DIR/sprints"
+ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+EPICS_FILE="${RALPH_EPICS_FILE:-}"
+
+get_active_sprint() {
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_epics_file() {
+  if [ -n "$EPICS_FILE" ]; then
+    return 0
+  fi
+
+  local active_sprint
+  active_sprint="$(get_active_sprint || true)"
+  if [ -z "$active_sprint" ]; then
+    fail "No active sprint. Use ./scripts/ralph/ralph-sprint.sh use <sprint-name>."
+  fi
+
+  EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
+}
 
 usage() {
   cat <<'EOF'
@@ -15,7 +39,7 @@ Commands:
   start-next                Mark next eligible epic as active
   set-status <ID> <STATUS>  Set epic status (planned|ready|blocked|active|done|abandoned)
   abandon <ID> [REASON]     Mark epic as abandoned (kept for historical reference)
-  remove <ID>               Remove an abandoned epic from epics.json
+  remove <ID>               Remove an abandoned epic from active sprint epics.json
   show <ID>                 Show full epic JSON
 
 Eligibility for "next":
@@ -40,6 +64,15 @@ fail() {
 ensure_file() {
   [ -f "$EPICS_FILE" ] || fail "Missing epics file: $EPICS_FILE"
   jq -e '.epics and (.epics | type == "array")' "$EPICS_FILE" >/dev/null 2>&1 || fail "Invalid epics JSON: $EPICS_FILE"
+}
+
+has_unsatisfied_dependencies() {
+  local epic_id="$1"
+  jq -e --arg id "$epic_id" '
+    . as $root
+    | ($root.epics[] | select(.id == $id) | (.dependsOn // [])) as $deps
+    | any($deps[] as $dep; ($root.epics[] | select(.id == $dep) | .status // "missing") != "done")
+  ' "$EPICS_FILE" >/dev/null 2>&1
 }
 
 find_next_epic_id() {
@@ -212,6 +245,7 @@ show_next() {
 
 main() {
   require_cmd jq
+  resolve_epics_file
   ensure_file
 
   local cmd="${1:-}"

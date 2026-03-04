@@ -5,7 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
-EPICS_FILE="$SCRIPT_DIR/epics.json"
+ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+SPRINTS_DIR="$SCRIPT_DIR/sprints"
+ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+EPICS_FILE=""
 EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
 
@@ -30,6 +33,23 @@ EOF
 fail() {
   echo "Error: $*" >&2
   exit 1
+}
+
+get_active_sprint() {
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_epics_file() {
+  local active_sprint
+  active_sprint="$(get_active_sprint || true)"
+  if [ -z "$active_sprint" ]; then
+    fail "No active sprint set. Run ./scripts/ralph/ralph-sprint.sh use <sprint-name>."
+  fi
+  EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
 }
 
 require_cmd() {
@@ -92,7 +112,7 @@ choose_primary_prd_path_for_epic() {
   local epic_id="$1"
   jq -r --arg id "$epic_id" '
     (.epics[] | select(.id == $id) | (.prdPaths // [])) as $paths
-    | (($paths[] | select(test("^tasks/prd-epic-"))) // ($paths[0] // empty))
+    | (($paths[] | select(test("/prd-epic-"))) // ($paths[0] // empty))
   ' "$EPICS_FILE"
 }
 
@@ -100,6 +120,19 @@ set_epic_active() {
   local epic_id="$1"
   [ -f "$EPIC_CLI" ] || return 0
   bash "$EPIC_CLI" set-status "$epic_id" active >/dev/null
+}
+
+set_active_epic_prd() {
+  local epic_id="$1"
+  local source_path="$2"
+  cat >"$ACTIVE_PRD_FILE" <<EOF
+{
+  "mode": "epic",
+  "epicId": "$epic_id",
+  "sourcePath": "$source_path",
+  "activatedAt": "$(date -Iseconds)"
+}
+EOF
 }
 
 validate_generated_prd() {
@@ -150,7 +183,7 @@ EOF
 }
 
 prompt_no_eligible_epic() {
-  local message="No eligible next epic found in scripts/ralph/epics.json. Do you want to create (1) a new Epic or (2) a stand-alone PRD to prime the loop?"
+  local message="No eligible next epic found in active sprint epics.json. Do you want to create (1) a new Epic or (2) a stand-alone PRD to prime the loop?"
   if [ "$AUTO_MODE" -eq 1 ] || [ ! -t 0 ]; then
     fail "$message"
   fi
@@ -159,7 +192,7 @@ prompt_no_eligible_epic() {
   read -r -p "Enter 1 or 2 (or anything else to cancel): " choice
   case "$choice" in
     1)
-      echo "Create a new epic entry in scripts/ralph/epics.json, then rerun ./scripts/ralph/ralph-prime.sh."
+      echo "Create a new epic entry in the active sprint epics.json, then rerun ./scripts/ralph/ralph-prime.sh."
       ;;
     2)
       echo "Create/convert a stand-alone PRD into scripts/ralph/prd.json (e.g., ./scripts/ralph/ralph-prd.sh), then rerun the loop."
@@ -193,6 +226,7 @@ main() {
   require_cmd tr
   require_cmd git
   require_cmd "$CODEX_BIN"
+  resolve_epics_file
   ensure_transient_files_not_tracked
 
   if prd_has_unfinished_stories; then
@@ -232,6 +266,7 @@ main() {
 
   # Mark active only after PRD conversion/validation succeeds.
   set_epic_active "$next_epic"
+  set_active_epic_prd "$next_epic" "$source_prd"
 
   local remaining
   remaining="$(jq -r '([.userStories[] | select(.passes != true)] | length)' "$PRD_FILE")"

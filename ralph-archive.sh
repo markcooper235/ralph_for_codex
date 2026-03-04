@@ -6,8 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
-ARCHIVE_ROOT="$SCRIPT_DIR/archive"
-WORKSPACE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || cd "$SCRIPT_DIR/../.." && pwd)"
+TASKS_DIR="$SCRIPT_DIR/tasks"
+ARCHIVE_ROOT="$TASKS_DIR/archive"
+ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+WORKSPACE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$WORKSPACE_ROOT" ]; then
+  WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 
 require_cmd() {
@@ -33,6 +39,35 @@ slugify() {
     | sed -E 's|^-+||; s|-+$||'
 }
 
+get_active_sprint() {
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    return 0
+  fi
+  return 1
+}
+
+get_active_prd_mode() {
+  if [ -f "$ACTIVE_PRD_FILE" ]; then
+    jq -r '.mode // empty' "$ACTIVE_PRD_FILE" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
+
+infer_prd_mode_from_branch() {
+  local prd_branch
+  if [ ! -f "$PRD_FILE" ] || ! jq -e '.' "$PRD_FILE" >/dev/null 2>&1; then
+    return 1
+  fi
+  prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]]; then
+    printf 'epic\n'
+  else
+    printf 'standalone\n'
+  fi
+}
+
 require_cmd jq
 require_cmd git
 require_cmd sed
@@ -44,6 +79,23 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 ensure_clean_worktree
+
+ACTIVE_PRD_MODE="$(get_active_prd_mode || true)"
+INFERRED_PRD_MODE="$(infer_prd_mode_from_branch || true)"
+if [ -n "$INFERRED_PRD_MODE" ] && [ -n "$ACTIVE_PRD_MODE" ] && [ "$INFERRED_PRD_MODE" != "$ACTIVE_PRD_MODE" ]; then
+  echo "Warning: .active-prd mode '$ACTIVE_PRD_MODE' mismatches current PRD branch; using inferred mode '$INFERRED_PRD_MODE'." >&2
+  ACTIVE_PRD_MODE="$INFERRED_PRD_MODE"
+elif [ -n "$INFERRED_PRD_MODE" ] && [ -z "$ACTIVE_PRD_MODE" ]; then
+  ACTIVE_PRD_MODE="$INFERRED_PRD_MODE"
+fi
+ACTIVE_SPRINT="$(get_active_sprint || true)"
+if [ "$ACTIVE_PRD_MODE" = "standalone" ]; then
+  ARCHIVE_ROOT="$ARCHIVE_ROOT/prds"
+elif [ -n "$ACTIVE_SPRINT" ]; then
+  ARCHIVE_ROOT="$ARCHIVE_ROOT/$ACTIVE_SPRINT"
+else
+  ARCHIVE_ROOT="$ARCHIVE_ROOT/prds"
+fi
 
 if [ ! -f "$PRD_FILE" ] && [ ! -f "$PROGRESS_FILE" ]; then
   echo "Nothing to archive: no prd.json or progress.txt in $SCRIPT_DIR" >&2

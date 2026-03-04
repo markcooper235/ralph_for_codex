@@ -4,12 +4,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
-EPICS_FILE="$SCRIPT_DIR/epics.json"
+SPRINTS_DIR="$SCRIPT_DIR/sprints"
+ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+EPICS_FILE=""
+ARCHIVE_TRACK_PATH="$SCRIPT_DIR/tasks/archive"
 ARCHIVE_CMD="$SCRIPT_DIR/ralph-archive.sh"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 TARGET_BRANCH=""
 DRY_RUN=false
+CREATE_BRANCH_IF_MISSING=false
 
 usage() {
   cat <<'EOF'
@@ -22,6 +27,7 @@ Behavior:
 
 Options:
   --target BRANCH  Explicit merge target branch
+  --create-branch-if-missing  Create feature branch from current HEAD if missing
   --dry-run        Print planned actions without changing git state
   -h, --help       Show this help
 EOF
@@ -32,6 +38,32 @@ require_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   fi
+}
+
+get_active_sprint() {
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    return 0
+  fi
+  return 1
+}
+
+resolve_epics_file() {
+  local active_sprint
+  active_sprint="$(get_active_sprint || true)"
+  if [ -z "$active_sprint" ]; then
+    EPICS_FILE=""
+    return 0
+  fi
+  EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
+}
+
+get_active_prd_epic_id() {
+  if [ -f "$ACTIVE_PRD_FILE" ]; then
+    jq -r 'if .mode == "epic" then (.epicId // empty) else empty end' "$ACTIVE_PRD_FILE" 2>/dev/null
+    return 0
+  fi
+  return 1
 }
 
 infer_epic_id_from_feature_branch() {
@@ -55,12 +87,12 @@ ensure_clean_worktree() {
 
 commit_archive_changes() {
   local archive_status
-  archive_status="$(git status --porcelain -- scripts/ralph/archive)"
+  archive_status="$(git status --porcelain -- "$ARCHIVE_TRACK_PATH")"
   if [ -z "$archive_status" ]; then
     return 0
   fi
 
-  git add -A scripts/ralph/archive
+  git add -A "$ARCHIVE_TRACK_PATH"
   if git diff --cached --quiet; then
     return 0
   fi
@@ -149,14 +181,14 @@ sync_epic_status_for_completed_prd() {
   local feature_branch="$1"
   local epic_id epic_status tmp_file
 
-  if [ ! -f "$EPICS_FILE" ] || ! jq -e '.epics and (.epics | type == "array")' "$EPICS_FILE" >/dev/null 2>&1; then
+  if [ -z "${EPICS_FILE:-}" ] || [ ! -f "$EPICS_FILE" ] || ! jq -e '.epics and (.epics | type == "array")' "$EPICS_FILE" >/dev/null 2>&1; then
     echo "Skipping epic status sync: missing or invalid $EPICS_FILE"
     return 0
   fi
 
   epic_id="$(infer_epic_id_from_feature_branch "$feature_branch" || true)"
   if [ -z "$epic_id" ]; then
-    epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
+    epic_id="$(get_active_prd_epic_id || true)"
   fi
 
   if [ -z "$epic_id" ]; then
@@ -218,6 +250,10 @@ while [ $# -gt 0 ]; do
       DRY_RUN=true
       shift
       ;;
+    --create-branch-if-missing)
+      CREATE_BRANCH_IF_MISSING=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -234,6 +270,7 @@ require_cmd git
 require_cmd jq
 require_cmd awk
 require_cmd sed
+resolve_epics_file
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Must be run inside a git repository." >&2
@@ -267,12 +304,20 @@ if [ -z "$TARGET_BRANCH" ]; then
   fi
 fi
 
-if ! git show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
-  echo "Feature branch does not exist locally: $FEATURE_BRANCH" >&2
-  exit 1
-fi
-
 CURRENT_BRANCH="$(git branch --show-current)"
+
+if ! git show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
+  if [ "$CREATE_BRANCH_IF_MISSING" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+    git checkout -b "$FEATURE_BRANCH"
+    echo "Created missing feature branch from current HEAD: $FEATURE_BRANCH"
+    CURRENT_BRANCH="$FEATURE_BRANCH"
+  else
+    echo "Feature branch does not exist locally: $FEATURE_BRANCH" >&2
+    echo "Create it with: git checkout -b $FEATURE_BRANCH" >&2
+    echo "Or rerun with --create-branch-if-missing." >&2
+    exit 1
+  fi
+fi
 
 if [ "$DRY_RUN" != "true" ]; then
   ensure_clean_worktree

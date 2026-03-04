@@ -3,7 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || cd "$SCRIPT_DIR/../.." && pwd)"
+WORKSPACE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$WORKSPACE_ROOT" ]; then
+  WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 FORCE=0
 
@@ -13,7 +16,7 @@ for arg in "$@"; do
       FORCE=1
       ;;
     -h|--help)
-      echo "Usage: ./ralph-cleanup.sh [--force]"
+      echo "Usage: ./scripts/ralph/ralph-cleanup.sh [--force]"
       echo "  --force    Skip confirmation prompt"
       exit 0
       ;;
@@ -30,7 +33,7 @@ if [ "$FORCE" -ne 1 ]; then
     echo "Refusing non-interactive destructive cleanup without --force." >&2
     exit 1
   fi
-  read -r -p "Cleanup will reset prd.json and delete local Ralph artifacts. Continue? [y/N]: " reply
+  read -r -p "Cleanup will reset scripts/ralph/prd.json and delete local Ralph artifacts. Continue? [y/N]: " reply
   case "${reply,,}" in
     y|yes)
       ;;

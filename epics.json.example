@@ -10,7 +10,7 @@
       "status": "ready",
       "dependsOn": [],
       "prdPaths": [
-        "tasks/prd-foundation.md"
+        "scripts/ralph/tasks/sprint-1/prd-epic-001-foundation.md"
       ],
       "goal": "Define and deliver the first production-ready slice of work.",
       "openQuestions": []
@@ -24,7 +24,7 @@
         "EPIC-001"
       ],
       "prdPaths": [
-        "tasks/prd-follow-on.md"
+        "scripts/ralph/tasks/sprint-1/prd-epic-002-follow-on.md"
       ],
       "goal": "Build on foundational capabilities after EPIC-001 is done.",
       "openQuestions": []

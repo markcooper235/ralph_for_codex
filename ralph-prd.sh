@@ -1,7 +1,8 @@
 #!/bin/bash
 # PRD bootstrap wrapper for Ralph.
 # Minimal by default: collect feature concept (+ optional constraints), then run
-# Codex with the PRD and Ralph skills to generate tasks/prd-*.md and prd.json.
+# Codex with the PRD and Ralph skills to generate
+# scripts/ralph/tasks/prds/prd-*.md and prd.json.
 
 set -euo pipefail
 
@@ -9,10 +10,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 PRD_JSON="${PRD_JSON_PATH:-$SCRIPT_DIR/prd.json}"
+ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 
 QUIET=0
 FEATURE_CONCEPT=""
 HARD_CONSTRAINTS=""
+ACTIVATE_CURRENT_ONLY=0
 
 # Quick question modes: ask (prompt user), on (force), off (skip)
 QUICK_QUESTIONS_MODE="ask"
@@ -30,6 +33,7 @@ Generate PRD markdown + prd.json via Codex skills.
 Options:
   --feature TEXT           Feature concept (skip concept prompt)
   --constraints TEXT       Hard constraints/dependencies (single argument)
+  --activate-current       Mark the current prd.json as active standalone PRD and exit
   --quick-questions        Force the 3-question clarifier flow
   --no-questions           Skip clarifier questions entirely
   --quiet                  Reduce wrapper output (Codex output still shown)
@@ -56,6 +60,17 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+mark_active_standalone_prd() {
+  local source_path="${1:-scripts/ralph/prd.json}"
+  cat >"$ACTIVE_PRD_FILE" <<EOF
+{
+  "mode": "standalone",
+  "sourcePath": "$source_path",
+  "activatedAt": "$(date -Iseconds)"
+}
+EOF
 }
 
 supports_codex_yolo() {
@@ -115,6 +130,10 @@ while [[ $# -gt 0 ]]; do
       QUICK_QUESTIONS_MODE="on"
       shift
       ;;
+    --activate-current)
+      ACTIVATE_CURRENT_ONLY=1
+      shift
+      ;;
     --no-questions)
       QUICK_QUESTIONS_MODE="off"
       shift
@@ -133,13 +152,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-require_cmd "$CODEX_BIN"
 require_cmd jq
 require_cmd git
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fail "This helper must run inside a git repository."
 fi
+
+if [ "$ACTIVATE_CURRENT_ONLY" -eq 1 ]; then
+  if [ ! -f "$PRD_JSON" ] || [ ! -s "$PRD_JSON" ]; then
+    fail "Cannot activate: missing or empty $PRD_JSON"
+  fi
+  if ! jq -e '.project and .branchName and .description and (.userStories | length > 0)' "$PRD_JSON" >/dev/null 2>&1; then
+    fail "Cannot activate: prd.json missing required fields or userStories"
+  fi
+  mark_active_standalone_prd "${PRD_JSON#$WORKSPACE_ROOT/}"
+  printf 'Active standalone PRD: %s\n' "$PRD_JSON"
+  printf 'Activation file: %s\n' "$ACTIVE_PRD_FILE"
+  exit 0
+fi
+
+require_cmd "$CODEX_BIN"
 
 if [ -z "$FEATURE_CONCEPT" ]; then
   FEATURE_CONCEPT="$(read_multiline "Describe the feature/requirement concept")"
@@ -254,7 +287,7 @@ Quick clarifier answers (if provided):
 Guidance:
 1. Follow the PRD skill workflow. If information is already sufficient, keep clarifying questions minimal.
 2. If critical gaps remain, infer using explicit assumptions instead of blocking.
-3. Generate a PRD markdown file in \`tasks/prd-[feature-name].md\`.
+3. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
 4. Break work into small, one-iteration user stories ordered by dependency.
 5. Set clear story priorities (1..N in execution order).
 6. Every story acceptance criteria must include:
@@ -299,5 +332,7 @@ if ! jq -e '
 fi
 
 log "Done."
+mark_active_standalone_prd "$PRD_JSON_REL"
 printf 'PRD JSON: %s\n' "$PRD_JSON"
 printf 'Stories: %s\n' "$(jq '.userStories | length' "$PRD_JSON")"
+printf 'Active PRD mode: standalone (%s)\n' "$ACTIVE_PRD_FILE"

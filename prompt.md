@@ -14,7 +14,7 @@ You are an autonomous coding agent for one Ralph loop iteration.
 2. Select the highest-priority story with `passes: false`.
 3. Implement only that story.
 4. Run project quality checks (typecheck/lint/test as applicable).
-5. For UI changes, verify in browser (automated preferred; otherwise best available method).
+5. For UI changes, verify in browser with Playwright first choice; use Cypress as fallback/secondary validation when needed.
 6. If checks pass, commit all changes:
    `feat: [Story ID] - [Story Title]`
 7. Mark that story `passes: true` in `{{PRD_FILE}}`.

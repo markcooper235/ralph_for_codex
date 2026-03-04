@@ -1,4 +1,6 @@
 # Ralph working files (generated during runs)
+scripts/ralph/.active-prd
+scripts/ralph/.active-sprint
 scripts/ralph/.last-branch
 scripts/ralph/.codex-last-message*.txt
 scripts/ralph/prd.json
