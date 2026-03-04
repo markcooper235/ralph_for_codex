@@ -4,6 +4,13 @@
 
 Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repeatedly until all PRD items are complete. Each iteration is a fresh Codex run with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
 
+## Current Repo State (2026-03-04)
+
+- Sprint-aware workflow is enabled by default (`scripts/ralph/sprints/<sprint>/epics.json` + `.active-sprint`).
+- The installer now provisions full lifecycle scripts: planning (`ralph-prd.sh`, `ralph-prime.sh`), loop execution (`ralph.sh`), sprint/epic management (`ralph-sprint.sh`, `ralph-epic.sh`), and completion/archive (`ralph-commit.sh`, `ralph-archive.sh`, `ralph-cleanup.sh`).
+- Codex assets in this repo include skills (`skills/prd`, `skills/ralph`, `skills/setup`) and reusable command prompts (`prompts/*.md`), both installable via `install.sh`.
+- Archive output now lives under `scripts/ralph/tasks/archive/<active-sprint>/...` for epic runs or `scripts/ralph/tasks/archive/prds/...` for standalone PRDs.
+
 ## Project Origin
 
 This repository was based on Ryan Carson's Snarktank Ralph work:
@@ -34,7 +41,8 @@ From your project root:
 ```bash
 bash /path/to/ralph/install.sh
 ./scripts/ralph/doctor.sh
-./scripts/ralph/ralph-prd.sh
+./scripts/ralph/ralph-sprint.sh status
+./scripts/ralph/ralph-prime.sh
 ./scripts/ralph/ralph.sh 10
 ```
 
@@ -51,6 +59,7 @@ If you want to use the included skills (`prd`, `ralph`, `setup-ralph-for-codex`)
 ```bash
 cd /path/to/ralph
 bash ./install.sh --install-skills
+bash ./install.sh --install-prompts
 ```
 
 ### Option 1: Copy to your project
@@ -60,15 +69,9 @@ Copy the ralph files into your project:
 ```bash
 # From your project root
 mkdir -p scripts/ralph
-cp /path/to/ralph/ralph.sh scripts/ralph/
-cp /path/to/ralph/ralph-prd.sh scripts/ralph/
-cp /path/to/ralph/doctor.sh scripts/ralph/
-cp /path/to/ralph/prompt.md scripts/ralph/
-cp /path/to/ralph/install.sh scripts/ralph/
-chmod +x scripts/ralph/ralph.sh
-chmod +x scripts/ralph/ralph-prd.sh
-chmod +x scripts/ralph/doctor.sh
-chmod +x scripts/ralph/install.sh
+cp /path/to/ralph/{doctor.sh,install.sh,prompt.md,prd.json.example,epics.json.example} scripts/ralph/
+cp /path/to/ralph/ralph*.sh scripts/ralph/
+chmod +x scripts/ralph/*.sh
 ```
 
 ### Option 2: Install skills globally
@@ -79,6 +82,9 @@ Copy the skills to your Codex skills directory for use across all projects:
 mkdir -p ~/.codex/skills
 cp -r skills/prd ~/.codex/skills/
 cp -r skills/ralph ~/.codex/skills/
+cp -r skills/setup ~/.codex/skills/
+mkdir -p ~/.codex/prompts
+cp prompts/*.md ~/.codex/prompts/
 ```
 
 ## Workflow
@@ -112,11 +118,18 @@ Optional modes:
 
 The wrapper enforces small, ordered stories and requires completion criteria like typecheck, lint, and tests.
 
-### 2. Run Ralph
+### 2. Prepare Sprint + Epic Context
 
 ```bash
 ./scripts/ralph/doctor.sh
+./scripts/ralph/ralph-sprint.sh status
+./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-prime.sh
+```
+
+### 3. Run Ralph
+
+```bash
 ./scripts/ralph/ralph.sh [max_iterations]
 ```
 
@@ -146,10 +159,11 @@ Use epic backlog sequencing to decide what to run next before preparing each loo
 ```
 
 Recommended cycle:
-1. Select next epic (`start-next`)
-2. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
-3. Run `ralph.sh`
-4. Run `ralph-commit.sh` to archive + merge; it auto-marks the matching epic `done`
+1. Ensure active sprint is set (`ralph-sprint.sh use <sprint-name>` or `create`)
+2. Select next epic (`start-next`)
+3. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
+4. Run `ralph.sh`
+5. Run `ralph-commit.sh` to archive + merge; it auto-marks the matching epic `done`
 
 Notes:
 - `abandon` keeps an epic in backlog history but excludes it from eligibility.
@@ -162,15 +176,21 @@ Notes:
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph-prime.sh` | Auto-select next eligible epic and prime `prd.json` for loop startup |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
+| `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epics`) |
+| `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
+| `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
+| `ralph-commit.sh` | Validate, archive, merge feature branch, and sync epic `done` status |
+| `ralph-cleanup.sh` | Reset local Ralph artifacts without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
-| `epics.json` | Epic backlog with priority/dependencies/activeEpicId |
+| `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority/dependencies/activeEpicId |
 | `epics.json.example` | Example epic backlog template |
-| `ralph-epic.sh` | CLI to list/select/activate epic order |
 | `progress.txt` | Append-only learnings for future iterations |
+| `prompts/*.md` | Optional slash-command style prompt templates installable to `~/.codex/prompts` |
 | `skills/prd/` | Skill for generating PRDs |
 | `skills/ralph/` | Skill for converting PRDs to JSON |
+| `skills/setup/` | Skill for installing/configuring Ralph in target projects |
 
 Flowchart assets/source were removed because they are no longer valid for this repository. A new repo-specific flowchart may be added in the future.
 
@@ -246,7 +266,13 @@ Edit `prompt.md` to customize Ralph's behavior for your project:
 
 ## Archiving
 
-Ralph automatically archives previous runs when you start a new feature (different `branchName`). Archives are saved to `archive/YYYY-MM-DD-feature-name/`.
+Archive and merge flow is handled by `./scripts/ralph/ralph-commit.sh`, which calls `ralph-archive.sh` first.
+
+Archive destinations:
+- Epic-mode run: `scripts/ralph/tasks/archive/<active-sprint>/YYYY-MM-DD-feature-name/`
+- Standalone PRD run: `scripts/ralph/tasks/archive/prds/YYYY-MM-DD-feature-name/`
+
+Note: `ralph-archive.sh` does not implement `--help`; running it executes an archive operation.
 
 ## References
 

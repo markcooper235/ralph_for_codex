@@ -16,6 +16,11 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Generate and convert PRD into scripts/ralph/prd.json
 ./ralph-prd.sh
 
+# Sprint helpers
+./ralph-sprint.sh status
+./ralph-sprint.sh create sprint-2
+./ralph-sprint.sh use sprint-1
+
 # Epic backlog sequencing helpers
 ./ralph-epic.sh list
 ./ralph-epic.sh start-next
@@ -25,6 +30,11 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 # Run Ralph loop (from your project that has prd.json)
 ./ralph.sh [max_iterations]
+
+# Archive / merge / cleanup lifecycle
+./ralph-commit.sh
+./ralph-archive.sh
+./ralph-cleanup.sh --force
 ```
 
 ## Key Files
@@ -32,20 +42,26 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - `ralph-prd.sh` - Interactive/non-interactive wrapper to create PRDs and convert to `prd.json`
 - `ralph.sh` - The bash loop that spawns fresh Codex runs
 - `ralph-prime.sh` - Auto-selects/uses active epic and primes `prd.json` for loop startup
+- `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
 - `ralph-epic.sh` - CLI to list/select/update epic order and status
+- `ralph-archive.sh` - Archive run artifacts into sprint/standalone task archives and reset `prd.json`
+- `ralph-commit.sh` - Validate completion, archive run, merge feature branch, and sync epic status
+- `ralph-cleanup.sh` - Reset local Ralph artifacts without creating an archive
 - `doctor.sh` - Sanity checks for a target repo
 - `install.sh` - One-command installer into `scripts/ralph`
 - `prompt.md` - Instructions given to each Codex run
 - `prd.json.example` - Example PRD format
 - `epics.json.example` - Example epic backlog template
+- `prompts/*.md` - Optional reusable Codex command prompts installable to `~/.codex/prompts`
 
 ## Recommended Flow
 
 1. Run `./doctor.sh`
-2. Select next epic via `./ralph-epic.sh start-next`
-3. Prime loop input via `./ralph-prime.sh`
-4. Run loop via `./ralph.sh [max_iterations]`
-5. Run `./ralph-commit.sh` to archive + merge (it auto-marks the matching epic `done`)
+2. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
+3. Select next epic via `./ralph-epic.sh start-next`
+4. Prime loop input via `./ralph-prime.sh`
+5. Run loop via `./ralph.sh [max_iterations]`
+6. Run `./ralph-commit.sh` to archive + merge (it auto-marks the matching epic `done`)
 
 Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
@@ -59,5 +75,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Memory persists via git history, `progress.txt`, and `prd.json`
 - Stories should be small enough to complete in one context window
 - Always update AGENTS.md with discovered patterns for future iterations
+- `ralph-epic.sh` requires an active sprint; use `ralph-sprint.sh use <sprint-name>` first if needed.
+- `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.
