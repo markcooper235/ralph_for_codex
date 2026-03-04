@@ -224,12 +224,14 @@ main() {
   fi
 
   echo "Priming Ralph from $next_epic using $source_prd ..."
-  set_epic_active "$next_epic"
   convert_markdown_prd_to_json "$source_prd" "$next_epic"
 
   if ! validate_generated_prd; then
     fail "Generated PRD JSON missing required structure: $PRD_FILE"
   fi
+
+  # Mark active only after PRD conversion/validation succeeds.
+  set_epic_active "$next_epic"
 
   local remaining
   remaining="$(jq -r '([.userStories[] | select(.passes != true)] | length)' "$PRD_FILE")"

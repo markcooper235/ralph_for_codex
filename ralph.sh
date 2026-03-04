@@ -232,11 +232,11 @@ ensure_transient_files_not_tracked() {
 
 ensure_backlog_inputs_committed() {
   local pending
-  pending="$(git status --porcelain -- "$EPICS_FILE" "$WORKSPACE_ROOT/tasks" || true)"
+  pending="$(git status --porcelain -- "$EPICS_FILE" || true)"
   if [ -n "$pending" ]; then
-    echo "Commit backlog inputs before starting Ralph loop (epics.json/tasks):" >&2
+    echo "Commit epic backlog state before starting Ralph loop:" >&2
     printf '%s\n' "$pending" >&2
-    echo "Required: commit scripts/ralph/epics.json and tasks PRD changes first." >&2
+    echo "Required: commit scripts/ralph/epics.json changes first." >&2
     return 1
   fi
   return 0
@@ -502,13 +502,14 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   build_codex_exec_args "$CODEX_ITER_LAST_MESSAGE_FILE" CODEX_ARGS
 
-  # Run Codex with the Ralph prompt (fresh context every iteration)
-  OUTPUT=$(render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee /dev/stderr) || true
+  # Run Codex with the Ralph prompt (fresh context every iteration).
+  # Avoid storing full model output in shell memory.
+  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee /dev/stderr || true
 
   cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
   
   # Check for completion signal
-  if echo "$OUTPUT" | grep -q "<promise>COMPLETE</promise>" || has_complete_token "$CODEX_ITER_LAST_MESSAGE_FILE" || prd_all_passes; then
+  if has_complete_token "$CODEX_ITER_LAST_MESSAGE_FILE" || prd_all_passes; then
     echo ""
     echo "Ralph completed all tasks!"
     echo "Completed at iteration $i of $MAX_ITERATIONS"

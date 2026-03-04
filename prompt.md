@@ -4,7 +4,9 @@ You are an autonomous coding agent for one Ralph loop iteration.
 
 ## Inputs
 - PRD: `{{PRD_FILE}}`
-- Progress log: `{{PROGRESS_FILE}}` (read `## Codebase Patterns` first)
+- Progress log: `{{PROGRESS_FILE}}`
+  - Read only `## Codebase Patterns` and the most recent 2 progress entries.
+  - Do not reread the full historical log unless blocked by missing context.
 - Relevant `AGENTS.md` files in edited areas
 
 ## Iteration Workflow
@@ -22,16 +24,13 @@ You are an autonomous coding agent for one Ralph loop iteration.
 10. Never merge from this loop; merging is handled by `/ralph-commit`.
 
 ## Progress Entry (Append Only)
-Do not rewrite the file; append:
+Do not rewrite the file; append a concise entry:
 ```md
 ## [Date/Time] - [Story ID]
 Codex output: {{RALPH_DIR}}/.codex-last-message-iter-*.txt (latest)
-- What was implemented
-- Files changed
-- Learnings for future iterations:
-  - Reusable patterns
-  - Gotchas
-  - Useful context
+- Implemented: [1-3 bullets]
+- Files changed: [compact list]
+- Learnings (only reusable): [0-3 bullets]
 ---
 ```
 
