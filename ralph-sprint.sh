@@ -11,6 +11,7 @@ SPRINTS_DIR="$SCRIPT_DIR/sprints"
 TASKS_ROOT="$SCRIPT_DIR/tasks"
 ARCHIVE_ROOT="$TASKS_ROOT/archive"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
+SPRINT_BRANCH_PREFIX="ralph/sprint"
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,7 @@ Commands:
   list                              List available sprints
   create <sprint-name>              Create sprint structure and interactive epic-entry loop
   use <sprint-name>                 Set active sprint
+  branch <sprint-name>              Ensure sprint branch exists (ralph/sprint/<sprint-name>)
   status                            Show active sprint + readiness checks
   add-epics [sprint-name]           Interactive epic creation loop for sprint
   bootstrap-current <sprint-name>   Migrate current epic content into sprint structure
@@ -49,6 +51,44 @@ normalize_sprint_name() {
 sprint_epics_file() {
   local sprint="$1"
   printf '%s/sprints/%s/epics.json' "$SCRIPT_DIR" "$sprint"
+}
+
+sprint_branch_name() {
+  local sprint="$1"
+  printf '%s/%s' "$SPRINT_BRANCH_PREFIX" "$sprint"
+}
+
+default_base_branch() {
+  if git show-ref --verify --quiet refs/heads/master; then
+    printf 'master\n'
+    return 0
+  fi
+  if git show-ref --verify --quiet refs/heads/main; then
+    printf 'main\n'
+    return 0
+  fi
+  fail "Could not find base branch (master or main) for sprint branch creation."
+}
+
+ensure_sprint_branch_exists() {
+  local sprint="$1"
+  local sprint_branch base_branch
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+    return 0
+  fi
+
+  base_branch="$(default_base_branch)"
+  git branch "$sprint_branch" "$base_branch"
+  echo "Created sprint branch: $sprint_branch (from $base_branch)"
+}
+
+checkout_sprint_branch() {
+  local sprint="$1"
+  local sprint_branch
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  git checkout "$sprint_branch" >/dev/null
+  echo "Checked out sprint branch: $sprint_branch"
 }
 
 ensure_sprint_structure() {
@@ -239,7 +279,10 @@ add_epics_loop() {
 readiness_status() {
   local sprint="$1"
   local epics_file
+  local sprint_branch current_branch
   epics_file="$(sprint_epics_file "$sprint")"
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  current_branch="$(git branch --show-current)"
 
   if [ ! -f "$epics_file" ]; then
     fail "Missing sprint epics file: $epics_file"
@@ -249,6 +292,12 @@ readiness_status() {
   echo "Active sprint: $sprint"
   echo "Epics file: $epics_file"
   echo "Epic count: $(jq '.epics | length' "$epics_file")"
+  if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+    echo "Sprint branch: $sprint_branch (exists)"
+  else
+    echo "Sprint branch: $sprint_branch (missing)"
+  fi
+  echo "Current branch: $current_branch"
 
   local missing_paths
   missing_paths="$(jq -r '.epics[]?.prdPaths[]?' "$epics_file" | while IFS= read -r p; do [ -n "$p" ] || continue; [ -f "$WORKSPACE_ROOT/$p" ] || echo "$p"; done)"
@@ -337,6 +386,8 @@ bootstrap_current() {
   mv "$tmp_file" "$new_epics"
 
   set_active_sprint "$sprint"
+  ensure_sprint_branch_exists "$sprint"
+  checkout_sprint_branch "$sprint"
   echo "Bootstrapped current Ralph content into sprint: $sprint"
   echo "Active sprint set to: $sprint"
 }
@@ -360,18 +411,31 @@ main() {
       sprint="$(normalize_sprint_name "$2")"
       [ -n "$sprint" ] || fail "Invalid sprint name."
       ensure_sprint_structure "$sprint"
+      ensure_sprint_branch_exists "$sprint"
       set_active_sprint "$sprint"
       echo "Created sprint: $sprint"
       echo "Active sprint set to: $sprint"
+      checkout_sprint_branch "$sprint"
       if [ -t 0 ]; then
         add_epics_loop "$sprint"
       fi
       ;;
     use)
       [ $# -eq 2 ] || fail "Usage: use <sprint-name>"
-      [ -f "$(sprint_epics_file "$2")" ] || fail "Sprint does not exist: $2"
-      set_active_sprint "$2"
-      echo "Active sprint set to: $2"
+      local sprint
+      sprint="$(normalize_sprint_name "$2")"
+      [ -f "$(sprint_epics_file "$sprint")" ] || fail "Sprint does not exist: $sprint"
+      ensure_sprint_branch_exists "$sprint"
+      set_active_sprint "$sprint"
+      echo "Active sprint set to: $sprint"
+      checkout_sprint_branch "$sprint"
+      ;;
+    branch)
+      [ $# -eq 2 ] || fail "Usage: branch <sprint-name>"
+      local sprint
+      sprint="$(normalize_sprint_name "$2")"
+      [ -f "$(sprint_epics_file "$sprint")" ] || fail "Sprint does not exist: $sprint"
+      ensure_sprint_branch_exists "$sprint"
       ;;
     status)
       local active

@@ -33,6 +33,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 # Archive / merge / cleanup lifecycle
 ./ralph-commit.sh
+./ralph-sprint-commit.sh
 ./ralph-archive.sh
 ./ralph-cleanup.sh --force
 ```
@@ -45,7 +46,8 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
 - `ralph-epic.sh` - CLI to list/select/update epic order and status
 - `ralph-archive.sh` - Archive run artifacts into sprint/standalone task archives and reset `prd.json`
-- `ralph-commit.sh` - Validate completion, archive run, merge feature branch, and sync epic status
+- `ralph-commit.sh` - Validate completion, archive run, merge epic branch into sprint branch, and sync epic status
+- `ralph-sprint-commit.sh` - Validate sprint completion, archive sprint-level state, and merge sprint branch into `master`/`main`
 - `ralph-cleanup.sh` - Reset local Ralph artifacts without creating an archive
 - `doctor.sh` - Sanity checks for a target repo
 - `install.sh` - One-command installer into `scripts/ralph`
@@ -61,7 +63,8 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 3. Select next epic via `./ralph-epic.sh start-next`
 4. Prime loop input via `./ralph-prime.sh`
 5. Run loop via `./ralph.sh [max_iterations]`
-6. Run `./ralph-commit.sh` to archive + merge (it auto-marks the matching epic `done`)
+6. Run `./ralph-commit.sh` to archive + merge to sprint branch (it auto-marks the matching epic `done`)
+7. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
 
 Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next

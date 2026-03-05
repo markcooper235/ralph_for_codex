@@ -44,6 +44,7 @@ This installs into `/absolute/path/to/target-project/scripts/ralph/`:
 - `epics.json.example`
 - `ralph-epic.sh` (epic sequencing helper)
 - `ralph-prime.sh` (auto-prime helper)
+- `ralph-sprint-commit.sh` (sprint closeout merge helper)
 - (optional) smoke `prd.json` + `progress.txt` if missing
 - `epics.json` if missing
 
@@ -98,7 +99,13 @@ Expected outcome:
 After an epic completes:
 
 ```bash
-./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
+./scripts/ralph/ralph-commit.sh
+```
+
+After the sprint is fully done:
+
+```bash
+./scripts/ralph/ralph-sprint-commit.sh
 ```
 
 ## Notes

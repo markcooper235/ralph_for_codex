@@ -1,6 +1,6 @@
 ---
-description: Archive completed Ralph run and merge PRD branch into master/main
-argument-hint: [--target master|main] [--dry-run]
+description: Archive completed Ralph run and merge PRD branch into sprint branch (or explicit target)
+argument-hint: [--target <branch>] [--dry-run]
 ---
 
 Finalize a completed Ralph run by archiving artifacts first, then merging the PRD branch.
@@ -17,7 +17,7 @@ Finalize a completed Ralph run by archiving artifacts first, then merging the PR
 
 3. Report results:
    - Feature branch merged
-   - Target branch used (`master` or `main`)
+   - Target branch used (active sprint branch by default, unless `--target` provided)
    - Archive folder path emitted by `ralph-archive.sh`
 
 **Guardrails**

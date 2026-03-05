@@ -4,10 +4,10 @@
 
 Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repeatedly until all PRD items are complete. Each iteration is a fresh Codex run with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
 
-## Current Repo State (2026-03-04)
+## Current Repo State (2026-03-05)
 
 - Sprint-aware workflow is enabled by default (`scripts/ralph/sprints/<sprint>/epics.json` + `.active-sprint`).
-- The installer now provisions full lifecycle scripts: planning (`ralph-prd.sh`, `ralph-prime.sh`), loop execution (`ralph.sh`), sprint/epic management (`ralph-sprint.sh`, `ralph-epic.sh`), and completion/archive (`ralph-commit.sh`, `ralph-archive.sh`, `ralph-cleanup.sh`).
+- The installer now provisions full lifecycle scripts: planning (`ralph-prd.sh`, `ralph-prime.sh`), loop execution (`ralph.sh`), sprint/epic management (`ralph-sprint.sh`, `ralph-epic.sh`), and completion/archive (`ralph-commit.sh`, `ralph-sprint-commit.sh`, `ralph-archive.sh`, `ralph-cleanup.sh`).
 - Codex assets in this repo include skills (`skills/prd`, `skills/ralph`, `skills/setup`) and reusable command prompts (`prompts/*.md`), both installable via `install.sh`.
 - Archive output now lives under `scripts/ralph/tasks/archive/<active-sprint>/...` for epic runs or `scripts/ralph/tasks/archive/prds/...` for standalone PRDs.
 
@@ -163,7 +163,8 @@ Recommended cycle:
 2. Select next epic (`start-next`)
 3. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
 4. Run `ralph.sh`
-5. Run `ralph-commit.sh` to archive + merge; it auto-marks the matching epic `done`
+5. Run `ralph-commit.sh` to archive + merge epic branch into sprint branch; it auto-marks the matching epic `done`
+6. When all sprint epics are done/abandoned, run `ralph-sprint-commit.sh` to archive sprint closeout and merge sprint branch into `master`/`main`
 
 Notes:
 - `abandon` keeps an epic in backlog history but excludes it from eligibility.
@@ -179,7 +180,8 @@ Notes:
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epics`) |
 | `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
-| `ralph-commit.sh` | Validate, archive, merge feature branch, and sync epic `done` status |
+| `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
+| `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
 | `ralph-cleanup.sh` | Reset local Ralph artifacts without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
 | `prd.json` | User stories with `passes` status (the task list) |
@@ -266,7 +268,9 @@ Edit `prompt.md` to customize Ralph's behavior for your project:
 
 ## Archiving
 
-Archive and merge flow is handled by `./scripts/ralph/ralph-commit.sh`, which calls `ralph-archive.sh` first.
+Epic archive/merge flow is handled by `./scripts/ralph/ralph-commit.sh`, which calls `ralph-archive.sh` first.
+
+Sprint closeout/merge is handled by `./scripts/ralph/ralph-sprint-commit.sh`.
 
 Archive destinations:
 - Epic-mode run: `scripts/ralph/tasks/archive/<active-sprint>/YYYY-MM-DD-feature-name/`

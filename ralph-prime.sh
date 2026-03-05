@@ -11,6 +11,7 @@ ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 EPICS_FILE=""
 EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
+ACTIVE_SPRINT=""
 
 AUTO_MODE=0
 
@@ -44,12 +45,11 @@ get_active_sprint() {
 }
 
 resolve_epics_file() {
-  local active_sprint
-  active_sprint="$(get_active_sprint || true)"
-  if [ -z "$active_sprint" ]; then
+  ACTIVE_SPRINT="$(get_active_sprint || true)"
+  if [ -z "$ACTIVE_SPRINT" ]; then
     fail "No active sprint set. Run ./scripts/ralph/ralph-sprint.sh use <sprint-name>."
   fi
-  EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
+  EPICS_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/epics.json"
 }
 
 require_cmd() {
@@ -156,9 +156,11 @@ slugify_branch_segment() {
 convert_markdown_prd_to_json() {
   local markdown_path="$1"
   local epic_id="$2"
+  local sprint_name="$3"
   local prompt codex_args=()
-  local epic_slug
+  local epic_slug sprint_slug
   epic_slug="$(slugify_branch_segment "$epic_id")"
+  sprint_slug="$(slugify_branch_segment "$sprint_name")"
 
   prompt=$(
     cat <<EOF
@@ -170,7 +172,7 @@ Convert this PRD markdown file into Ralph JSON at \`scripts/ralph/prd.json\`:
 
 Requirements:
 1. Produce valid JSON with keys: project, branchName, description, userStories.
-2. Set \`branchName\` to: \`ralph/$epic_slug\`.
+2. Set \`branchName\` to: \`ralph/$sprint_slug/$epic_slug\`.
 3. Keep user stories small, ordered by dependency, and execution-ready.
 4. Include acceptance criteria with typecheck/lint/tests requirements.
 
@@ -258,7 +260,7 @@ main() {
   fi
 
   echo "Priming Ralph from $next_epic using $source_prd ..."
-  convert_markdown_prd_to_json "$source_prd" "$next_epic"
+  convert_markdown_prd_to_json "$source_prd" "$next_epic" "$ACTIVE_SPRINT"
 
   if ! validate_generated_prd; then
     fail "Generated PRD JSON missing required structure: $PRD_FILE"

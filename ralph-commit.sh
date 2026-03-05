@@ -15,18 +15,19 @@ PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 TARGET_BRANCH=""
 DRY_RUN=false
 CREATE_BRANCH_IF_MISSING=false
+SPRINT_BRANCH_PREFIX="ralph/sprint"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/ralph/ralph-commit.sh [--target master|main] [--dry-run]
+Usage: ./scripts/ralph/ralph-commit.sh [--target <branch>] [--dry-run]
 
 Behavior:
   1. Validates scripts/ralph/prd.json has all userStories with passes=true
   2. Archives current Ralph run via ./scripts/ralph/ralph-archive.sh
-  3. Merges PRD branchName into target branch (master preferred, else main)
+  3. Merges PRD branchName into sprint branch (ralph/sprint/<active-sprint>) by default
 
 Options:
-  --target BRANCH  Explicit merge target branch
+  --target BRANCH  Explicit merge target branch (overrides sprint default)
   --create-branch-if-missing  Create feature branch from current HEAD if missing
   --dry-run        Print planned actions without changing git state
   -h, --help       Show this help
@@ -58,6 +59,24 @@ resolve_epics_file() {
   EPICS_FILE="$SPRINTS_DIR/$active_sprint/epics.json"
 }
 
+sprint_branch_name() {
+  local sprint="$1"
+  printf '%s/%s' "$SPRINT_BRANCH_PREFIX" "$sprint"
+}
+
+default_base_branch() {
+  if git show-ref --verify --quiet refs/heads/master; then
+    printf 'master\n'
+    return 0
+  fi
+  if git show-ref --verify --quiet refs/heads/main; then
+    printf 'main\n'
+    return 0
+  fi
+  echo "Could not find base branch (master or main)." >&2
+  exit 1
+}
+
 get_active_prd_epic_id() {
   if [ -f "$ACTIVE_PRD_FILE" ]; then
     jq -r 'if .mode == "epic" then (.epicId // empty) else empty end' "$ACTIVE_PRD_FILE" 2>/dev/null
@@ -69,6 +88,10 @@ get_active_prd_epic_id() {
 infer_epic_id_from_feature_branch() {
   local feature_branch="$1"
   if [[ "$feature_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
+    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+    return 0
+  fi
+  if [[ "$feature_branch" =~ ^ralph/[^/]+/epic-([0-9]+)$ ]]; then
     printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
     return 0
   fi
@@ -294,13 +317,11 @@ if ! jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)
 fi
 
 if [ -z "$TARGET_BRANCH" ]; then
-  if git show-ref --verify --quiet refs/heads/master; then
-    TARGET_BRANCH="master"
-  elif git show-ref --verify --quiet refs/heads/main; then
-    TARGET_BRANCH="main"
+  ACTIVE_SPRINT="$(get_active_sprint || true)"
+  if [ -n "$ACTIVE_SPRINT" ]; then
+    TARGET_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
   else
-    echo "Could not find target branch (master or main)." >&2
-    exit 1
+    TARGET_BRANCH="$(default_base_branch)"
   fi
 fi
 
@@ -314,6 +335,19 @@ if ! git show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
   else
     echo "Feature branch does not exist locally: $FEATURE_BRANCH" >&2
     echo "Create it with: git checkout -b $FEATURE_BRANCH" >&2
+    echo "Or rerun with --create-branch-if-missing." >&2
+    exit 1
+  fi
+fi
+
+if ! git show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
+  if [ "$CREATE_BRANCH_IF_MISSING" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+    BASE_BRANCH="$(default_base_branch)"
+    git branch "$TARGET_BRANCH" "$BASE_BRANCH"
+    echo "Created missing target branch from $BASE_BRANCH: $TARGET_BRANCH"
+  else
+    echo "Target branch does not exist locally: $TARGET_BRANCH" >&2
+    echo "Create it with: git branch $TARGET_BRANCH \$(git rev-parse --abbrev-ref HEAD)" >&2
     echo "Or rerun with --create-branch-if-missing." >&2
     exit 1
   fi
@@ -333,6 +367,11 @@ echo "  feature branch: $FEATURE_BRANCH"
 echo "  target branch:  $TARGET_BRANCH"
 echo "  current branch: $CURRENT_BRANCH"
 echo "  archive first:  yes"
+
+if [ "$FEATURE_BRANCH" = "$TARGET_BRANCH" ]; then
+  echo "Feature and target branches are the same ($FEATURE_BRANCH); nothing to merge." >&2
+  exit 1
+fi
 
 if [ "$DRY_RUN" = "true" ]; then
   echo ""

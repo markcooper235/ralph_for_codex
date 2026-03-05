@@ -17,6 +17,7 @@ ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 EPICS_FILE=""
 ARCHIVE_DIR="$TASKS_DIR/archive"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
+SPRINT_BRANCH_PREFIX="ralph/sprint"
 
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
@@ -75,6 +76,24 @@ get_active_sprint() {
     awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
     return 0
   fi
+  return 1
+}
+
+sprint_branch_name() {
+  local sprint="$1"
+  printf '%s/%s' "$SPRINT_BRANCH_PREFIX" "$sprint"
+}
+
+default_base_branch() {
+  if git show-ref --verify --quiet refs/heads/master; then
+    printf 'master\n'
+    return 0
+  fi
+  if git show-ref --verify --quiet refs/heads/main; then
+    printf 'main\n'
+    return 0
+  fi
+  echo "Could not find base branch (master or main)." >&2
   return 1
 }
 
@@ -190,11 +209,25 @@ infer_prd_mode_from_branch() {
   local prd_branch
   prd_is_valid_json || return 1
   prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
-  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]]; then
+  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]] || [[ "$prd_branch" =~ ^ralph/[^/]+/epic-[0-9]+$ ]]; then
     printf 'epic\n'
   else
     printf 'standalone\n'
   fi
+}
+
+infer_epic_id_from_branch_path() {
+  local branch_path="$1"
+  if [[ "$branch_path" =~ ^ralph/epic-([0-9]+)$ ]]; then
+    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+    return 0
+  fi
+  if [[ "$branch_path" =~ ^ralph/[^/]+/epic-([0-9]+)$ ]]; then
+    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+    return 0
+  fi
+  printf ''
+  return 1
 }
 
 write_active_prd_state() {
@@ -204,9 +237,7 @@ write_active_prd_state() {
   if [ "$mode" = "epic" ]; then
     local prd_branch
     prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
-    if [[ "$prd_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
-      epic_id="$(printf 'EPIC-%03d' "$((10#${BASH_REMATCH[1]}))")"
-    fi
+    epic_id="$(infer_epic_id_from_branch_path "$prd_branch" || true)"
   fi
   cat >"$ACTIVE_PRD_FILE" <<EOF
 {
@@ -295,6 +326,37 @@ ensure_prd_ready() {
   return 0
 }
 
+ensure_feature_branch_for_active_prd() {
+  local feature_branch current_branch active_sprint sprint_branch base_branch
+  feature_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  [ -n "$feature_branch" ] || return 0
+
+  if ! git show-ref --verify --quiet "refs/heads/$feature_branch"; then
+    active_sprint="$(get_active_sprint || true)"
+    if [ -n "$active_sprint" ]; then
+      sprint_branch="$(sprint_branch_name "$active_sprint")"
+      if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+        git branch "$feature_branch" "$sprint_branch"
+        echo "Created feature branch $feature_branch from sprint branch $sprint_branch."
+      else
+        base_branch="$(default_base_branch)"
+        git branch "$feature_branch" "$base_branch"
+        echo "Created feature branch $feature_branch from base branch $base_branch (sprint branch missing)."
+      fi
+    else
+      base_branch="$(default_base_branch)"
+      git branch "$feature_branch" "$base_branch"
+      echo "Created feature branch $feature_branch from base branch $base_branch."
+    fi
+  fi
+
+  current_branch="$(git branch --show-current)"
+  if [ "$current_branch" != "$feature_branch" ]; then
+    git checkout "$feature_branch" >/dev/null
+    echo "Checked out feature branch: $feature_branch"
+  fi
+}
+
 try_prime_prd() {
   if standalone_prd_is_active && prd_has_unfinished_stories; then
     echo "Standalone PRD is active with unfinished stories; skipping epic prime."
@@ -376,12 +438,7 @@ commit_prime_epic_state_if_needed() {
 
 infer_epic_id_from_prd_branch() {
   local prd_branch="$1"
-  if [[ "$prd_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
-    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
-    return 0
-  fi
-  printf ''
-  return 1
+  infer_epic_id_from_branch_path "$prd_branch"
 }
 
 ensure_epic_status_synced_with_prd() {
@@ -477,6 +534,11 @@ fi
 
 if ! ensure_prd_ready; then
   echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
+  exit 1
+fi
+
+if ! ensure_feature_branch_for_active_prd; then
+  echo "Unable to prepare active feature branch for PRD execution." >&2
   exit 1
 fi
 
