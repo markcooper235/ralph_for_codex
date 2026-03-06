@@ -219,7 +219,7 @@ if ! git -c merge.renames=false merge --no-ff "$SPRINT_BRANCH" -m "merge: Ralph 
   fail "Merge conflict while merging $SPRINT_BRANCH into $TARGET_BRANCH. Resolve manually."
 fi
 
-enforce_transient_files_untracked
+ensure_transient_files_untracked
 
 # Clear active Ralph state for next sprint/PRD setup
 rm -f "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE"
