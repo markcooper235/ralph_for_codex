@@ -16,6 +16,9 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Generate and convert PRD into scripts/ralph/prd.json
 ./ralph-prd.sh
 
+# Optional OpenSpec -> Ralph conversion path (outside scripts/ralph runtime)
+./scripts/openspec/openspec-skill.sh convert --change <change-name>
+
 # Sprint helpers
 ./ralph-sprint.sh status
 ./ralph-sprint.sh create sprint-2
@@ -55,6 +58,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - `prd.json.example` - Example PRD format
 - `epics.json.example` - Example epic backlog template
 - `prompts/*.md` - Optional reusable Codex command prompts installable to `~/.codex/prompts`
+- `scripts/openspec/openspec-skill.sh` - Optional OpenSpec adapter that converts OpenSpec changes to `scripts/ralph/prd.json`
 
 ## Recommended Flow
 
@@ -80,5 +84,6 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Always update AGENTS.md with discovered patterns for future iterations
 - `ralph-epic.sh` requires an active sprint; use `ralph-sprint.sh use <sprint-name>` first if needed.
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
+- OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.

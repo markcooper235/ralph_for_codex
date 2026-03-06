@@ -13,6 +13,12 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PROJECT_DIR="$(pwd)"
 DEST_DIR_REL="scripts/ralph"
+DEST_PARENT_REL="$(dirname "$DEST_DIR_REL")"
+if [ "$DEST_PARENT_REL" = "." ]; then
+  OPENSPEC_DEST_REL="openspec"
+else
+  OPENSPEC_DEST_REL="$DEST_PARENT_REL/openspec"
+fi
 FORCE=0
 WITH_EXAMPLE_PRD=1
 INSTALL_SKILLS=0
@@ -53,7 +59,15 @@ while [[ $# -gt 0 ]]; do
     --project)
       PROJECT_DIR="${2:-}"; shift 2;;
     --dest)
-      DEST_DIR_REL="${2:-}"; shift 2;;
+      DEST_DIR_REL="${2:-}"
+      DEST_PARENT_REL="$(dirname "$DEST_DIR_REL")"
+      if [ "$DEST_PARENT_REL" = "." ]; then
+        OPENSPEC_DEST_REL="openspec"
+      else
+        OPENSPEC_DEST_REL="$DEST_PARENT_REL/openspec"
+      fi
+      shift 2
+      ;;
     --force)
       FORCE=1; shift;;
     --no-example-prd)
@@ -104,6 +118,7 @@ if [ "$SKIP_GIT_CHECK" -ne 1 ]; then
 fi
 
 mkdir -p "$DEST_DIR_REL"
+mkdir -p "$OPENSPEC_DEST_REL"
 
 copy_file() {
   local src="$1"
@@ -125,6 +140,9 @@ copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commi
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
+if [ -f "$SOURCE_DIR/scripts/openspec/openspec-skill.sh" ]; then
+  copy_file "$SOURCE_DIR/scripts/openspec/openspec-skill.sh" "$OPENSPEC_DEST_REL/openspec-skill.sh"
+fi
 
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
@@ -137,6 +155,10 @@ chmod +x \
   "$DEST_DIR_REL/ralph-prime.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh"
+
+if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
+  chmod +x "$OPENSPEC_DEST_REL/openspec-skill.sh"
+fi
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -245,5 +267,9 @@ echo "  2) ./$DEST_DIR_REL/ralph-sprint.sh status"
 echo "  3) ./$DEST_DIR_REL/ralph-epic.sh list"
 echo "  4) ./$DEST_DIR_REL/ralph-prd.sh  (standalone flow) OR ./$DEST_DIR_REL/ralph-prime.sh  (epic flow)"
 echo "  5) ./$DEST_DIR_REL/ralph.sh 10"
+if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
+  echo "Optional OpenSpec adapter:"
+  echo "  ./$OPENSPEC_DEST_REL/openspec-skill.sh convert --change <name>"
+fi
 echo "  6) ./$DEST_DIR_REL/ralph-commit.sh  (merge epic -> sprint branch)"
 echo "  7) ./$DEST_DIR_REL/ralph-sprint-commit.sh  (close sprint: merge sprint -> master/main)"

@@ -8,6 +8,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 - Sprint-aware workflow is enabled by default (`scripts/ralph/sprints/<sprint>/epics.json` + `.active-sprint`).
 - The installer now provisions full lifecycle scripts: planning (`ralph-prd.sh`, `ralph-prime.sh`), loop execution (`ralph.sh`), sprint/epic management (`ralph-sprint.sh`, `ralph-epic.sh`), and completion/archive (`ralph-commit.sh`, `ralph-sprint-commit.sh`, `ralph-archive.sh`, `ralph-cleanup.sh`).
+- An optional OpenSpec adapter is available at `scripts/openspec/openspec-skill.sh` for converting OpenSpec changes into `scripts/ralph/prd.json`.
 - Codex assets in this repo include skills (`skills/prd`, `skills/ralph`, `skills/setup`) and reusable command prompts (`prompts/*.md`), both installable via `install.sh`.
 - Archive output now lives under `scripts/ralph/tasks/archive/<active-sprint>/...` for epic runs or `scripts/ralph/tasks/archive/prds/...` for standalone PRDs.
 
@@ -127,6 +128,21 @@ The wrapper enforces small, ordered stories and requires completion criteria lik
 ./scripts/ralph/ralph-prime.sh
 ```
 
+### Alternative Planning Path: OpenSpec -> Ralph
+
+If you use OpenSpec for planning, convert a change into a Ralph-compatible `prd.json`:
+
+```bash
+./scripts/openspec/openspec-skill.sh init
+./scripts/openspec/openspec-skill.sh list
+./scripts/openspec/openspec-skill.sh convert --change <change-name>
+```
+
+Notes:
+- This is optional and separate from core Ralph runtime.
+- It writes the same `scripts/ralph/prd.json` format used by `ralph-prd.sh`/`ralph-prime.sh`.
+- `ralph.sh` behavior is unchanged; it still consumes `scripts/ralph/prd.json`.
+
 ### 3. Run Ralph
 
 ```bash
@@ -177,6 +193,7 @@ Notes:
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph-prime.sh` | Auto-select next eligible epic and prime `prd.json` for loop startup |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
+| `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epics`) |
 | `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
