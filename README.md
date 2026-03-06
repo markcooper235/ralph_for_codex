@@ -73,6 +73,11 @@ mkdir -p scripts/ralph
 cp /path/to/ralph/{doctor.sh,install.sh,prompt.md,prd.json.example,epics.json.example} scripts/ralph/
 cp /path/to/ralph/ralph*.sh scripts/ralph/
 chmod +x scripts/ralph/*.sh
+
+# Optional OpenSpec adapter (separate from scripts/ralph runtime)
+mkdir -p scripts/openspec
+cp /path/to/ralph/scripts/openspec/openspec-skill.sh scripts/openspec/
+chmod +x scripts/openspec/openspec-skill.sh
 ```
 
 ### Option 2: Install skills globally
@@ -155,7 +160,7 @@ Ralph will:
 1. Create a feature branch (from PRD `branchName`)
 2. Pick the highest priority story where `passes: false`
 3. Implement that single story
-4. Run quality checks (typecheck, tests)
+4. Run quality checks (typecheck, lint, tests)
 5. Commit if checks pass
 6. Update `prd.json` to mark story as `passes: true`
 7. Append learnings to `scripts/ralph/progress.txt`

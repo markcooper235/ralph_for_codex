@@ -506,6 +506,11 @@ if ! resolve_sprint_paths; then
   exit 1
 fi
 
+# Guard before priming so auto-commit cannot absorb unrelated epics backlog edits.
+if ! ensure_backlog_inputs_committed; then
+  exit 1
+fi
+
 if ! try_prime_prd; then
   echo "Unable to prime PRD for next loop." >&2
   exit 1
@@ -539,10 +544,6 @@ fi
 
 if ! ensure_feature_branch_for_active_prd; then
   echo "Unable to prepare active feature branch for PRD execution." >&2
-  exit 1
-fi
-
-if ! ensure_backlog_inputs_committed; then
   exit 1
 fi
 

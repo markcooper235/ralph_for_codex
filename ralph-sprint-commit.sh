@@ -21,7 +21,7 @@ usage() {
 Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run]
 
 Behavior:
-  1. Validates active sprint exists and all epics are done/abandoned
+  1. Validates active sprint exists and all epics are done/abandoned (legacy aborted also accepted)
   2. Ensures sprint branch exists (ralph/sprint/<active-sprint>)
   3. Archives sprint-level artifacts to scripts/ralph/tasks/archive/sprints/
   4. Merges sprint branch into target branch (master preferred, else main)
@@ -81,11 +81,11 @@ validate_epics_done_or_abandoned() {
   jq -e '.epics and (.epics|type=="array")' "$epics_file" >/dev/null 2>&1 || fail "Invalid epics file: $epics_file"
 
   local invalid
-  invalid="$(jq -r '.epics[] | select((.status != "done") and (.status != "abandoned")) | "\(.id)\t\(.status)"' "$epics_file")"
+  invalid="$(jq -r '.epics[] | select((.status != "done") and (.status != "abandoned") and (.status != "aborted")) | "\(.id)\t\(.status)"' "$epics_file")"
   if [ -n "$invalid" ]; then
     echo "Sprint has incomplete epics:" >&2
     printf '%s\n' "$invalid" >&2
-    fail "All sprint epics must be done or abandoned before sprint commit."
+    fail "All sprint epics must be done or abandoned before sprint commit (legacy status 'aborted' is also accepted)."
   fi
 }
 

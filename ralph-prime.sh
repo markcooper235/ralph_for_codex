@@ -105,7 +105,7 @@ ensure_transient_files_not_tracked() {
 
 find_next_epic_id() {
   [ -f "$EPIC_CLI" ] || return 1
-  bash "$EPIC_CLI" next 2>/dev/null | sed -n 's/^Next epic: \([^ ]*\).*/\1/p' | head -n 1
+  bash "$EPIC_CLI" next-id 2>/dev/null | head -n 1
 }
 
 choose_primary_prd_path_for_epic() {

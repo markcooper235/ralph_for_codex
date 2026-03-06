@@ -343,14 +343,20 @@ bootstrap_current() {
     fail "Target sprint already has epics: $new_epics"
   fi
 
-  # Move only epic task files into sprint task dir.
+  # Move only epic task files into sprint task dir from legacy locations.
   local epic_file
-  for epic_file in "$WORKSPACE_ROOT"/tasks/prd-epic-*.md; do
+  for epic_file in \
+    "$SCRIPT_DIR"/tasks/prd-epic-*.md \
+    "$WORKSPACE_ROOT"/tasks/prd-epic-*.md
+  do
     [ -f "$epic_file" ] || continue
     mv "$epic_file" "$TASKS_ROOT/$sprint/"
   done
 
-  # Move current archive content into sprint archive dir.
+  # Move legacy archive content into sprint archive dir.
+  # Support both pre-sprint layouts:
+  #   scripts/ralph/archive/*
+  #   scripts/ralph/tasks/archive/*
   if [ -d "$SCRIPT_DIR/archive" ]; then
     shopt -s dotglob nullglob
     local item
@@ -360,6 +366,21 @@ bootstrap_current() {
     done
     shopt -u dotglob nullglob
     rmdir "$SCRIPT_DIR/archive" 2>/dev/null || true
+  fi
+  if [ -d "$TASKS_ROOT/archive" ]; then
+    shopt -s dotglob nullglob
+    local item
+    for item in "$TASKS_ROOT"/archive/*; do
+      [ -e "$item" ] || continue
+      # Skip already-migrated sprint/prds containers.
+      case "$(basename "$item")" in
+        "$sprint"|prds|sprints)
+          continue
+          ;;
+      esac
+      mv "$item" "$ARCHIVE_ROOT/$sprint/"
+    done
+    shopt -u dotglob nullglob
   fi
 
   mv "$old_epics" "$new_epics"
@@ -373,7 +394,7 @@ bootstrap_current() {
           .prdPaths = (
             (.prdPaths // [])
             | map(
-                if test("^tasks/prd-epic-") then
+                if test("^tasks/prd-epic-") or test("^scripts/ralph/tasks/prd-epic-") then
                   "scripts/ralph/tasks/" + $sprint + "/" + (split("/") | .[-1])
                 else
                   .

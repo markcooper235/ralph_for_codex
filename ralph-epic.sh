@@ -36,8 +36,10 @@ Usage: ./scripts/ralph/ralph-epic.sh <command> [args]
 Commands:
   list                      List all epics ordered by priority
   next                      Show the next eligible epic
+  next-id                   Print only the next eligible epic ID
   start-next                Mark next eligible epic as active
   set-status <ID> <STATUS>  Set epic status (planned|ready|blocked|active|done|abandoned)
+  normalize-statuses        Convert legacy status 'aborted' to 'abandoned'
   abandon <ID> [REASON]     Mark epic as abandoned (kept for historical reference)
   remove <ID>               Remove an abandoned epic from active sprint epics.json
   show <ID>                 Show full epic JSON
@@ -224,6 +226,33 @@ remove_epic() {
   echo "Removed epic: $epic_id"
 }
 
+normalize_statuses() {
+  local tmp_file before_count after_count
+  before_count="$(jq '[.epics[] | select(.status == "aborted")] | length' "$EPICS_FILE")"
+  if [ "$before_count" -eq 0 ]; then
+    echo "No legacy statuses to normalize."
+    return 0
+  fi
+
+  tmp_file="$(mktemp)"
+  jq '
+    .epics = (
+      .epics
+      | map(
+          if .status == "aborted" then
+            .status = "abandoned"
+          else
+            .
+          end
+        )
+    )
+  ' "$EPICS_FILE" > "$tmp_file"
+  mv "$tmp_file" "$EPICS_FILE"
+
+  after_count="$(jq '[.epics[] | select(.status == "aborted")] | length' "$EPICS_FILE")"
+  echo "Normalized legacy statuses: aborted -> abandoned (remaining aborted: $after_count)"
+}
+
 start_next() {
   local next_id
   next_id="$(find_next_epic_id)" || fail "No eligible next epic (all remaining epics are blocked or done)."
@@ -243,12 +272,26 @@ show_next() {
   ' "$EPICS_FILE"
 }
 
+show_next_id() {
+  local next_id
+  next_id="$(find_next_epic_id)" || fail "No eligible next epic (all remaining epics are blocked or done)."
+  printf '%s\n' "$next_id"
+}
+
 main() {
   require_cmd jq
+
+  local cmd="${1:-}"
+  case "$cmd" in
+    -h|--help|help|"")
+      usage
+      return 0
+      ;;
+  esac
+
   resolve_epics_file
   ensure_file
 
-  local cmd="${1:-}"
   case "$cmd" in
     list)
       list_epics
@@ -256,12 +299,18 @@ main() {
     next)
       show_next
       ;;
+    next-id)
+      show_next_id
+      ;;
     start-next)
       start_next
       ;;
     set-status)
       [ $# -eq 3 ] || fail "Usage: set-status <ID> <STATUS>"
       set_status "$2" "$3"
+      ;;
+    normalize-statuses)
+      normalize_statuses
       ;;
     abandon)
       [ $# -ge 2 ] || fail "Usage: abandon <ID> [REASON]"
@@ -274,9 +323,6 @@ main() {
     show)
       [ $# -eq 2 ] || fail "Usage: show <ID>"
       show_epic "$2"
-      ;;
-    -h|--help|help|"")
-      usage
       ;;
     *)
       fail "Unknown command '$cmd'"

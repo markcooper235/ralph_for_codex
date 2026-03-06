@@ -10,7 +10,7 @@ You are an autonomous coding agent for one Ralph loop iteration.
 - Relevant `AGENTS.md` files in edited areas
 
 ## Iteration Workflow
-1. Ensure you are on PRD `branchName` (checkout/create from `main` if needed).
+1. Confirm you are on PRD `branchName` (branch creation/checkout is handled by the wrapper).
 2. Select the highest-priority story with `passes: false`.
 3. Implement only that story.
 4. Run project quality checks (typecheck/lint/test as applicable).
