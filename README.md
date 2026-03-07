@@ -72,7 +72,11 @@ Copy the ralph files into your project:
 mkdir -p scripts/ralph
 cp /path/to/ralph/{doctor.sh,install.sh,prompt.md,prd.json.example,epics.json.example} scripts/ralph/
 cp /path/to/ralph/ralph*.sh scripts/ralph/
+mkdir -p scripts/ralph/lib scripts/ralph/templates
+cp /path/to/ralph/lib/editor-intake.sh scripts/ralph/lib/
+cp /path/to/ralph/templates/{epic-intake.md,prd-intake.md} scripts/ralph/templates/
 chmod +x scripts/ralph/*.sh
+chmod +x scripts/ralph/lib/editor-intake.sh
 
 # Optional OpenSpec adapter (separate from scripts/ralph runtime)
 mkdir -p scripts/openspec
@@ -190,16 +194,19 @@ Recommended cycle:
 Notes:
 - `abandon` keeps an epic in backlog history but excludes it from eligibility.
 - `remove` permanently deletes only epics already marked `abandoned`.
+- `ralph-prime.sh --auto` now auto-commits primed epic status changes by default.
+- `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
+- `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
-| `ralph-prime.sh` | Auto-select next eligible epic and prime `prd.json` for loop startup |
+| `ralph-prime.sh` | Auto-select next eligible epic, prime `prd.json`, and auto-commit primed epic state in `--auto` mode |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
-| `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epics`) |
+| `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`) |
 | `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
 | `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
@@ -210,6 +217,9 @@ Notes:
 | `prd.json.example` | Example PRD format for reference |
 | `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority/dependencies/activeEpicId |
 | `epics.json.example` | Example epic backlog template |
+| `lib/editor-intake.sh` | Shared editor launcher/parsing helpers used by sprint/PRD intake flows |
+| `templates/epic-intake.md` | Editor template for epic metadata and prompt context capture |
+| `templates/prd-intake.md` | Editor template for standalone PRD concept capture |
 | `progress.txt` | Append-only learnings for future iterations |
 | `prompts/*.md` | Optional slash-command style prompt templates installable to `~/.codex/prompts` |
 | `skills/prd/` | Skill for generating PRDs |

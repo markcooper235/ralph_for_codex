@@ -12,21 +12,34 @@ TASKS_ROOT="$SCRIPT_DIR/tasks"
 ARCHIVE_ROOT="$TASKS_ROOT/archive"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
+EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
+CODEX_BIN="${CODEX_BIN:-codex}"
+
+# shellcheck source=./lib/editor-intake.sh
+source "$EDITOR_HELPER"
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage: ./scripts/ralph/ralph-sprint.sh <command> [args]
 
 Commands:
   list                              List available sprints
-  create <sprint-name>              Create sprint structure and interactive epic-entry loop
+  create <sprint-name>              Create sprint structure and open iterative epic intake
+  remove <sprint-name> [options]    Remove sprint (archive by default)
   use <sprint-name>                 Set active sprint
   branch <sprint-name>              Ensure sprint branch exists (ralph/sprint/<sprint-name>)
   status                            Show active sprint + readiness checks
+  add-epic [sprint-name]            Add one epic using editor intake
   add-epics [sprint-name]           Interactive epic creation loop for sprint
   bootstrap-current <sprint-name>   Migrate current epic content into sprint structure
   -h, --help                        Show this help
-EOF
+
+Remove options:
+  --hard                            Permanently delete sprint dirs instead of archiving
+  --yes                             Skip confirmation prompt
+  --drop-branch                     Delete sprint branch even if not merged
+                                    (implied automatically by --hard)
+USAGE
 }
 
 fail() {
@@ -38,6 +51,91 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+supports_codex_yolo() {
+  local out
+  out="$("$CODEX_BIN" --yolo exec --help 2>&1 || true)"
+  if echo "$out" | grep -qi "unexpected argument '--yolo'"; then
+    return 1
+  fi
+  if echo "$out" | grep -qi "Run Codex non-interactively"; then
+    return 0
+  fi
+  return 1
+}
+
+build_codex_exec_args() {
+  local -n out_args_ref="$1"
+  if supports_codex_yolo; then
+    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+  else
+    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+  fi
+}
+
+generate_prd_markdown_from_intake_context() {
+  local markdown_path="$1"
+  local epic_id="$2"
+  local sprint_name="$3"
+  local title="$4"
+  local goal="$5"
+  local depends_csv="$6"
+  local open_questions="$7"
+  local prompt_context="$8"
+  local sidecar prompt codex_args=()
+
+  require_cmd "$CODEX_BIN"
+  mkdir -p "$(dirname "$WORKSPACE_ROOT/$markdown_path")"
+
+  sidecar="$(mktemp "$SCRIPT_DIR/.epic-intake-prompt-${epic_id}-XXXXXX.md")"
+  cat > "$sidecar" <<EOF
+# Epic Intake Context
+epic_id: $epic_id
+sprint: $sprint_name
+title: $title
+goal: $goal
+depends_on: ${depends_csv:-none}
+open_questions: ${open_questions:-none}
+
+## Prompt Conversation
+$prompt_context
+EOF
+
+  prompt=$(
+    cat <<EOF
+Use the \`prd\` skill.
+
+Create a complete PRD markdown file at:
+\`$markdown_path\`
+
+Source context:
+- Intake sidecar: \`${sidecar#$WORKSPACE_ROOT/}\`
+- Epic ID: $epic_id
+- Sprint: $sprint_name
+- Title: $title
+- Goal: $goal
+- Depends on: ${depends_csv:-none}
+- Open questions: ${open_questions:-none}
+
+Requirements:
+1. Write the PRD markdown to the exact destination path above.
+2. Include execution-ready user stories with explicit acceptance criteria.
+3. Keep stories dependency-ordered and implementable in small iterations.
+4. If context has ambiguities, state assumptions explicitly in the markdown.
+
+Return a short summary including the output path.
+EOF
+  )
+
+  build_codex_exec_args codex_args
+  if printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"; then
+    rm -f "$sidecar"
+    return 0
+  fi
+
+  echo "PRD generation failed for $epic_id. Prompt sidecar preserved at: $sidecar" >&2
+  return 1
 }
 
 normalize_sprint_name() {
@@ -98,14 +196,14 @@ ensure_sprint_structure() {
 
   mkdir -p "$SPRINTS_DIR/$sprint" "$TASKS_ROOT/$sprint" "$ARCHIVE_ROOT/$sprint"
   if [ ! -f "$epics_file" ]; then
-    cat > "$epics_file" <<EOF
+    cat > "$epics_file" <<JSON
 {
   "version": 1,
   "project": "$(basename "$WORKSPACE_ROOT")",
   "activeEpicId": null,
   "epics": []
 }
-EOF
+JSON
   fi
 }
 
@@ -129,32 +227,213 @@ next_epic_id() {
   printf 'EPIC-%03d' "$((max_num + 1))"
 }
 
-append_epic_interactive() {
+epic_num_from_id() {
+  local epic_id="$1"
+  if [[ "$epic_id" =~ ^EPIC-([0-9]{3})$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+render_epic_context() {
+  local epics_file="$1"
+  local rows
+  rows="$(jq -r '
+    .epics
+    | sort_by(.priority, .id)
+    | if length == 0 then
+        "  (none yet)"
+      else
+        .[] | "  - \(.id) [p=\(.priority) status=\(.status // "planned")] \(.title)"
+      end
+  ' "$epics_file")"
+  printf 'Existing epics:\n%s\n' "$rows"
+}
+
+validate_epic_dependencies() {
+  local epics_file="$1"
+  local id dep
+  local -A exists=()
+
+  while IFS= read -r id; do
+    [ -n "$id" ] && exists["$id"]=1
+  done < <(jq -r '.epics[].id' "$epics_file")
+
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    while IFS= read -r dep; do
+      [ -n "$dep" ] || continue
+      if [ "$dep" = "$id" ]; then
+        fail "Epic $id cannot depend on itself."
+      fi
+      if [ -z "${exists[$dep]:-}" ]; then
+        fail "Epic $id depends on missing epic: $dep"
+      fi
+    done < <(jq -r --arg id "$id" '.epics[] | select(.id == $id) | (.dependsOn // [])[]?' "$epics_file")
+  done < <(jq -r '.epics[].id' "$epics_file")
+}
+
+validate_epic_dependency_cycles() {
+  local epics_file="$1"
+  local -A exists=()
+  local -A state=()
+  local -A deps_map=()
+  local id
+
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    exists["$id"]=1
+    deps_map["$id"]="$(jq -r --arg id "$id" '.epics[] | select(.id == $id) | (.dependsOn // []) | join(" ")' "$epics_file")"
+  done < <(jq -r '.epics[].id' "$epics_file")
+
+  dfs_cycle_check() {
+    local node="$1"
+    local dep
+    case "${state[$node]:-0}" in
+      1) fail "Dependency cycle detected at $node" ;;
+      2) return 0 ;;
+    esac
+
+    state["$node"]=1
+    for dep in ${deps_map[$node]:-}; do
+      [ -n "${exists[$dep]:-}" ] || fail "Epic $node depends on missing epic: $dep"
+      dfs_cycle_check "$dep"
+    done
+    state["$node"]=2
+  }
+
+  for id in "${!exists[@]}"; do
+    dfs_cycle_check "$id"
+  done
+}
+
+normalize_epics_file() {
+  local epics_file="$1"
+  local changed=1
+  local iter=0
+  local max_iter=200
+  local id dep priority dep_priority max_dep_priority tmp_file
+
+  validate_epic_dependencies "$epics_file"
+  validate_epic_dependency_cycles "$epics_file"
+
+  while [ "$changed" -eq 1 ]; do
+    changed=0
+    iter=$((iter + 1))
+    [ "$iter" -le "$max_iter" ] || fail "Failed to normalize priorities after $max_iter iterations."
+
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      priority="$(jq -r --arg id "$id" '.epics[] | select(.id == $id) | (.priority // 0)' "$epics_file")"
+      max_dep_priority=0
+      while IFS= read -r dep; do
+        [ -n "$dep" ] || continue
+        dep_priority="$(jq -r --arg dep "$dep" '.epics[] | select(.id == $dep) | (.priority // 0)' "$epics_file")"
+        if [ "$dep_priority" -gt "$max_dep_priority" ]; then
+          max_dep_priority="$dep_priority"
+        fi
+      done < <(jq -r --arg id "$id" '.epics[] | select(.id == $id) | (.dependsOn // [])[]?' "$epics_file")
+
+      if [ "$priority" -le "$max_dep_priority" ]; then
+        tmp_file="$(mktemp)"
+        jq --arg id "$id" --argjson newp "$((max_dep_priority + 1))" '
+          .epics = (
+            .epics
+            | map(if .id == $id then .priority = $newp else . end)
+          )
+        ' "$epics_file" > "$tmp_file"
+        mv "$tmp_file" "$epics_file"
+        changed=1
+      fi
+    done < <(jq -r '.epics | sort_by(.priority, .id) | .[].id' "$epics_file")
+  done
+
+  tmp_file="$(mktemp)"
+  jq '
+    .epics = (
+      .epics
+      | sort_by(.priority, .id)
+      | to_entries
+      | map(.value + {priority: (.key + 1)})
+    )
+  ' "$epics_file" > "$tmp_file"
+  mv "$tmp_file" "$epics_file"
+}
+
+append_epic_from_editor() {
   local sprint="$1"
   local epics_file="$2"
-  local default_id epic_id title priority status depends_on goal prd_paths_input prd_json_paths open_q
-  local deps_lines resolved_prd_lines
-  local open_q_json
+  local default_id default_num default_num_short
+  local context template_path intake_text intake_file intake_block
+  local epic_id title priority status depends_on prd_paths_input goal open_q prompt_context
+  local deps_lines resolved_prd_lines deps_json prd_json_paths open_q_json prompt_context_json tmp_file
+  local primary_prd_path missing_prd_paths prd_path depends_csv
 
   default_id="$(next_epic_id "$epics_file")"
+  default_num="$(epic_num_from_id "$default_id" || true)"
+  default_num_short="$(printf '%s' "${default_num:-001}" | sed -E 's|^0+||')"
+  [ -n "$default_num_short" ] || default_num_short="1"
+  context="$(render_epic_context "$epics_file")"
+  template_path="$SCRIPT_DIR/templates/epic-intake.md"
+  [ -f "$template_path" ] || fail "Missing template: $template_path"
 
-  read -r -p "Epic ID [$default_id]: " epic_id
-  epic_id="${epic_id:-$default_id}"
+  intake_text="$({
+    sed \
+      -e "s|{{DEFAULT_EPIC_ID}}|$default_id|g" \
+      -e "s|{{DEFAULT_PRIORITY}}|$(jq '.epics | length + 1' "$epics_file")|g" \
+      -e "s|{{SPRINT_NAME}}|$sprint|g" \
+      -e "s|{{EPIC_NUM_LOWER}}|$default_num_short|g" \
+      "$template_path"
+    echo
+    echo "# Existing Epics Snapshot"
+    echo "$context"
+  } )"
+
+  intake_file="$(mktemp)"
+  printf '%s\n' "$intake_text" > "$intake_file"
+  run_editor_on_file "$intake_file"
+  intake_block="$(extract_marked_block "$intake_file" "<!-- BEGIN INPUT -->" "<!-- END INPUT -->")"
+  rm -f "$intake_file"
+
+  epic_id="$(printf '%s\n' "$intake_block" | kv_from_block "EPIC_ID" | trim_whitespace)"
+  title="$(printf '%s\n' "$intake_block" | kv_from_block "TITLE" | trim_whitespace)"
+  priority="$(printf '%s\n' "$intake_block" | kv_from_block "PRIORITY" | trim_whitespace)"
+  status="$(printf '%s\n' "$intake_block" | kv_from_block "STATUS" | trim_whitespace)"
+  depends_on="$(printf '%s\n' "$intake_block" | kv_from_block "DEPENDS_ON" | trim_whitespace)"
+  prd_paths_input="$(printf '%s\n' "$intake_block" | kv_from_block "PRD_PATHS" | trim_whitespace)"
+  goal="$(printf '%s\n' "$intake_block" | kv_from_block "GOAL" | trim_whitespace)"
+  open_q="$(printf '%s\n' "$intake_block" | kv_from_block "OPEN_QUESTION" | trim_whitespace)"
+  prompt_context="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^PROMPT_CONTEXT:/ {
+        line=$0
+        sub(/^PROMPT_CONTEXT:[[:space:]]*/, "", line)
+        if (length(line) > 0) print line
+        in_section=1
+        next
+      }
+      in_section {print}
+    '
+  })"
+
+  [ -n "$epic_id" ] || epic_id="$default_id"
+  [ -n "$status" ] || status="planned"
+  [ -n "$priority" ] || priority="$(jq '.epics | length + 1' "$epics_file")"
+  [ -n "$open_q" ] || open_q="None currently."
+  [ -n "$prompt_context" ] || fail "PROMPT_CONTEXT is required to generate PRD task markdown."
+
   if ! [[ "$epic_id" =~ ^EPIC-[0-9]{3}$ ]]; then
     fail "Invalid epic ID format. Use EPIC-###."
   fi
   if jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$epics_file" >/dev/null 2>&1; then
     fail "Epic already exists: $epic_id"
   fi
-
-  read -r -p "Title: " title
   [ -n "$title" ] || fail "Title is required."
-
-  read -r -p "Priority (number): " priority
   [[ "$priority" =~ ^[0-9]+$ ]] || fail "Priority must be numeric."
+  [ -n "$goal" ] || fail "Goal is required."
+  [ -n "$prd_paths_input" ] || fail "At least one PRD path is required."
 
-  read -r -p "Status [planned]: " status
-  status="${status:-planned}"
   case "$status" in
     planned|ready|blocked|active|done|abandoned)
       ;;
@@ -163,26 +442,21 @@ append_epic_interactive() {
       ;;
   esac
 
-  read -r -p "Depends on (comma-separated EPIC IDs, optional): " depends_on
-  read -r -p "Goal: " goal
-  [ -n "$goal" ] || fail "Goal is required."
-  read -r -p "PRD paths or filenames (comma-separated): " prd_paths_input
-  [ -n "$prd_paths_input" ] || fail "At least one PRD path is required."
-  read -r -p "Open question (optional, leave blank for none): " open_q
-
-  deps_lines="$(
+  deps_lines="$({
     printf '%s\n' "$depends_on" \
       | tr ',' '\n' \
-      | sed -E 's|^[[:space:]]+||; s|[[:space:]]+$||' \
+      | trim_whitespace \
       | awk 'NF {print}'
-  )"
+  })"
+
+  if printf '%s\n' "$deps_lines" | grep -qx "$epic_id"; then
+    fail "Epic $epic_id cannot depend on itself."
+  fi
+
   if [ -n "$deps_lines" ]; then
     local dep missing_deps=""
     while IFS= read -r dep; do
       [ -n "$dep" ] || continue
-      if [ "$dep" = "$epic_id" ]; then
-        fail "Epic $epic_id cannot depend on itself."
-      fi
       if ! jq -e --arg id "$dep" '.epics[] | select(.id == $id)' "$epics_file" >/dev/null 2>&1; then
         missing_deps+="$dep"$'\n'
       fi
@@ -192,10 +466,10 @@ append_epic_interactive() {
     fi
   fi
 
-  resolved_prd_lines="$(
+  resolved_prd_lines="$({
     printf '%s\n' "$prd_paths_input" \
       | tr ',' '\n' \
-      | sed -E 's|^[[:space:]]+||; s|[[:space:]]+$||' \
+      | trim_whitespace \
       | awk 'NF {print}' \
       | while IFS= read -r p; do
           if [[ "$p" == */* ]]; then
@@ -204,33 +478,38 @@ append_epic_interactive() {
             printf 'scripts/ralph/tasks/%s/%s\n' "$sprint" "$p"
           fi
         done
-  )"
-  local missing_prd_paths=""
-  local prd_path
+  })"
+
+  primary_prd_path="$(printf '%s\n' "$resolved_prd_lines" | awk 'NF {print; exit}')"
+  [ -n "$primary_prd_path" ] || fail "At least one PRD path is required."
+  depends_csv="$(printf '%s\n' "$deps_lines" | paste -sd ', ' -)"
+  generate_prd_markdown_from_intake_context \
+    "$primary_prd_path" \
+    "$epic_id" \
+    "$sprint" \
+    "$title" \
+    "$goal" \
+    "$depends_csv" \
+    "$open_q" \
+    "$prompt_context" || fail "Failed to generate PRD markdown for $epic_id"
+
+  [ -s "$WORKSPACE_ROOT/$primary_prd_path" ] || fail "Generated PRD file missing or empty: $primary_prd_path"
+  missing_prd_paths=""
   while IFS= read -r prd_path; do
     [ -n "$prd_path" ] || continue
-    if [ ! -f "$WORKSPACE_ROOT/$prd_path" ]; then
+    if [ ! -s "$WORKSPACE_ROOT/$prd_path" ]; then
       missing_prd_paths+="$prd_path"$'\n'
     fi
   done <<< "$resolved_prd_lines"
   if [ -n "$missing_prd_paths" ]; then
-    fail "$(printf 'Missing PRD paths (create files first):\n%s' "$missing_prd_paths")"
+    fail "$(printf 'Missing PRD paths after generation:\n%s' "$missing_prd_paths")"
   fi
 
-  prd_json_paths="$(
-    printf '%s\n' "$resolved_prd_lines" \
-      | jq -Rsc 'split("\n") | map(select(length > 0))'
-  )"
+  deps_json="$(printf '%s\n' "$deps_lines" | lines_to_json_array)"
+  prd_json_paths="$(printf '%s\n' "$resolved_prd_lines" | lines_to_json_array)"
+  open_q_json="$(jq -Rn --arg q "$open_q" '[$q]')"
+  prompt_context_json="$(jq -Rn --arg p "$prompt_context" '$p')"
 
-  open_q_json="$(jq -Rn --arg q "$open_q" '$q | if length > 0 then [$q] else ["None currently."] end')"
-
-  local deps_json
-  deps_json="$(
-    printf '%s\n' "$deps_lines" \
-      | jq -Rsc 'split("\n") | map(select(length > 0))'
-  )"
-
-  local tmp_file
   tmp_file="$(mktemp)"
   jq --arg id "$epic_id" \
     --arg title "$title" \
@@ -239,7 +518,8 @@ append_epic_interactive() {
     --arg goal "$goal" \
     --argjson dependsOn "$deps_json" \
     --argjson prdPaths "$prd_json_paths" \
-    --argjson openQuestions "$open_q_json" '
+    --argjson openQuestions "$open_q_json" \
+    --argjson promptContext "$prompt_context_json" '
       .epics += [{
         id: $id,
         title: $title,
@@ -248,11 +528,13 @@ append_epic_interactive() {
         dependsOn: $dependsOn,
         prdPaths: $prdPaths,
         goal: $goal,
-        openQuestions: $openQuestions
+        openQuestions: $openQuestions,
+        promptContext: $promptContext
       }]
-      | .epics |= sort_by(.priority, .id)
     ' "$epics_file" > "$tmp_file"
   mv "$tmp_file" "$epics_file"
+
+  normalize_epics_file "$epics_file"
   echo "Added epic $epic_id to $sprint."
 }
 
@@ -267,13 +549,21 @@ add_epics_loop() {
     read -r -p "Create another epic for $sprint? [y/N]: " reply
     case "${reply,,}" in
       y|yes)
-        append_epic_interactive "$sprint" "$epics_file"
+        append_epic_from_editor "$sprint" "$epics_file"
         ;;
       *)
         break
         ;;
     esac
   done
+}
+
+add_single_epic() {
+  local sprint="$1"
+  local epics_file
+  epics_file="$(sprint_epics_file "$sprint")"
+  [ -f "$epics_file" ] || fail "Missing sprint epics file: $epics_file"
+  append_epic_from_editor "$sprint" "$epics_file"
 }
 
 readiness_status() {
@@ -326,7 +616,6 @@ bootstrap_current() {
   local new_epics
   new_epics="$(sprint_epics_file "$sprint")"
 
-  # In already-migrated repos, bootstrap-current should no-op with a clear status.
   if [ ! -f "$old_epics" ]; then
     if [ -f "$new_epics" ] && jq -e '.epics and (.epics | type == "array")' "$new_epics" >/dev/null 2>&1; then
       set_active_sprint "$sprint"
@@ -343,7 +632,6 @@ bootstrap_current() {
     fail "Target sprint already has epics: $new_epics"
   fi
 
-  # Move only epic task files into sprint task dir from legacy locations.
   local epic_file
   for epic_file in \
     "$SCRIPT_DIR"/tasks/prd-epic-*.md \
@@ -353,10 +641,6 @@ bootstrap_current() {
     mv "$epic_file" "$TASKS_ROOT/$sprint/"
   done
 
-  # Move legacy archive content into sprint archive dir.
-  # Support both pre-sprint layouts:
-  #   scripts/ralph/archive/*
-  #   scripts/ralph/tasks/archive/*
   if [ -d "$SCRIPT_DIR/archive" ]; then
     shopt -s dotglob nullglob
     local item
@@ -372,7 +656,6 @@ bootstrap_current() {
     local item
     for item in "$TASKS_ROOT"/archive/*; do
       [ -e "$item" ] || continue
-      # Skip already-migrated sprint/prds containers.
       case "$(basename "$item")" in
         "$sprint"|prds|sprints)
           continue
@@ -413,6 +696,136 @@ bootstrap_current() {
   echo "Active sprint set to: $sprint"
 }
 
+cmd_create() {
+  local sprint
+
+  [ $# -eq 1 ] || fail "Usage: create <sprint-name>"
+  sprint="$(normalize_sprint_name "$1")"
+  [ -n "$sprint" ] || fail "Invalid sprint name."
+
+  ensure_sprint_structure "$sprint"
+  ensure_sprint_branch_exists "$sprint"
+  set_active_sprint "$sprint"
+  echo "Created sprint: $sprint"
+  echo "Active sprint set to: $sprint"
+  checkout_sprint_branch "$sprint"
+
+  if [ -t 0 ]; then
+    add_epics_loop "$sprint"
+  fi
+}
+
+confirm_action() {
+  local prompt="$1"
+  local assume_yes="${2:-0}"
+  local reply
+  if [ "$assume_yes" -eq 1 ]; then
+    return 0
+  fi
+  if [ ! -t 0 ]; then
+    fail "Confirmation required in non-interactive mode. Re-run with --yes."
+  fi
+  read -r -p "$prompt [y/N]: " reply
+  case "${reply,,}" in
+    y|yes) return 0 ;;
+    *) fail "Aborted." ;;
+  esac
+}
+
+remove_sprint() {
+  local sprint_raw="$1"
+  shift
+  local sprint hard_delete assume_yes drop_branch
+  local epics_file sprint_dir tasks_dir archive_dir stamp sprint_branch base_branch active
+
+  sprint="$(normalize_sprint_name "$sprint_raw")"
+  [ -n "$sprint" ] || fail "Invalid sprint name."
+
+  hard_delete=0
+  assume_yes=0
+  drop_branch=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --hard)
+        hard_delete=1
+        drop_branch=1
+        ;;
+      --yes)
+        assume_yes=1
+        ;;
+      --drop-branch)
+        drop_branch=1
+        ;;
+      *)
+        fail "Unknown remove option: $1"
+        ;;
+    esac
+    shift
+  done
+
+  epics_file="$(sprint_epics_file "$sprint")"
+  sprint_dir="$SPRINTS_DIR/$sprint"
+  tasks_dir="$TASKS_ROOT/$sprint"
+  [ -f "$epics_file" ] || fail "Sprint does not exist: $sprint"
+
+  active="$(get_active_sprint || true)"
+  if [ "$active" = "$sprint" ]; then
+    confirm_action "Sprint $sprint is active. Remove and clear active sprint?" "$assume_yes"
+    rm -f "$ACTIVE_SPRINT_FILE"
+  else
+    if [ "$hard_delete" -eq 1 ]; then
+      confirm_action "Permanently delete sprint $sprint?" "$assume_yes"
+    else
+      confirm_action "Archive and remove sprint $sprint?" "$assume_yes"
+    fi
+  fi
+
+  if [ "$hard_delete" -eq 1 ]; then
+    rm -rf "$sprint_dir" "$tasks_dir"
+    echo "Removed sprint directories permanently: $sprint"
+  else
+    stamp="$(date +%F)-${sprint}-removed"
+    archive_dir="$ARCHIVE_ROOT/sprints/$stamp"
+    if [ -e "$archive_dir" ]; then
+      archive_dir="${archive_dir}-$(date +%H%M%S)"
+    fi
+    mkdir -p "$archive_dir"
+    [ -d "$sprint_dir" ] && mv "$sprint_dir" "$archive_dir/sprint-def"
+    [ -d "$tasks_dir" ] && mv "$tasks_dir" "$archive_dir/sprint-tasks"
+    cat > "$archive_dir/archive-manifest.txt" <<EOF
+action=remove-sprint
+sprint=$sprint
+removed_at=$(date -Iseconds)
+source_sprint_dir=$sprint_dir
+source_tasks_dir=$tasks_dir
+EOF
+    echo "Archived sprint to: $archive_dir"
+  fi
+
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+    if [ "$drop_branch" -eq 1 ]; then
+      if [ "$(git branch --show-current)" = "$sprint_branch" ]; then
+        base_branch="$(default_base_branch)"
+        git checkout "$base_branch" >/dev/null
+      fi
+      git branch -D "$sprint_branch" >/dev/null
+      echo "Deleted sprint branch: $sprint_branch"
+    else
+      base_branch="$(default_base_branch)"
+      if git merge-base --is-ancestor "$sprint_branch" "$base_branch"; then
+        if [ "$(git branch --show-current)" = "$sprint_branch" ]; then
+          git checkout "$base_branch" >/dev/null
+        fi
+        git branch -d "$sprint_branch" >/dev/null
+        echo "Deleted merged sprint branch: $sprint_branch"
+      else
+        echo "Kept unmerged sprint branch: $sprint_branch (use --drop-branch to force delete)"
+      fi
+    fi
+  fi
+}
+
 main() {
   require_cmd git
   require_cmd jq
@@ -427,19 +840,12 @@ main() {
       fi
       ;;
     create)
-      [ $# -eq 2 ] || fail "Usage: create <sprint-name>"
-      local sprint
-      sprint="$(normalize_sprint_name "$2")"
-      [ -n "$sprint" ] || fail "Invalid sprint name."
-      ensure_sprint_structure "$sprint"
-      ensure_sprint_branch_exists "$sprint"
-      set_active_sprint "$sprint"
-      echo "Created sprint: $sprint"
-      echo "Active sprint set to: $sprint"
-      checkout_sprint_branch "$sprint"
-      if [ -t 0 ]; then
-        add_epics_loop "$sprint"
-      fi
+      shift
+      cmd_create "$@"
+      ;;
+    remove)
+      [ $# -ge 2 ] || fail "Usage: remove <sprint-name> [--hard] [--yes] [--drop-branch]"
+      remove_sprint "$2" "${@:3}"
       ;;
     use)
       [ $# -eq 2 ] || fail "Usage: use <sprint-name>"
@@ -463,6 +869,13 @@ main() {
       active="$(get_active_sprint || true)"
       [ -n "$active" ] || fail "No active sprint set."
       readiness_status "$active"
+      ;;
+    add-epic)
+      local target
+      target="${2:-$(get_active_sprint || true)}"
+      [ -n "$target" ] || fail "No sprint provided and no active sprint set."
+      [ -f "$(sprint_epics_file "$target")" ] || fail "Sprint does not exist: $target"
+      add_single_epic "$target"
       ;;
     add-epics)
       local target

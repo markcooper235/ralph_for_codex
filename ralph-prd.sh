@@ -1,8 +1,7 @@
 #!/bin/bash
 # PRD bootstrap wrapper for Ralph.
-# Minimal by default: collect feature concept (+ optional constraints), then run
-# Codex with the PRD and Ralph skills to generate
-# scripts/ralph/tasks/prds/prd-*.md and prd.json.
+# Editor-first intake for concept + constraints + planning context, then
+# run Codex with PRD and Ralph skills.
 
 set -euo pipefail
 
@@ -11,6 +10,10 @@ WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 PRD_JSON="${PRD_JSON_PATH:-$SCRIPT_DIR/prd.json}"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
+
+# shellcheck source=./lib/editor-intake.sh
+source "$EDITOR_HELPER"
 
 QUIET=0
 FEATURE_CONCEPT=""
@@ -19,6 +22,9 @@ ACTIVATE_CURRENT_ONLY=0
 
 # Quick question modes: ask (prompt user), on (force), off (skip)
 QUICK_QUESTIONS_MODE="ask"
+REMOVE_TARGET=""
+REMOVE_HARD=0
+ASSUME_YES=0
 
 PRIMARY_GOAL="Not provided"
 TARGET_USERS="Not provided"
@@ -31,17 +37,21 @@ Usage: ./ralph-prd.sh [options]
 Generate PRD markdown + prd.json via Codex skills.
 
 Options:
-  --feature TEXT           Feature concept (skip concept prompt)
-  --constraints TEXT       Hard constraints/dependencies (single argument)
+  --feature TEXT           Feature concept (skip editor for this field)
+  --constraints TEXT       Hard constraints/dependencies (skip editor for this field)
   --activate-current       Mark the current prd.json as active standalone PRD and exit
-  --quick-questions        Force the 3-question clarifier flow
-  --no-questions           Skip clarifier questions entirely
+  --remove PATH            Remove/archive an existing PRD markdown file
+  --hard                   With --remove: permanently delete instead of archive
+  --yes                    With --remove: skip confirmation prompt
+  --quick-questions        Force the 3-question clarifier intake
+  --no-questions           Skip clarifier intake (sets defaults)
   --quiet                  Reduce wrapper output (Codex output still shown)
   -h, --help               Show help
 
 Environment:
   CODEX_BIN                Codex CLI command (default: codex)
   PRD_JSON_PATH            Output path for prd.json (default: <script-dir>/prd.json)
+  RALPH_EDITOR             Editor command for intake (fallback: VISUAL, EDITOR, nano, vi)
 USAGE
 }
 
@@ -64,13 +74,13 @@ require_cmd() {
 
 mark_active_standalone_prd() {
   local source_path="${1:-scripts/ralph/prd.json}"
-  cat >"$ACTIVE_PRD_FILE" <<EOF
+  cat >"$ACTIVE_PRD_FILE" <<JSON
 {
   "mode": "standalone",
   "sourcePath": "$source_path",
   "activatedAt": "$(date -Iseconds)"
 }
-EOF
+JSON
 }
 
 supports_codex_yolo() {
@@ -94,26 +104,252 @@ build_codex_exec_args() {
   fi
 }
 
-read_multiline() {
-  local label="$1"
-  local line
-  local output=""
-  echo "$label"
-  echo "(Finish with an empty line)"
-  while IFS= read -r line; do
-    [ -z "$line" ] && break
-    output+="$line"$'\n'
-  done
-  printf '%s' "$output"
+snapshot_prd_markdown_state() {
+  find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' -printf '%P|%s|%T@\n' 2>/dev/null | sort
 }
 
-read_choice() {
+detect_changed_prd_markdown() {
+  local before_file="$1"
+  local after_file="$2"
+  local changed_path=""
+
+  changed_path="$(
+    awk -F'|' '
+      NR==FNR { before[$1]=$0; next }
+      {
+        if (!($1 in before) || before[$1] != $0) {
+          print $1
+        }
+      }
+    ' "$before_file" "$after_file" | tail -n 1
+  )"
+
+  if [ -n "$changed_path" ]; then
+    printf 'scripts/ralph/tasks/prds/%s\n' "$changed_path"
+    return 0
+  fi
+  return 1
+}
+
+confirm_action() {
   local prompt="$1"
-  local default="$2"
-  local answer
-  read -r -p "$prompt [$default]: " answer
-  answer="${answer:-$default}"
-  printf '%s' "${answer^^}"
+  if [ "$ASSUME_YES" -eq 1 ]; then
+    return 0
+  fi
+  if [ ! -t 0 ]; then
+    fail "Confirmation required in non-interactive mode. Re-run with --yes."
+  fi
+  local reply
+  read -r -p "$prompt [y/N]: " reply
+  case "${reply,,}" in
+    y|yes) return 0 ;;
+    *) fail "Aborted." ;;
+  esac
+}
+
+to_workspace_rel_path() {
+  local p="$1"
+  if [[ "$p" == "$WORKSPACE_ROOT/"* ]]; then
+    printf '%s\n' "${p#$WORKSPACE_ROOT/}"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+resolve_prd_target() {
+  local target="$1"
+  local active_sprint=""
+  local candidate
+
+  if [ -f "$target" ]; then
+    if [[ "$target" == "$WORKSPACE_ROOT/"* ]]; then
+      printf '%s\n' "${target#$WORKSPACE_ROOT/}"
+    else
+      printf '%s\n' "$target"
+    fi
+    return 0
+  fi
+  if [ -f "$WORKSPACE_ROOT/$target" ]; then
+    printf '%s\n' "$target"
+    return 0
+  fi
+
+  if [ -f "$SCRIPT_DIR/tasks/prds/$target" ]; then
+    printf 'scripts/ralph/tasks/prds/%s\n' "$target"
+    return 0
+  fi
+  if [ -f "$SCRIPT_DIR/tasks/prds/prd-$target.md" ]; then
+    printf 'scripts/ralph/tasks/prds/prd-%s.md\n' "$target"
+    return 0
+  fi
+
+  if [ -f "$SCRIPT_DIR/.active-sprint" ]; then
+    active_sprint="$(awk 'NF {print; exit}' "$SCRIPT_DIR/.active-sprint" 2>/dev/null || true)"
+  fi
+  if [ -n "$active_sprint" ]; then
+    candidate="scripts/ralph/tasks/$active_sprint/$target"
+    if [ -f "$WORKSPACE_ROOT/$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    candidate="scripts/ralph/tasks/$active_sprint/prd-$target.md"
+    if [ -f "$WORKSPACE_ROOT/$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+unlink_prd_from_all_epics() {
+  local rel_path="$1"
+  local epics_file tmp_file
+  while IFS= read -r epics_file; do
+    [ -f "$epics_file" ] || continue
+    tmp_file="$(mktemp)"
+    jq --arg p "$rel_path" '
+      .epics = (
+        .epics
+        | map(
+            .prdPaths = (
+              (.prdPaths // [])
+              | map(select(. != $p))
+            )
+          )
+      )
+    ' "$epics_file" > "$tmp_file"
+    mv "$tmp_file" "$epics_file"
+  done < <(find "$SCRIPT_DIR/sprints" -mindepth 2 -maxdepth 2 -type f -name epics.json | sort)
+}
+
+remove_prd() {
+  local rel_path abs_path slug archive_dir
+
+  rel_path="$(resolve_prd_target "$REMOVE_TARGET" || true)"
+  [ -n "$rel_path" ] || fail "Could not resolve PRD target: $REMOVE_TARGET"
+  abs_path="$WORKSPACE_ROOT/$rel_path"
+  [ -f "$abs_path" ] || fail "PRD file not found: $rel_path"
+
+  slug="$(basename "$rel_path" .md)"
+  if [ "$REMOVE_HARD" -eq 1 ]; then
+    confirm_action "Permanently delete PRD $rel_path?"
+  else
+    confirm_action "Archive and remove PRD $rel_path?"
+  fi
+
+  unlink_prd_from_all_epics "$rel_path"
+
+  if [ "$REMOVE_HARD" -eq 1 ]; then
+    rm -f "$abs_path"
+    echo "Permanently removed PRD: $rel_path"
+  else
+    archive_dir="$SCRIPT_DIR/tasks/archive/prds/$(date +%F)-${slug}-removed"
+    if [ -e "$archive_dir" ]; then
+      archive_dir="${archive_dir}-$(date +%H%M%S)"
+    fi
+    mkdir -p "$archive_dir"
+    mv "$abs_path" "$archive_dir/"
+    cat > "$archive_dir/archive-manifest.txt" <<EOF
+action=remove-prd
+removed_at=$(date -Iseconds)
+source_path=$rel_path
+EOF
+    echo "Archived PRD to: $archive_dir"
+  fi
+
+  if [ -f "$ACTIVE_PRD_FILE" ]; then
+    if jq -e --arg p "$rel_path" '.sourcePath == $p' "$ACTIVE_PRD_FILE" >/dev/null 2>&1; then
+      rm -f "$ACTIVE_PRD_FILE"
+      echo "Cleared active PRD marker: $ACTIVE_PRD_FILE"
+    fi
+  fi
+}
+
+render_prd_context() {
+  local active_sprint=""
+  local active_epic=""
+  local epics_file=""
+  local sprint_file="$SCRIPT_DIR/.active-sprint"
+
+  if [ -f "$sprint_file" ]; then
+    active_sprint="$(awk 'NF {print; exit}' "$sprint_file" 2>/dev/null || true)"
+  fi
+  if [ -n "$active_sprint" ]; then
+    epics_file="$SCRIPT_DIR/sprints/$active_sprint/epics.json"
+    if [ -f "$epics_file" ]; then
+      active_epic="$(jq -r '.activeEpicId // ""' "$epics_file" 2>/dev/null || true)"
+    fi
+  fi
+
+  printf 'Workspace: %s\n' "$(basename "$WORKSPACE_ROOT")"
+  printf 'Active sprint: %s\n' "${active_sprint:-none}"
+  printf 'Active epic: %s\n' "${active_epic:-none}"
+  if [ -n "$epics_file" ] && [ -f "$epics_file" ]; then
+    printf 'Current epics (%s):\n' "$epics_file"
+    jq -r '.epics | sort_by(.priority, .id) | if length == 0 then "  (none)" else .[] | "  - \(.id) [p=\(.priority)] \(.title)" end' "$epics_file"
+  fi
+}
+
+collect_prd_intake_via_editor() {
+  local context template_path intake_file intake_block
+
+  template_path="$SCRIPT_DIR/templates/prd-intake.md"
+  [ -f "$template_path" ] || fail "Missing template: $template_path"
+
+  intake_file="$(mktemp)"
+  {
+    cat "$template_path"
+    echo
+    echo "# Current Context"
+    render_prd_context
+    echo
+    echo "# Notes"
+    echo "- FEATURE_CONCEPT and HARD_CONSTRAINTS can be multi-line."
+    echo "- Keep PRIMARY_GOAL/TARGET_USERS/SCOPE_LEVEL as single-line summaries."
+  } > "$intake_file"
+
+  if [ -n "$FEATURE_CONCEPT" ]; then
+    awk -v v="$FEATURE_CONCEPT" '
+      /^FEATURE_CONCEPT:$/ {print; print v; skip=1; next}
+      /^HARD_CONSTRAINTS:$/ {skip=0}
+      !skip {print}
+    ' "$intake_file" > "$intake_file.tmp" && mv "$intake_file.tmp" "$intake_file"
+  fi
+  if [ -n "$HARD_CONSTRAINTS" ]; then
+    awk -v v="$HARD_CONSTRAINTS" '
+      /^HARD_CONSTRAINTS:$/ {print; print v; skip=1; next}
+      /^<!-- END INPUT -->$/ {skip=0}
+      !skip {print}
+    ' "$intake_file" > "$intake_file.tmp" && mv "$intake_file.tmp" "$intake_file"
+  fi
+
+  run_editor_on_file "$intake_file"
+  intake_block="$(extract_marked_block "$intake_file" "<!-- BEGIN INPUT -->" "<!-- END INPUT -->")"
+  rm -f "$intake_file"
+
+  PRIMARY_GOAL="$(printf '%s\n' "$intake_block" | kv_from_block "PRIMARY_GOAL" | trim_whitespace)"
+  TARGET_USERS="$(printf '%s\n' "$intake_block" | kv_from_block "TARGET_USERS" | trim_whitespace)"
+  SCOPE_LEVEL="$(printf '%s\n' "$intake_block" | kv_from_block "SCOPE_LEVEL" | trim_whitespace)"
+
+  FEATURE_CONCEPT="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^FEATURE_CONCEPT:[[:space:]]*$/ {in_section=1; next}
+      /^HARD_CONSTRAINTS:[[:space:]]*$/ {in_section=0}
+      in_section {print}
+    '
+  })"
+
+  HARD_CONSTRAINTS="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^HARD_CONSTRAINTS:[[:space:]]*$/ {in_section=1; next}
+      in_section {print}
+    '
+  })"
+
+  PRIMARY_GOAL="${PRIMARY_GOAL:-Not provided}"
+  TARGET_USERS="${TARGET_USERS:-Not provided}"
+  SCOPE_LEVEL="${SCOPE_LEVEL:-Not provided}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -132,6 +368,19 @@ while [[ $# -gt 0 ]]; do
       ;;
     --activate-current)
       ACTIVATE_CURRENT_ONLY=1
+      shift
+      ;;
+    --remove)
+      REMOVE_TARGET="${2:-}"
+      [ -n "$REMOVE_TARGET" ] || fail "--remove requires a path/slug argument"
+      shift 2
+      ;;
+    --hard)
+      REMOVE_HARD=1
+      shift
+      ;;
+    --yes)
+      ASSUME_YES=1
       shift
       ;;
     --no-questions)
@@ -159,6 +408,10 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fail "This helper must run inside a git repository."
 fi
 
+if [ -z "$REMOVE_TARGET" ] && { [ "$REMOVE_HARD" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; }; then
+  fail "--hard/--yes are only valid together with --remove"
+fi
+
 if [ "$ACTIVATE_CURRENT_ONLY" -eq 1 ]; then
   if [ ! -f "$PRD_JSON" ] || [ ! -s "$PRD_JSON" ]; then
     fail "Cannot activate: missing or empty $PRD_JSON"
@@ -172,94 +425,30 @@ if [ "$ACTIVATE_CURRENT_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-require_cmd "$CODEX_BIN"
-
-if [ -z "$FEATURE_CONCEPT" ]; then
-  FEATURE_CONCEPT="$(read_multiline "Describe the feature/requirement concept")"
+if [ -n "$REMOVE_TARGET" ]; then
+  remove_prd
+  exit 0
 fi
 
+require_cmd "$CODEX_BIN"
+
+if [ "$QUICK_QUESTIONS_MODE" = "off" ]; then
+  PRIMARY_GOAL="Not provided"
+  TARGET_USERS="Not provided"
+  SCOPE_LEVEL="Not provided"
+fi
+
+if [ -t 0 ]; then
+  collect_prd_intake_via_editor
+fi
+
+FEATURE_CONCEPT="$(printf '%s\n' "$FEATURE_CONCEPT" | sed '/^[[:space:]]*$/d')"
 if [ -z "$FEATURE_CONCEPT" ]; then
   fail "Feature concept is required."
 fi
 
-if [ -z "$HARD_CONSTRAINTS" ]; then
-  HARD_CONSTRAINTS="$(read_multiline "Optional hard constraints/dependencies - press Enter to skip")"
-fi
-
-ASK_QUICK_QUESTIONS=0
 if [ "$QUICK_QUESTIONS_MODE" = "on" ]; then
-  ASK_QUICK_QUESTIONS=1
-elif [ "$QUICK_QUESTIONS_MODE" = "ask" ] && [ -t 0 ]; then
-  local_reply=""
-  read -r -p "Answer 3 quick clarifying questions? [y/N]: " local_reply
-  case "${local_reply,,}" in
-    y|yes)
-      ASK_QUICK_QUESTIONS=1
-      ;;
-  esac
-fi
-
-if [ "$ASK_QUICK_QUESTIONS" -eq 1 ]; then
-  echo ""
-  echo "Quick clarifiers (single-letter answers are fine):"
-  echo ""
-
-  echo "1) Primary goal"
-  echo "   A. Improve user onboarding"
-  echo "   B. Increase user retention"
-  echo "   C. Reduce support burden"
-  echo "   D. Other"
-  goal_choice="$(read_choice "Choice" "A")"
-  case "$goal_choice" in
-    A) PRIMARY_GOAL="Improve user onboarding" ;;
-    B) PRIMARY_GOAL="Increase user retention" ;;
-    C) PRIMARY_GOAL="Reduce support burden" ;;
-    D)
-      read -r -p "Describe goal: " PRIMARY_GOAL
-      PRIMARY_GOAL="${PRIMARY_GOAL:-Not provided}"
-      ;;
-    *) PRIMARY_GOAL="Not provided" ;;
-  esac
-
-  echo ""
-  echo "2) Target users"
-  echo "   A. New users only"
-  echo "   B. Existing users only"
-  echo "   C. All users"
-  echo "   D. Admin users only"
-  echo "   E. Other"
-  users_choice="$(read_choice "Choice" "C")"
-  case "$users_choice" in
-    A) TARGET_USERS="New users only" ;;
-    B) TARGET_USERS="Existing users only" ;;
-    C) TARGET_USERS="All users" ;;
-    D) TARGET_USERS="Admin users only" ;;
-    E)
-      read -r -p "Describe target users: " TARGET_USERS
-      TARGET_USERS="${TARGET_USERS:-Not provided}"
-      ;;
-    *) TARGET_USERS="Not provided" ;;
-  esac
-
-  echo ""
-  echo "3) Scope level"
-  echo "   A. Minimal viable version"
-  echo "   B. Full-featured implementation"
-  echo "   C. Backend/API only"
-  echo "   D. UI only"
-  echo "   E. Other"
-  scope_choice="$(read_choice "Choice" "A")"
-  case "$scope_choice" in
-    A) SCOPE_LEVEL="Minimal viable version" ;;
-    B) SCOPE_LEVEL="Full-featured implementation" ;;
-    C) SCOPE_LEVEL="Backend/API only" ;;
-    D) SCOPE_LEVEL="UI only" ;;
-    E)
-      read -r -p "Describe scope: " SCOPE_LEVEL
-      SCOPE_LEVEL="${SCOPE_LEVEL:-Not provided}"
-      ;;
-    *) SCOPE_LEVEL="Not provided" ;;
-  esac
+  :
 fi
 
 PRD_JSON_REL="$PRD_JSON"
@@ -306,9 +495,23 @@ PROMPT_EOF
 )
 
 log "Generating PRD and prd.json via Codex skills..."
+before_prd_state="$(mktemp)"
+after_prd_state="$(mktemp)"
+snapshot_prd_markdown_state > "$before_prd_state"
 CODEX_ARGS=()
 build_codex_exec_args CODEX_ARGS
 printf '%s\n' "$PROMPT" | "$CODEX_BIN" "${CODEX_ARGS[@]}"
+snapshot_prd_markdown_state > "$after_prd_state"
+
+PRD_MARKDOWN_PATH="$(detect_changed_prd_markdown "$before_prd_state" "$after_prd_state" || true)"
+rm -f "$before_prd_state" "$after_prd_state"
+
+if [ -z "$PRD_MARKDOWN_PATH" ]; then
+  fail "No PRD markdown file was created or updated in scripts/ralph/tasks/prds."
+fi
+if [ ! -s "$WORKSPACE_ROOT/$PRD_MARKDOWN_PATH" ]; then
+  fail "Generated PRD markdown missing or empty: $PRD_MARKDOWN_PATH"
+fi
 
 if [ ! -f "$PRD_JSON" ]; then
   fail "Expected prd.json at $PRD_JSON"
@@ -333,6 +536,7 @@ fi
 
 log "Done."
 mark_active_standalone_prd "$PRD_JSON_REL"
+printf 'PRD Markdown: %s\n' "$PRD_MARKDOWN_PATH"
 printf 'PRD JSON: %s\n' "$PRD_JSON"
 printf 'Stories: %s\n' "$(jq '.userStories | length' "$PRD_JSON")"
 printf 'Active PRD mode: standalone (%s)\n' "$ACTIVE_PRD_FILE"

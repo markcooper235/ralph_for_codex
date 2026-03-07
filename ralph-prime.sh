@@ -14,10 +14,12 @@ CODEX_BIN="${CODEX_BIN:-codex}"
 ACTIVE_SPRINT=""
 
 AUTO_MODE=0
+REGEN_PRD=0
+AUTO_COMMIT=0
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/ralph/ralph-prime.sh [--auto]
+Usage: ./scripts/ralph/ralph-prime.sh [--auto] [--regen-prd] [--auto-commit]
 
 Behavior:
   - If scripts/ralph/prd.json has unfinished stories, no-op.
@@ -28,6 +30,8 @@ Behavior:
 Options:
   --auto   Non-interactive mode. If no eligible epic exists, exit non-zero
            with a clear prompt message.
+  --regen-prd  If epic has promptContext, regenerate markdown PRD even when file exists.
+  --auto-commit  Commit primed epic status change in epics.json after successful priming.
 EOF
 }
 
@@ -116,6 +120,22 @@ choose_primary_prd_path_for_epic() {
   ' "$EPICS_FILE"
 }
 
+get_epic_field() {
+  local epic_id="$1"
+  local field="$2"
+  jq -r --arg id "$epic_id" --arg field "$field" '
+    .epics[] | select(.id == $id) | .[$field] // empty
+  ' "$EPICS_FILE"
+}
+
+get_epic_array_field_joined() {
+  local epic_id="$1"
+  local field="$2"
+  jq -r --arg id "$epic_id" --arg field "$field" '
+    .epics[] | select(.id == $id) | (.[$field] // []) | join(", ")
+  ' "$EPICS_FILE"
+}
+
 set_epic_active() {
   local epic_id="$1"
   [ -f "$EPIC_CLI" ] || return 0
@@ -133,6 +153,28 @@ set_active_epic_prd() {
   "activatedAt": "$(date -Iseconds)"
 }
 EOF
+}
+
+commit_primed_epic_state_if_needed() {
+  local epic_id="$1"
+  local status_line epic_title
+
+  status_line="$(git status --porcelain -- "$EPICS_FILE" || true)"
+  [ -n "$status_line" ] || return 0
+
+  if ! jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1; then
+    fail "Cannot auto-commit primed epic state: invalid $EPICS_FILE"
+  fi
+
+  epic_title="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .title // empty' "$EPICS_FILE")"
+
+  git add "$EPICS_FILE"
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  git commit -m "chore(ralph): prime $epic_id active for loop startup"
+  echo "Committed primed epic state: $epic_id ${epic_title:+- $epic_title}"
 }
 
 validate_generated_prd() {
@@ -184,6 +226,72 @@ EOF
   printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"
 }
 
+generate_markdown_prd_from_epic_context() {
+  local markdown_path="$1"
+  local epic_id="$2"
+  local sprint_name="$3"
+  local epic_title epic_goal epic_deps epic_open_qs epic_prompt_context
+  local prompt sidecar codex_args=()
+
+  epic_title="$(get_epic_field "$epic_id" "title")"
+  epic_goal="$(get_epic_field "$epic_id" "goal")"
+  epic_deps="$(get_epic_array_field_joined "$epic_id" "dependsOn")"
+  epic_open_qs="$(get_epic_array_field_joined "$epic_id" "openQuestions")"
+  epic_prompt_context="$(get_epic_field "$epic_id" "promptContext")"
+
+  [ -n "$epic_prompt_context" ] || fail "Epic $epic_id has no promptContext; cannot generate PRD markdown."
+  mkdir -p "$(dirname "$WORKSPACE_ROOT/$markdown_path")"
+
+  sidecar="$(mktemp "$SCRIPT_DIR/.epic-prompt-${epic_id}-XXXXXX.md")"
+  cat > "$sidecar" <<EOF
+# Epic Prompt Context
+epic_id: $epic_id
+sprint: $sprint_name
+title: $epic_title
+goal: $epic_goal
+depends_on: ${epic_deps:-none}
+open_questions: ${epic_open_qs:-none}
+
+## Prompt Conversation / Context
+$epic_prompt_context
+EOF
+
+  prompt=$(
+    cat <<EOF
+Use the \`prd\` skill.
+
+Generate a complete PRD markdown from this epic context and write it to:
+\`$markdown_path\`
+
+Inputs:
+- Epic ID: $epic_id
+- Sprint: $sprint_name
+- Title: $epic_title
+- Goal: $epic_goal
+- Depends on: ${epic_deps:-none}
+- Open questions: ${epic_open_qs:-none}
+- Prompt context sidecar: \`${sidecar#$WORKSPACE_ROOT/}\`
+
+Requirements:
+1. Output must be a complete PRD markdown suitable for later Ralph JSON conversion.
+2. Keep stories small, ordered by dependency, with clear acceptance criteria.
+3. Include explicit assumptions where context is ambiguous.
+4. Overwrite destination if it exists.
+
+Return a short summary and the exact output path.
+EOF
+  )
+
+  build_codex_exec_args codex_args
+  if printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"; then
+    rm -f "$sidecar"
+    return 0
+  fi
+
+  echo "PRD markdown generation failed for $epic_id. Prompt sidecar kept at: $sidecar" >&2
+  return 1
+}
+
 prompt_no_eligible_epic() {
   local message="No eligible next epic found in active sprint epics.json. Do you want to create (1) a new Epic or (2) a stand-alone PRD to prime the loop?"
   if [ "$AUTO_MODE" -eq 1 ] || [ ! -t 0 ]; then
@@ -213,6 +321,14 @@ main() {
         AUTO_MODE=1
         shift
         ;;
+      --regen-prd)
+        REGEN_PRD=1
+        shift
+        ;;
+      --auto-commit)
+        AUTO_COMMIT=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
@@ -230,6 +346,11 @@ main() {
   require_cmd "$CODEX_BIN"
   resolve_epics_file
   ensure_transient_files_not_tracked
+
+  # In non-interactive/automation mode, default to committing primed epic state.
+  if [ "$AUTO_MODE" -eq 1 ] && [ "$AUTO_COMMIT" -eq 0 ]; then
+    AUTO_COMMIT=1
+  fi
 
   if prd_has_unfinished_stories; then
     echo "PRD already has unfinished stories; keeping current scripts/ralph/prd.json."
@@ -255,8 +376,16 @@ main() {
   if [ -z "$source_prd" ]; then
     fail "Epic $next_epic has no PRD path configured."
   fi
+
+  local epic_prompt_context
+  epic_prompt_context="$(get_epic_field "$next_epic" "promptContext")"
+  if [ -n "$epic_prompt_context" ] && { [ "$REGEN_PRD" -eq 1 ] || [ ! -f "$WORKSPACE_ROOT/$source_prd" ]; }; then
+    echo "Generating PRD markdown from epic context for $next_epic ..."
+    generate_markdown_prd_from_epic_context "$source_prd" "$next_epic" "$ACTIVE_SPRINT" || fail "Failed generating markdown PRD for $next_epic"
+  fi
+
   if [ ! -f "$WORKSPACE_ROOT/$source_prd" ]; then
-    fail "Epic source PRD not found: $source_prd"
+    fail "Epic source PRD not found and no promptContext generation available: $source_prd"
   fi
 
   echo "Priming Ralph from $next_epic using $source_prd ..."
@@ -269,6 +398,9 @@ main() {
   # Mark active only after PRD conversion/validation succeeds.
   set_epic_active "$next_epic"
   set_active_epic_prd "$next_epic" "$source_prd"
+  if [ "$AUTO_COMMIT" -eq 1 ]; then
+    commit_primed_epic_state_if_needed "$next_epic"
+  fi
 
   local remaining
   remaining="$(jq -r '([.userStories[] | select(.passes != true)] | length)' "$PRD_FILE")"

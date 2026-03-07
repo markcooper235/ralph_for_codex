@@ -119,6 +119,7 @@ fi
 
 mkdir -p "$DEST_DIR_REL"
 mkdir -p "$OPENSPEC_DEST_REL"
+mkdir -p "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
 
 copy_file() {
   local src="$1"
@@ -137,6 +138,9 @@ copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
 copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
+copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
+copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
+copy_file "$SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
@@ -154,7 +158,8 @@ chmod +x \
   "$DEST_DIR_REL/ralph-epic.sh" \
   "$DEST_DIR_REL/ralph-prime.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
-  "$DEST_DIR_REL/ralph-sprint-commit.sh"
+  "$DEST_DIR_REL/ralph-sprint-commit.sh" \
+  "$DEST_DIR_REL/lib/editor-intake.sh"
 
 if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
   chmod +x "$OPENSPEC_DEST_REL/openspec-skill.sh"
