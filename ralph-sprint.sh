@@ -590,10 +590,27 @@ readiness_status() {
   echo "Current branch: $current_branch"
 
   local missing_paths
-  missing_paths="$(jq -r '.epics[]?.prdPaths[]?' "$epics_file" | while IFS= read -r p; do [ -n "$p" ] || continue; [ -f "$WORKSPACE_ROOT/$p" ] || echo "$p"; done)"
-  if [ -n "$missing_paths" ]; then
-    echo "Missing PRD paths:"
-    printf '%s\n' "$missing_paths"
+  local missing_paths_blocking
+  local missing_paths_generatable
+  missing_paths="$(jq -r '.epics[]? | .id as $id | (.promptContext // "") as $ctx | .prdPaths[]? | [$id, ., ($ctx|gsub("[\r\n\t]";" "))] | @tsv' "$epics_file" \
+    | while IFS=$'\t' read -r epic_id prd_path prompt_ctx; do
+        [ -n "$prd_path" ] || continue
+        [ -f "$WORKSPACE_ROOT/$prd_path" ] && continue
+        if [ -n "$prompt_ctx" ]; then
+          printf 'GENERATABLE\t%s\t%s\n' "$epic_id" "$prd_path"
+        else
+          printf 'BLOCKING\t%s\t%s\n' "$epic_id" "$prd_path"
+        fi
+      done)"
+  missing_paths_blocking="$(printf '%s\n' "$missing_paths" | awk -F '\t' '$1=="BLOCKING"{print $2": "$3}')"
+  missing_paths_generatable="$(printf '%s\n' "$missing_paths" | awk -F '\t' '$1=="GENERATABLE"{print $2": "$3}')"
+  if [ -n "$missing_paths_generatable" ]; then
+    echo "PRD paths pending generation (available via promptContext):"
+    printf '%s\n' "$missing_paths_generatable"
+  fi
+  if [ -n "$missing_paths_blocking" ]; then
+    echo "Missing PRD paths (blocking):"
+    printf '%s\n' "$missing_paths_blocking"
     exit 1
   fi
 

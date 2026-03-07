@@ -85,5 +85,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-epic.sh` requires an active sprint; use `ralph-sprint.sh use <sprint-name>` first if needed.
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
 - OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.
+- Fresh-install epics should include `promptContext` so `ralph-prime.sh` can generate missing PRD markdown when starter `prdPaths` are not yet on disk.
+- `ralph-sprint.sh status` should treat missing PRDs with `promptContext` as generatable warnings, and only fail for missing PRDs that cannot be generated.
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.

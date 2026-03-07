@@ -13,7 +13,8 @@
         "scripts/ralph/tasks/sprint-1/prd-epic-001-foundation.md"
       ],
       "goal": "Define and deliver the first production-ready slice of work.",
-      "openQuestions": []
+      "openQuestions": [],
+      "promptContext": "Product: Ralph workflow bootstrap for a new repository. Users need a first iteration they can run immediately after install. Constraints: keep stories small, include setup validation and one meaningful vertical slice, and require acceptance criteria that include typecheck/lint/tests language (or project-equivalent checks when those tools do not exist)."
     },
     {
       "id": "EPIC-002",
@@ -27,7 +28,8 @@
         "scripts/ralph/tasks/sprint-1/prd-epic-002-follow-on.md"
       ],
       "goal": "Build on foundational capabilities after EPIC-001 is done.",
-      "openQuestions": []
+      "openQuestions": [],
+      "promptContext": "Follow-on planning context: define the second implementation slice that depends on EPIC-001 output. The epic should extend real functionality, preserve backward compatibility with the first slice, and include explicit regression safeguards and validation criteria."
     }
   ]
 }
