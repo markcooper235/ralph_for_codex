@@ -589,6 +589,23 @@ readiness_status() {
   fi
   echo "Current branch: $current_branch"
 
+  local active_epic_id active_epic_line
+  active_epic_id="$(jq -r '.activeEpicId // empty' "$epics_file")"
+  if [ -n "$active_epic_id" ]; then
+    active_epic_line="$(jq -r --arg id "$active_epic_id" '
+      .epics[]
+      | select(.id == $id)
+      | "Active epic: \(.id) (P\(.priority)) - \(.title)\nStatus: \(.status)\nDependsOn: \((.dependsOn // []) | join(", "))"
+    ' "$epics_file")"
+    if [ -n "$active_epic_line" ]; then
+      echo "$active_epic_line"
+    else
+      echo "Active epic: $active_epic_id (missing from epics list)"
+    fi
+  else
+    echo "Active epic: (none)"
+  fi
+
   local missing_paths
   local missing_paths_blocking
   local missing_paths_generatable

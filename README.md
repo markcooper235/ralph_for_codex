@@ -138,6 +138,8 @@ The wrapper enforces small, ordered stories and requires completion criteria lik
 ./scripts/ralph/ralph-prime.sh
 ```
 
+`ralph-sprint.sh status` now displays both the current `Active epic` (if any) and the `Next epic` candidate to reduce sequencing ambiguity.
+
 ### Alternative Planning Path: OpenSpec -> Ralph
 
 If you use OpenSpec for planning, convert a change into a Ralph-compatible `prd.json`:
@@ -210,7 +212,7 @@ Notes:
 | `ralph-ui-role.sh` | Recommends auth role/matrix (Player/DM/Admin) for UI validation scope |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
-| `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`) |
+| `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`); status reports both active and next epic |
 | `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
 | `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
