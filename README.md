@@ -72,6 +72,7 @@ Copy the ralph files into your project:
 mkdir -p scripts/ralph
 cp /path/to/ralph/{doctor.sh,install.sh,prompt.md,prd.json.example,epics.json.example} scripts/ralph/
 cp /path/to/ralph/ralph*.sh scripts/ralph/
+cp /path/to/ralph/known-test-baseline-failures.txt scripts/ralph/
 mkdir -p scripts/ralph/lib scripts/ralph/templates
 cp /path/to/ralph/lib/editor-intake.sh scripts/ralph/lib/
 cp /path/to/ralph/templates/{epic-intake.md,prd-intake.md} scripts/ralph/templates/
@@ -164,11 +165,12 @@ Ralph will:
 1. Create a feature branch (from PRD `branchName`)
 2. Pick the highest priority story where `passes: false`
 3. Implement that single story
-4. Run quality checks (typecheck, lint, tests)
+4. Run `./scripts/ralph/ralph-verify.sh --targeted` (typecheck + lint + targeted tests)
 5. Commit if checks pass
 6. Update `prd.json` to mark story as `passes: true`
 7. Append learnings to `scripts/ralph/progress.txt`
-8. Repeat until all stories pass or max iterations reached
+8. Before final completion, run `./scripts/ralph/ralph-verify.sh --full` for regression gate
+9. Repeat until all stories pass or max iterations reached
 
 ### Epic-level sequencing
 
@@ -204,6 +206,8 @@ Notes:
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph-prime.sh` | Auto-select next eligible epic, prime `prd.json`, and auto-commit primed epic state in `--auto` mode |
+| `ralph-verify.sh` | Standardized verification wrapper (`--targeted` per iteration, `--full` before completion) |
+| `ralph-ui-role.sh` | Recommends auth role/matrix (Player/DM/Admin) for UI validation scope |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`) |
@@ -213,6 +217,7 @@ Notes:
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
 | `ralph-cleanup.sh` | Reset local Ralph artifacts without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
+| `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
 | `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority/dependencies/activeEpicId |
@@ -297,6 +302,9 @@ Edit `prompt.md` to customize Ralph's behavior for your project:
 - Add project-specific quality check commands
 - Include codebase conventions
 - Add common gotchas for your stack
+
+Optional supporting files:
+- `known-test-baseline-failures.txt` to control known-unrelated full-suite failures for `ralph-verify.sh --full`
 
 ## Archiving
 
