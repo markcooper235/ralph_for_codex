@@ -199,6 +199,7 @@ Notes:
 - `abandon` keeps an epic in backlog history but excludes it from eligibility.
 - `remove` permanently deletes only epics already marked `abandoned`.
 - `ralph-prime.sh --auto` now auto-commits primed epic status changes by default.
+- `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
 - `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
 
@@ -207,7 +208,7 @@ Notes:
 | File | Purpose |
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
-| `ralph-prime.sh` | Auto-select next eligible epic, prime `prd.json`, and auto-commit primed epic state in `--auto` mode |
+| `ralph-prime.sh` | Prime `prd.json` from next eligible epic, or fall back to active epic when needed; auto-commits primed epic state in `--auto` mode |
 | `ralph-verify.sh` | Standardized verification wrapper (`--targeted` per iteration, `--full` before completion) |
 | `ralph-ui-role.sh` | Recommends auth role/matrix (Player/DM/Admin) for UI validation scope |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
@@ -217,7 +218,7 @@ Notes:
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
 | `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
-| `ralph-cleanup.sh` | Reset local Ralph artifacts without creating archive |
+| `ralph-cleanup.sh` | Reset local Ralph artifacts (including active markers) without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
 | `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |

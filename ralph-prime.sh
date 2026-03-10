@@ -25,6 +25,7 @@ Behavior:
   - If scripts/ralph/prd.json has unfinished stories, no-op.
   - If prd.json is empty or all stories passed, selects next eligible epic and
     converts its primary PRD markdown into scripts/ralph/prd.json via Codex.
+  - If no "next eligible" epic exists, uses the currently active epic when valid.
   - If no eligible epic exists, prompts user to create a new epic or standalone PRD.
 
 Options:
@@ -134,6 +135,10 @@ get_epic_array_field_joined() {
   jq -r --arg id "$epic_id" --arg field "$field" '
     .epics[] | select(.id == $id) | (.[$field] // []) | join(", ")
   ' "$EPICS_FILE"
+}
+
+get_active_epic_id() {
+  jq -r '.activeEpicId // empty' "$EPICS_FILE" 2>/dev/null
 }
 
 set_epic_active() {
@@ -365,10 +370,23 @@ main() {
     exit 0
   fi
 
-  local next_epic
-  next_epic="$(find_next_epic_id)"
+  local next_epic source_mode
+  source_mode="next-eligible"
+  next_epic="$(find_next_epic_id || true)"
   if [ -z "$next_epic" ]; then
-    prompt_no_eligible_epic
+    local active_epic active_status
+    active_epic="$(get_active_epic_id)"
+    active_status=""
+    if [ -n "$active_epic" ]; then
+      active_status="$(jq -r --arg id "$active_epic" '.epics[] | select(.id == $id) | .status // empty' "$EPICS_FILE")"
+    fi
+    if [ -n "$active_epic" ] && [ "$active_status" = "active" ]; then
+      next_epic="$active_epic"
+      source_mode="active-epic-fallback"
+      echo "No eligible next epic found; using active epic $next_epic."
+    else
+      prompt_no_eligible_epic
+    fi
   fi
 
   local source_prd
@@ -388,7 +406,7 @@ main() {
     fail "Epic source PRD not found and no promptContext generation available: $source_prd"
   fi
 
-  echo "Priming Ralph from $next_epic using $source_prd ..."
+  echo "Priming Ralph from $next_epic using $source_prd (source=$source_mode) ..."
   convert_markdown_prd_to_json "$source_prd" "$next_epic" "$ACTIVE_SPRINT"
 
   if ! validate_generated_prd; then
