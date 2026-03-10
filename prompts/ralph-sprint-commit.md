@@ -1,6 +1,6 @@
 ---
 description: Finalize active sprint by validating epic completion, archiving sprint state, and merging sprint branch
-argument-hint: [--target master|main] [--dry-run]
+argument-hint: [--target master|main] [--dry-run] [--keep]
 ---
 
 Close out the active sprint.
@@ -17,4 +17,5 @@ Close out the active sprint.
 ## Guardrails
 - Do not run while sprint still has active/planned epics.
 - Do not bypass sprint archive.
+- Sprint source branch is deleted by default after successful merge; pass `--keep` to retain it.
 - On precondition failure, explain and stop.

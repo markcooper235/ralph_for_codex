@@ -131,6 +131,21 @@ detect_changed_prd_markdown() {
   return 1
 }
 
+latest_prd_markdown() {
+  local latest=""
+  latest="$(
+    find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' -printf '%P|%T@\n' 2>/dev/null \
+      | sort -t'|' -k2,2n \
+      | tail -n 1 \
+      | cut -d'|' -f1
+  )"
+  if [ -n "$latest" ]; then
+    printf 'scripts/ralph/tasks/prds/%s\n' "$latest"
+    return 0
+  fi
+  return 1
+}
+
 confirm_action() {
   local prompt="$1"
   if [ "$ASSUME_YES" -eq 1 ]; then
@@ -507,7 +522,11 @@ PRD_MARKDOWN_PATH="$(detect_changed_prd_markdown "$before_prd_state" "$after_prd
 rm -f "$before_prd_state" "$after_prd_state"
 
 if [ -z "$PRD_MARKDOWN_PATH" ]; then
-  fail "No PRD markdown file was created or updated in scripts/ralph/tasks/prds."
+  # Fallback for edge cases where file metadata snapshots do not register a delta.
+  PRD_MARKDOWN_PATH="$(latest_prd_markdown || true)"
+fi
+if [ -z "$PRD_MARKDOWN_PATH" ]; then
+  fail "No PRD markdown file found in scripts/ralph/tasks/prds after generation."
 fi
 if [ ! -s "$WORKSPACE_ROOT/$PRD_MARKDOWN_PATH" ]; then
   fail "Generated PRD markdown missing or empty: $PRD_MARKDOWN_PATH"

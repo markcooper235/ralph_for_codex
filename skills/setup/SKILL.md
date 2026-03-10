@@ -1,5 +1,5 @@
 ---
-name: setup-ralph-for-codex
+name: setup
 description: "Install Ralph (Codex port) as Codex skills and configure a target project to run the Ralph loop. Triggers on: install ralph, setup ralph, configure ralph for project, ralph for codex setup, ralph install."
 ---
 
@@ -9,6 +9,7 @@ Install Ralph skills, install Ralph runtime into a project, and run a smoke test
 
 ## Non-Negotiables
 
+- Install/refresh global skills before skill-driven PRD conversion flows.
 - Run `install.sh` from this repo.
 - Use an absolute target path for `--project`.
 - Verify with `./scripts/ralph/doctor.sh` after install.
@@ -32,6 +33,7 @@ bash ./install.sh --install-skills
 ```
 
 Copies all `skills/*` folders to `~/.codex/skills/`.
+Re-run this after local skill edits so runtime behavior matches repo changes.
 
 ### B) Install Ralph into target project
 
@@ -81,6 +83,7 @@ Expected:
 ./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-epic.sh next
 ./scripts/ralph/ralph-epic.sh start-next
+./scripts/ralph/ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Context for PRD generation"
 ./scripts/ralph/ralph-prime.sh
 ```
 
@@ -88,12 +91,14 @@ After epic completion:
 
 ```bash
 ./scripts/ralph/ralph-commit.sh
+# use --keep to retain merged feature branch
 ```
 
 After sprint completion:
 
 ```bash
 ./scripts/ralph/ralph-sprint-commit.sh
+# use --keep to retain merged sprint branch
 ```
 
 ## Notes

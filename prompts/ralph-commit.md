@@ -1,6 +1,6 @@
 ---
 description: Archive completed Ralph run and merge PRD branch into sprint branch (or explicit target)
-argument-hint: [--target <branch>] [--dry-run]
+argument-hint: [--target <branch>] [--dry-run] [--keep]
 ---
 
 Finalize a completed Ralph run: archive first, then merge the PRD branch.
@@ -17,4 +17,5 @@ Finalize a completed Ralph run: archive first, then merge the PRD branch.
 ## Guardrails
 - Do not bypass archive.
 - Do not merge unless all PRD stories are `passes: true`.
+- Source feature branch is deleted by default after successful merge; pass `--keep` to retain it.
 - On precondition failure, explain and stop.

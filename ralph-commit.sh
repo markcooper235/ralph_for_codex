@@ -15,11 +15,12 @@ PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 TARGET_BRANCH=""
 DRY_RUN=false
 CREATE_BRANCH_IF_MISSING=false
+KEEP_SOURCE=false
 SPRINT_BRANCH_PREFIX="ralph/sprint"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/ralph/ralph-commit.sh [--target <branch>] [--dry-run]
+Usage: ./scripts/ralph/ralph-commit.sh [--target <branch>] [--dry-run] [--keep]
 
 Behavior:
   1. Validates scripts/ralph/prd.json has all userStories with passes=true
@@ -30,6 +31,7 @@ Options:
   --target BRANCH  Explicit merge target branch (overrides sprint default)
   --create-branch-if-missing  Create feature branch from current HEAD if missing
   --dry-run        Print planned actions without changing git state
+  --keep           Keep source feature branch after successful merge
   -h, --help       Show this help
 EOF
 }
@@ -273,6 +275,10 @@ while [ $# -gt 0 ]; do
       DRY_RUN=true
       shift
       ;;
+    --keep)
+      KEEP_SOURCE=true
+      shift
+      ;;
     --create-branch-if-missing)
       CREATE_BRANCH_IF_MISSING=true
       shift
@@ -367,6 +373,11 @@ echo "  feature branch: $FEATURE_BRANCH"
 echo "  target branch:  $TARGET_BRANCH"
 echo "  current branch: $CURRENT_BRANCH"
 echo "  archive first:  yes"
+if [ "$KEEP_SOURCE" = "true" ]; then
+  echo "  delete source:  no (--keep)"
+else
+  echo "  delete source:  yes"
+fi
 
 if [ "$FEATURE_BRANCH" = "$TARGET_BRANCH" ]; then
   echo "Feature and target branches are the same ($FEATURE_BRANCH); nothing to merge." >&2
@@ -410,5 +421,19 @@ if ! git -c merge.renames=false merge --no-ff "$FEATURE_BRANCH" -m "merge: Ralph
 fi
 
 enforce_transient_files_untracked
+
+if [ "$KEEP_SOURCE" != "true" ]; then
+  if git show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
+    if ! git branch -d "$FEATURE_BRANCH" >/dev/null 2>&1; then
+      git branch -D "$FEATURE_BRANCH" >/dev/null 2>&1 || {
+        echo "Merged successfully, but failed to delete source branch: $FEATURE_BRANCH" >&2
+        exit 1
+      }
+    fi
+    echo "Deleted source branch: $FEATURE_BRANCH"
+  fi
+else
+  echo "Kept source branch: $FEATURE_BRANCH"
+fi
 
 echo "Merge complete: $FEATURE_BRANCH -> $TARGET_BRANCH"

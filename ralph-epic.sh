@@ -35,6 +35,8 @@ Usage: ./scripts/ralph/ralph-epic.sh <command> [args]
 
 Commands:
   list                      List all epics ordered by priority
+  add --title <TEXT> [options]
+                            Add an epic non-interactively
   next                      Show the next eligible epic
   next-id                   Print only the next eligible epic ID
   start-next                Mark next eligible epic as active
@@ -48,6 +50,16 @@ Eligibility for "next":
   - status is ready or planned
   - all dependencies are status=done
   - lowest priority wins, then ID
+
+Add options:
+  --id EPIC-XXX             Explicit epic ID (default: next sequential ID)
+  --title TEXT              Epic title (required)
+  --priority N              Priority integer (default: next available)
+  --status STATUS           planned|ready|blocked|active|done|abandoned (default: planned)
+  --depends-on CSV          Comma-separated epic IDs (default: none)
+  --prd-path PATH           PRD markdown path (default generated under active sprint tasks)
+  --goal TEXT               Epic goal text (default: title)
+  --prompt-context TEXT     Prompt context used by ralph-prime when PRD markdown is missing
 EOF
 }
 
@@ -278,6 +290,170 @@ show_next_id() {
   printf '%s\n' "$next_id"
 }
 
+next_epic_id() {
+  local max_num
+  max_num="$(jq -r '[.epics[]?.id | select(test("^EPIC-[0-9]{3}$")) | capture("^EPIC-(?<n>[0-9]{3})$").n | tonumber] | max // 0' "$EPICS_FILE")"
+  printf 'EPIC-%03d\n' "$((max_num + 1))"
+}
+
+next_priority() {
+  local max_priority
+  max_priority="$(jq -r '[.epics[]?.priority | tonumber] | max // 0' "$EPICS_FILE")"
+  printf '%s\n' "$((max_priority + 1))"
+}
+
+sanitize_slug() {
+  local raw="$1"
+  printf '%s' "$raw" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's|[^a-z0-9._-]+|-|g' \
+    | sed -E 's|^-+||; s|-+$||'
+}
+
+default_prd_path_for_epic() {
+  local epic_id="$1"
+  local title="$2"
+  local active_sprint
+  active_sprint="$(get_active_sprint || true)"
+  [ -n "$active_sprint" ] || fail "No active sprint. Use ./scripts/ralph/ralph-sprint.sh use <sprint-name> first."
+
+  local epic_num slug
+  epic_num="$(printf '%s\n' "$epic_id" | sed -E 's/^EPIC-([0-9]{3})$/\1/')"
+  slug="$(sanitize_slug "$title")"
+  [ -n "$slug" ] || slug="epic-${epic_num}"
+  printf 'scripts/ralph/tasks/%s/prd-epic-%s-%s.md\n' "$active_sprint" "$epic_num" "$slug"
+}
+
+add_epic() {
+  local epic_id=""
+  local title=""
+  local priority=""
+  local status="planned"
+  local depends_csv=""
+  local prd_path=""
+  local goal=""
+  local prompt_context=""
+  shift
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --id)
+        epic_id="${2:-}"
+        shift 2
+        ;;
+      --title)
+        title="${2:-}"
+        shift 2
+        ;;
+      --priority)
+        priority="${2:-}"
+        shift 2
+        ;;
+      --status)
+        status="${2:-}"
+        shift 2
+        ;;
+      --depends-on)
+        depends_csv="${2:-}"
+        shift 2
+        ;;
+      --prd-path)
+        prd_path="${2:-}"
+        shift 2
+        ;;
+      --goal)
+        goal="${2:-}"
+        shift 2
+        ;;
+      --prompt-context)
+        prompt_context="${2:-}"
+        shift 2
+        ;;
+      *)
+        fail "Unknown add option '$1'"
+        ;;
+    esac
+  done
+
+  [ -n "$title" ] || fail "Usage: add --title <TEXT> [options]"
+
+  case "$status" in
+    planned|ready|blocked|active|done|abandoned) ;;
+    *) fail "Invalid status '$status'. Use: planned|ready|blocked|active|done|abandoned" ;;
+  esac
+
+  if [ -z "$epic_id" ]; then
+    epic_id="$(next_epic_id)"
+  fi
+  if [[ ! "$epic_id" =~ ^EPIC-[0-9]{3}$ ]]; then
+    fail "Invalid epic ID '$epic_id'. Expected format: EPIC-XXX"
+  fi
+
+  jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1 \
+    && fail "Epic ID already exists: $epic_id"
+
+  if [ -z "$priority" ]; then
+    priority="$(next_priority)"
+  fi
+  [[ "$priority" =~ ^[0-9]+$ ]] || fail "Priority must be an integer."
+
+  if [ -z "$goal" ]; then
+    goal="$title"
+  fi
+  if [ -z "$prd_path" ]; then
+    prd_path="$(default_prd_path_for_epic "$epic_id" "$title")"
+  fi
+
+  local -a depends_arr=()
+  if [ -n "$depends_csv" ]; then
+    IFS=',' read -r -a depends_arr <<< "$depends_csv"
+  fi
+
+  local dep
+  for dep in "${depends_arr[@]}"; do
+    dep="$(printf '%s' "$dep" | xargs)"
+    [ -n "$dep" ] || continue
+    [ "$dep" != "$epic_id" ] || fail "Epic $epic_id cannot depend on itself."
+    jq -e --arg id "$dep" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1 \
+      || fail "Dependency epic not found: $dep"
+  done
+
+  local depends_json
+  depends_json="$(
+    printf '%s\n' "${depends_arr[@]}" \
+      | awk 'NF{gsub(/^[ \t]+|[ \t]+$/, "", $0); if(length) print}' \
+      | jq -R . \
+      | jq -s .
+  )"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  jq --arg id "$epic_id" \
+     --arg title "$title" \
+     --argjson priority "$priority" \
+     --arg status "$status" \
+     --arg prd "$prd_path" \
+     --arg goal "$goal" \
+     --arg prompt "$prompt_context" \
+     --argjson depends "$depends_json" '
+    .epics += [{
+      id: $id,
+      title: $title,
+      priority: $priority,
+      status: $status,
+      dependsOn: $depends,
+      prdPaths: [$prd],
+      goal: $goal,
+      openQuestions: [],
+      promptContext: $prompt
+    }]
+    | if $status == "active" then .activeEpicId = $id else . end
+  ' "$EPICS_FILE" > "$tmp_file"
+  mv "$tmp_file" "$EPICS_FILE"
+
+  echo "Added epic: $epic_id - $title"
+}
+
 main() {
   require_cmd jq
 
@@ -295,6 +471,10 @@ main() {
   case "$cmd" in
     list)
       list_epics
+      ;;
+    add)
+      shift
+      add_epic add "$@"
       ;;
     next)
       show_next

@@ -15,10 +15,11 @@ LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
 TARGET_BRANCH=""
 DRY_RUN=false
+KEEP_SOURCE=false
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run]
+Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run] [--keep]
 
 Behavior:
   1. Validates active sprint exists and all epics are done/abandoned (legacy aborted also accepted)
@@ -30,6 +31,7 @@ Behavior:
 Options:
   --target BRANCH  Explicit merge target branch
   --dry-run        Print plan only
+  --keep           Keep sprint branch after successful merge
   -h, --help       Show this help
 USAGE
 }
@@ -116,6 +118,10 @@ while [ $# -gt 0 ]; do
       DRY_RUN=true
       shift
       ;;
+    --keep)
+      KEEP_SOURCE=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -167,6 +173,11 @@ if [ "$DRY_RUN" = "true" ]; then
   echo "  target branch: $TARGET_BRANCH"
   echo "  epics file:    $EPICS_FILE"
   echo "  archive root:  $ARCHIVE_DIR"
+  if [ "$KEEP_SOURCE" = "true" ]; then
+    echo "  delete source: no (--keep)"
+  else
+    echo "  delete source: yes"
+  fi
   exit 0
 fi
 
@@ -231,6 +242,17 @@ if [ -n "$(git status --porcelain -- "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$
   if ! git diff --cached --quiet; then
     git commit -m "chore(ralph): clear active sprint state after sprint commit"
   fi
+fi
+
+if [ "$KEEP_SOURCE" != "true" ]; then
+  if git show-ref --verify --quiet "refs/heads/$SPRINT_BRANCH"; then
+    if ! git branch -d "$SPRINT_BRANCH" >/dev/null 2>&1; then
+      git branch -D "$SPRINT_BRANCH" >/dev/null 2>&1 || fail "Merged successfully, but failed to delete sprint branch: $SPRINT_BRANCH"
+    fi
+    echo "Deleted source sprint branch: $SPRINT_BRANCH"
+  fi
+else
+  echo "Kept sprint branch: $SPRINT_BRANCH"
 fi
 
 echo "Sprint merge complete: $SPRINT_BRANCH -> $TARGET_BRANCH"

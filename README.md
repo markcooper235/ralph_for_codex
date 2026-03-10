@@ -53,6 +53,23 @@ Install skills globally (optional):
 bash /path/to/ralph/install.sh --install-skills
 ```
 
+## Framework Smoke Suite
+
+Run install-repo E2E sanity checks in a disposable project:
+
+```bash
+bash scripts/smoke/e2e-sanity.sh
+# Optional: include real ralph.sh loop runs + token summary
+bash scripts/smoke/e2e-sanity.sh --with-loop
+```
+
+Notes:
+- Local default uses real `codex`.
+- CI mode (`--ci`) uses `scripts/smoke/mock-codex.sh` by default for deterministic checks (no Codex auth required).
+- Override with `--real-codex` or `--mock-codex` when needed.
+- `--with-loop` runs actual Ralph loop iterations for standalone + sprint epic flows and prints token totals from loop logs.
+- Uses throwaway temp directories and auto-cleans on success/failure.
+
 ### Install as Codex skills (recommended)
 
 If you want to use the included skills (`prd`, `ralph`, `setup-ralph-for-codex`) in any project, install them once:
@@ -105,6 +122,9 @@ cp prompts/*.md ~/.codex/prompts/
 Use the wrapper to collect your feature concept, generate `tasks/prd-[feature-name].md`, and convert to `scripts/ralph/prd.json` in one flow:
 
 ```bash
+# If local skills changed, refresh global copies first
+bash ./install.sh --install-skills
+
 ./scripts/ralph/ralph-prd.sh
 ```
 
@@ -182,6 +202,7 @@ Use epic backlog sequencing to decide what to run next before preparing each loo
 ./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-epic.sh next
 ./scripts/ralph/ralph-epic.sh start-next
+./scripts/ralph/ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Planning context"
 ./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
 ./scripts/ralph/ralph-epic.sh abandon EPIC-009 "superseded by EPIC-011"
 ./scripts/ralph/ralph-epic.sh remove EPIC-009
@@ -198,6 +219,10 @@ Recommended cycle:
 Notes:
 - `abandon` keeps an epic in backlog history but excludes it from eligibility.
 - `remove` permanently deletes only epics already marked `abandoned`.
+- Fresh installs seed `sprint-1`; use `create` for additional sprints.
+- Use `ralph-epic.sh add ...` for non-interactive epic creation in automation scripts.
+- `ralph-commit.sh` deletes the merged source feature branch by default; use `--keep` to retain it.
+- `ralph-sprint-commit.sh` deletes the merged sprint branch by default; use `--keep` to retain it.
 - `ralph-prime.sh --auto` now auto-commits primed epic status changes by default.
 - `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
@@ -214,7 +239,7 @@ Notes:
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`); status reports both active and next epic |
-| `ralph-epic.sh` | CLI to list/select/activate epic order within active sprint |
+| `ralph-epic.sh` | CLI to list/select/activate epic order and add epics non-interactively within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
 | `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |

@@ -27,12 +27,17 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Epic backlog sequencing helpers
 ./ralph-epic.sh list
 ./ralph-epic.sh start-next
+./ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Epic planning context"
 
 # Prime prd.json for active/next eligible epic
 ./ralph-prime.sh
 
 # Run Ralph loop (from your project that has prd.json)
 ./ralph.sh [max_iterations]
+
+# Framework sanity smoke test (disposable install-repo E2E)
+./scripts/smoke/e2e-sanity.sh --ci
+./scripts/smoke/e2e-sanity.sh --with-loop
 
 # Archive / merge / cleanup lifecycle
 ./ralph-commit.sh
@@ -63,12 +68,13 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 ## Recommended Flow
 
 1. Run `./doctor.sh`
-2. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
-3. Select next epic via `./ralph-epic.sh start-next`
-4. Prime loop input via `./ralph-prime.sh`
-5. Run loop via `./ralph.sh [max_iterations]`
-6. Run `./ralph-commit.sh` to archive + merge to sprint branch (it auto-marks the matching epic `done`)
-7. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
+2. If you changed local skills, run `./install.sh --install-skills` before PRD/prime runs
+3. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
+4. Select next epic via `./ralph-epic.sh start-next`
+5. Prime loop input via `./ralph-prime.sh`
+6. Run loop via `./ralph.sh [max_iterations]`
+7. Run `./ralph-commit.sh` to archive + merge to sprint branch (it auto-marks the matching epic `done`)
+8. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
 
 Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
@@ -83,10 +89,14 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Stories should be small enough to complete in one context window
 - Always update AGENTS.md with discovered patterns for future iterations
 - `ralph-epic.sh` requires an active sprint; use `ralph-sprint.sh use <sprint-name>` first if needed.
+- Fresh installs already seed `sprint-1`; create additional sprints only when needed.
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
+- `ralph-epic.sh add ...` provides a non-interactive epic creation path; use it for automation.
+- `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default; pass `--keep` to retain them.
 - OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.
 - Fresh-install epics should include `promptContext` so `ralph-prime.sh` can generate missing PRD markdown when starter `prdPaths` are not yet on disk.
 - `ralph-sprint.sh status` should treat missing PRDs with `promptContext` as generatable warnings, and only fail for missing PRDs that cannot be generated.
 - `ralph-sprint.sh status` now reports both `Active epic` and `Next epic` to avoid confusion when an epic is already active.
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.
+- Framework sanity smoke checks live in `scripts/smoke/e2e-sanity.sh`; local runs default to real Codex, CI runs with mock Codex for deterministic validation.

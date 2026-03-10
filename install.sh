@@ -125,6 +125,9 @@ copy_file() {
   local src="$1"
   local dst="$2"
   [ -f "$src" ] || fail "Missing source file: $src"
+  if [ "$(cd "$(dirname "$src")" && pwd)/$(basename "$src")" = "$(cd "$(dirname "$dst")" && pwd)/$(basename "$dst")" ]; then
+    return 0
+  fi
   cp "$src" "$dst"
 }
 
