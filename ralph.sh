@@ -160,16 +160,23 @@ has_live_run_artifacts() {
 }
 
 render_prompt() {
-  local ralph_dir prd_file progress_file
+  local ralph_dir prd_file progress_file local_prompt_file
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
   prd_file="$(escape_sed_replacement "$PRD_FILE")"
   progress_file="$(escape_sed_replacement "$PROGRESS_FILE")"
+  local_prompt_file="$SCRIPT_DIR/prompt.local.md"
 
   sed \
     -e "s|{{RALPH_DIR}}|$ralph_dir|g" \
     -e "s|{{PRD_FILE}}|$prd_file|g" \
     -e "s|{{PROGRESS_FILE}}|$progress_file|g" \
     "$SCRIPT_DIR/prompt.md"
+
+  if [ -f "$local_prompt_file" ]; then
+    printf '\n\n## Local Prompt Extensions\n'
+    printf '(Loaded from `%s`; preserved across framework updates.)\n\n' "$local_prompt_file"
+    cat "$local_prompt_file"
+  fi
 }
 
 has_complete_token() {

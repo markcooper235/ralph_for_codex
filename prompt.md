@@ -25,8 +25,9 @@ You are the coding agent for one Ralph loop iteration.
    - Do not run full suite per story by default.
 5. For UI criteria, validate in browser:
    - Preferred: Playwright; fallback: Cypress.
-   - Determine role with `./scripts/ralph/ralph-ui-role.sh`.
-   - Validate in authenticated required-role context.
+   - Determine the required role from acceptance criteria and touched UI/auth surfaces.
+   - If present, use `./scripts/ralph/ralph-ui-role.sh` as a repo-specific helper.
+   - Validate in authenticated required-role context (or role matrix if applicable).
    - Missing/wrong role is a blocker; fix before claiming acceptance.
 6. If checks pass, commit:
    - `feat: [Story ID] - [Story Title]`

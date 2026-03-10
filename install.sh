@@ -142,7 +142,6 @@ copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
-copy_file "$SOURCE_DIR/ralph-ui-role.sh" "$DEST_DIR_REL/ralph-ui-role.sh"
 copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
 copy_file "$SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
@@ -166,7 +165,6 @@ chmod +x \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
-  "$DEST_DIR_REL/ralph-ui-role.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 
 if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then

@@ -194,6 +194,11 @@ Ralph will:
 8. Before final completion, run `./scripts/ralph/ralph-verify.sh --full` for regression gate
 9. Repeat until all stories pass or max iterations reached
 
+### Repo-specific Utilities
+
+Use `scripts/ralph/prompt.local.md` for install-repo-specific instructions (for example, custom auth setup helpers or local utility scripts).  
+`ralph.sh` appends this file to the generated loop prompt when present, and framework updates via `install.sh` do not overwrite it.
+
 ### Epic-level sequencing
 
 Use epic backlog sequencing to decide what to run next before preparing each loop:
@@ -235,7 +240,6 @@ Notes:
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph-prime.sh` | Prime `prd.json` from next eligible epic, or fall back to active epic when needed; auto-commits primed epic state in `--auto` mode |
 | `ralph-verify.sh` | Standardized verification wrapper (`--targeted` per iteration, `--full` before completion) |
-| `ralph-ui-role.sh` | Recommends auth role/matrix (Player/DM/Admin) for UI validation scope |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
 | `scripts/openspec/openspec-skill.sh` | Optional OpenSpec adapter for converting OpenSpec changes into `prd.json` |
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`); status reports both active and next epic |
@@ -245,6 +249,7 @@ Notes:
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
 | `ralph-cleanup.sh` | Reset local Ralph artifacts (including active markers) without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
+| `prompt.local.md` | Optional repo-local prompt extension automatically appended by `ralph.sh`; use for one-off utilities/policies that must survive framework updates |
 | `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
