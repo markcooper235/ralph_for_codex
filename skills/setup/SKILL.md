@@ -5,89 +5,77 @@ description: "Install Ralph (Codex port) as Codex skills and configure a target 
 
 # Setup Ralph for Codex
 
-This skill helps you:
-1) Install this repo’s skills into Codex (`~/.codex/skills`)
-2) Install/configure Ralph in a target project (`scripts/ralph/`)
-3) Run a quick smoke test
+Install Ralph skills, install Ralph runtime into a project, and run a smoke test.
 
-## What to ask the user first (only if needed)
+## Non-Negotiables
 
-1. Where is the target project root directory?
-2. Do they want skills installed globally (recommended) or project-local only?
-3. Do they want to start with the included smoke PRD, or convert an existing PRD?
+- Run `install.sh` from this repo.
+- Use an absolute target path for `--project`.
+- Verify with `./scripts/ralph/doctor.sh` after install.
+- Run at least one smoke iteration before real feature work.
+- Keep project-specific checks in `scripts/ralph/prompt.md`.
+
+## Ask Only If Missing
+
+1. Target project root path?
+2. Install skills globally (`~/.codex/skills`) or project-local only?
+3. Start with smoke PRD or convert an existing PRD?
 
 ## Steps
 
 ### A) Install skills globally (recommended)
 
-Run from **this repo** (where `install.sh` exists), or provide the absolute path:
+Run from this repo (where `install.sh` exists):
 
 ```bash
 bash ./install.sh --install-skills
 ```
 
-This copies all folders in `skills/` into `~/.codex/skills/`.
+Copies all `skills/*` folders to `~/.codex/skills/`.
 
-### B) Install Ralph into the target project
-
-From **this repo**, run:
+### B) Install Ralph into target project
 
 ```bash
 bash ./install.sh --project /absolute/path/to/target-project
 ```
 
-This installs into `/absolute/path/to/target-project/scripts/ralph/`:
-- `ralph.sh` (loop runner)
-- `doctor.sh` (sanity checks)
-- `prompt.md` (agent instructions)
-- `prd.json.example`
-- `epics.json.example`
-- `ralph-epic.sh` (epic sequencing helper)
-- `ralph-prime.sh` (auto-prime helper)
-- `ralph-sprint-commit.sh` (sprint closeout merge helper)
-- (optional) smoke `prd.json` + `progress.txt` if missing
-- `epics.json` if missing
+Installs `scripts/ralph/` with loop scripts, helpers, templates, and optional smoke files if missing.
 
-### C) Verify installation
+### C) Verify install
 
-From the target project root:
+From target project root:
 
 ```bash
 ./scripts/ralph/doctor.sh
 ```
 
-### D) Smoke-run (recommended)
+### D) Smoke run (recommended)
 
-From the target project root:
+From target project root:
 
 ```bash
 ./scripts/ralph/ralph.sh 1
 ```
 
-Expected outcome:
-- Creates `RALPH_SMOKE.txt` in repo root (from the smoke PRD)
-- Creates a commit `feat: US-001 - ...`
-- Sets `passes: true` in `scripts/ralph/prd.json`
-- Appends to `scripts/ralph/progress.txt`
-- Exits `0` (loop complete)
+Expected:
 
-### E) Configure a real feature workflow
+- `RALPH_SMOKE.txt` created
+- Commit like `feat: US-001 - ...`
+- `passes: true` for first story in `scripts/ralph/prd.json`
+- Progress appended to `scripts/ralph/progress.txt`
+- Exit code `0`
 
-1) Use the PRD skill to write a markdown PRD (saved in `tasks/`):
+### E) Real feature workflow
 
-“Load the prd skill and create a PRD for …”
-
-2) Convert it to Ralph JSON:
-
-“Load the ralph skill and convert tasks/prd-xxx.md to scripts/ralph/prd.json”
-
-3) Run the loop:
+1. Create markdown PRD in `tasks/` using the PRD skill.
+2. Convert it using the Ralph skill into `scripts/ralph/prd.json`.
+3. Run:
 
 ```bash
 ./scripts/ralph/ralph.sh 10
 ```
 
-### Epic sequencing before each loop
+## Epic Sequencing
 
 ```bash
 ./scripts/ralph/ralph-epic.sh list
@@ -96,13 +84,13 @@ Expected outcome:
 ./scripts/ralph/ralph-prime.sh
 ```
 
-After an epic completes:
+After epic completion:
 
 ```bash
 ./scripts/ralph/ralph-commit.sh
 ```
 
-After the sprint is fully done:
+After sprint completion:
 
 ```bash
 ./scripts/ralph/ralph-sprint-commit.sh
@@ -110,5 +98,5 @@ After the sprint is fully done:
 
 ## Notes
 
-- If the project has lint/test/typecheck commands, add them to `scripts/ralph/prompt.md` (project-specific).
-- Keep `scripts/ralph/.codex-last-message*.txt` ignored; `install.sh` adds `.gitignore` entries automatically.
+- Add project-specific lint/test/typecheck commands to `scripts/ralph/prompt.md`.
+- Keep `scripts/ralph/.codex-last-message*.txt` ignored (installer updates `.gitignore`).
