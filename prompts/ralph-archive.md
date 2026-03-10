@@ -3,23 +3,18 @@ description: Archive the current Ralph run (copy prd.json and progress.txt into 
 argument-hint: none
 ---
 
-Archive the current Ralph run for the active project.
+Archive the current Ralph run.
 
-**Steps**
-
-1. Validate this is a Ralph-enabled repo:
-   - Confirm `scripts/ralph` exists.
-   - Confirm at least one of `scripts/ralph/prd.json` or `scripts/ralph/progress.txt` exists.
-
-2. Run the archive command:
-   ```bash
-   ./scripts/ralph/ralph-archive.sh
-   ```
-
-3. Report results:
-   - Archive destination path printed by the command.
+## Steps
+1. Validate repo:
+   - `scripts/ralph` exists.
+   - At least one of `scripts/ralph/prd.json` or `scripts/ralph/progress.txt` exists.
+2. Run:
+   - `./scripts/ralph/ralph-archive.sh`
+3. Report:
+   - Archive destination path.
    - Whether `prd.json` and `progress.txt` were copied.
 
-**Guardrails**
+## Guardrails
 - Do not delete existing archive folders.
-- If `scripts/ralph/ralph-archive.sh` is missing, explain what is missing and stop.
+- If `scripts/ralph/ralph-archive.sh` is missing, explain and stop.

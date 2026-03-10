@@ -3,24 +3,18 @@ description: Finalize active sprint by validating epic completion, archiving spr
 argument-hint: [--target master|main] [--dry-run]
 ---
 
-Close out the active sprint after all epics are done/abandoned.
+Close out the active sprint.
 
-**Steps**
+## Steps
+1. Validate: `scripts/ralph/ralph-sprint-commit.sh` exists and is executable.
+2. Run:
+   - `./scripts/ralph/ralph-sprint-commit.sh {{args}}`
+3. Report:
+   - Sprint merged.
+   - Target branch used.
+   - Sprint archive path.
 
-1. Validate this is a Ralph-enabled repo:
-   - Confirm `scripts/ralph/ralph-sprint-commit.sh` exists and is executable.
-
-2. Run sprint closeout:
-   ```bash
-   ./scripts/ralph/ralph-sprint-commit.sh {{args}}
-   ```
-
-3. Report results:
-   - Sprint merged
-   - Target branch used
-   - Sprint archive path emitted
-
-**Guardrails**
-- Do not run if sprint still has active/planned epics.
-- Do not bypass sprint archive step.
-- If preconditions fail, explain the failure and stop.
+## Guardrails
+- Do not run while sprint still has active/planned epics.
+- Do not bypass sprint archive.
+- On precondition failure, explain and stop.

@@ -3,25 +3,18 @@ description: Cleanup active Ralph run-state files without archiving
 argument-hint: none
 ---
 
-Clean up current Ralph run-state files for the active project.
+Clean active Ralph run-state files without archiving.
 
-**Steps**
+## Steps
+1. Validate repo: `scripts/ralph` exists.
+2. Run:
+   - `./scripts/ralph/ralph-cleanup.sh`
+3. Report removed files (when present), for example:
+   - `scripts/ralph/progress.txt`
+   - `scripts/ralph/.last-branch`
+   - `scripts/ralph/.codex-last-message.txt`
+   - `scripts/ralph/.codex-last-message-iter-*.txt`
 
-1. Validate this is a Ralph-enabled repo:
-   - Confirm `scripts/ralph` exists.
-
-2. Run cleanup command:
-   ```bash
-   ./scripts/ralph/ralph-cleanup.sh
-   ```
-
-3. Report results:
-   - Which files were removed (if present), such as:
-     - `scripts/ralph/progress.txt`
-     - `scripts/ralph/.last-branch`
-     - `scripts/ralph/.codex-last-message.txt`
-     - `scripts/ralph/.codex-last-message-iter-*.txt`
-
-**Guardrails**
-- Cleanup must not create archives.
-- If `scripts/ralph/ralph-cleanup.sh` is missing, explain what is missing and stop.
+## Guardrails
+- Do not create archives.
+- If `scripts/ralph/ralph-cleanup.sh` is missing, explain and stop.

@@ -3,24 +3,18 @@ description: Archive completed Ralph run and merge PRD branch into sprint branch
 argument-hint: [--target <branch>] [--dry-run]
 ---
 
-Finalize a completed Ralph run by archiving artifacts first, then merging the PRD branch.
+Finalize a completed Ralph run: archive first, then merge the PRD branch.
 
-**Steps**
+## Steps
+1. Validate: `scripts/ralph/ralph-commit.sh` exists and is executable.
+2. Run:
+   - `./scripts/ralph/ralph-commit.sh {{args}}`
+3. Report:
+   - Feature branch merged.
+   - Target branch used (active sprint by default unless `--target`).
+   - Archive path emitted by `ralph-archive.sh`.
 
-1. Validate this is a Ralph-enabled repo:
-   - Confirm `scripts/ralph/ralph-commit.sh` exists and is executable.
-
-2. Run finalize command:
-   ```bash
-   ./scripts/ralph/ralph-commit.sh {{args}}
-   ```
-
-3. Report results:
-   - Feature branch merged
-   - Target branch used (active sprint branch by default, unless `--target` provided)
-   - Archive folder path emitted by `ralph-archive.sh`
-
-**Guardrails**
-- Do not bypass archive step.
-- Do not merge if PRD stories are not all `passes: true`.
-- If preconditions fail, explain the failure and stop.
+## Guardrails
+- Do not bypass archive.
+- Do not merge unless all PRD stories are `passes: true`.
+- On precondition failure, explain and stop.

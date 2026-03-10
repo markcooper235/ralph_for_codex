@@ -3,65 +3,32 @@ description: Start a new change using the experimental artifact workflow (OPSX)
 argument-hint: command arguments
 ---
 
-Start a new change using the experimental artifact-driven approach.
+Start a new OpenSpec change and prepare the first artifact, then stop.
 
-**Input**: The argument after `/opsx:new` is the change name (kebab-case), OR a description of what the user wants to build.
+## Input
+- `/opsx:new <name-or-description>`.
+- If missing, ask what the user wants to build and derive kebab-case name.
 
-**Steps**
+## Steps
+1. Choose schema:
+   - Use default schema unless user explicitly requests another.
+   - If user asks available workflows, run `openspec schemas --json` and let them choose.
+2. Create change:
+   - `openspec new change "<name>"` (add `--schema <name>` only when explicitly chosen).
+3. Show status:
+   - `openspec status --change "<name>"`
+4. Find first `ready` artifact and fetch instructions:
+   - `openspec instructions <artifact-id> --change "<name>"`
+5. Stop and wait for user direction.
 
-1. **If no input provided, ask what they want to build**
+## Output
+- Change name/location.
+- Schema/workflow and artifact sequence.
+- Current progress (`0/N` style).
+- First artifact template/instructions.
+- Prompt to run `/opsx:continue`.
 
-   Use the **AskUserQuestion tool** (open-ended, no preset options) to ask:
-   > "What change do you want to work on? Describe what you want to build or fix."
-
-   From their description, derive a kebab-case name (e.g., "add user authentication" → `add-user-auth`).
-
-   **IMPORTANT**: Do NOT proceed without understanding what the user wants to build.
-
-2. **Determine the workflow schema**
-
-   Use the default schema (omit `--schema`) unless the user explicitly requests a different workflow.
-
-   **Use a different schema only if the user mentions:**
-   - A specific schema name → use `--schema <name>`
-   - "show workflows" or "what workflows" → run `openspec schemas --json` and let them choose
-
-   **Otherwise**: Omit `--schema` to use the default.
-
-3. **Create the change directory**
-   ```bash
-   openspec new change "<name>"
-   ```
-   Add `--schema <name>` only if the user requested a specific workflow.
-   This creates a scaffolded change at `openspec/changes/<name>/` with the selected schema.
-
-4. **Show the artifact status**
-   ```bash
-   openspec status --change "<name>"
-   ```
-   This shows which artifacts need to be created and which are ready (dependencies satisfied).
-
-5. **Get instructions for the first artifact**
-   The first artifact depends on the schema. Check the status output to find the first artifact with status "ready".
-   ```bash
-   openspec instructions <first-artifact-id> --change "<name>"
-   ```
-   This outputs the template and context for creating the first artifact.
-
-6. **STOP and wait for user direction**
-
-**Output**
-
-After completing the steps, summarize:
-- Change name and location
-- Schema/workflow being used and its artifact sequence
-- Current status (0/N artifacts complete)
-- The template for the first artifact
-- Prompt: "Ready to create the first artifact? Run `/opsx:continue` or just describe what this change is about and I'll draft it."
-
-**Guardrails**
-- Do NOT create any artifacts yet - just show the instructions
-- Do NOT advance beyond showing the first artifact template
-- If the name is invalid (not kebab-case), ask for a valid name
-- If a change with that name already exists, suggest using `/opsx:continue` instead
-- Pass --schema if using a non-default workflow
+## Guardrails
+- Do not create artifacts in this command.
+- If name is invalid, ask for valid kebab-case.
+- If change exists, suggest `/opsx:continue`.
