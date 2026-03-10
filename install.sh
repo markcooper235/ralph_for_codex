@@ -131,6 +131,16 @@ copy_file() {
   cp "$src" "$dst"
 }
 
+copy_file_if_missing() {
+  local src="$1"
+  local dst="$2"
+  [ -f "$src" ] || fail "Missing source file: $src"
+  if [ -f "$dst" ]; then
+    return 0
+  fi
+  copy_file "$src" "$dst"
+}
+
 copy_file "$SOURCE_DIR/ralph.sh" "$DEST_DIR_REL/ralph.sh"
 copy_file "$SOURCE_DIR/ralph-prd.sh" "$DEST_DIR_REL/ralph-prd.sh"
 copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
@@ -146,6 +156,9 @@ copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh
 copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
 copy_file "$SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
 copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
+copy_file "$SOURCE_DIR/README-local.md" "$DEST_DIR_REL/README-local.md"
+copy_file "$SOURCE_DIR/new-local-extension.sh.example" "$DEST_DIR_REL/new-local-extension.sh.example"
+copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.md"
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"

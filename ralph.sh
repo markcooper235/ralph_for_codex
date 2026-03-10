@@ -7,6 +7,7 @@ set -euo pipefail
 MAX_ITERATIONS=10
 BOOTSTRAP_PRD=false
 ALLOW_EPIC_FALLBACK=false
+AUTO_FINALIZE_EPIC=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
@@ -34,15 +35,20 @@ for arg in "$@"; do
     --allow-epic-fallback)
       ALLOW_EPIC_FALLBACK=true
       ;;
+    --auto-finalize-epic)
+      AUTO_FINALIZE_EPIC=true
+      ;;
     -h|--help)
-      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd] [--allow-epic-fallback]"
+      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd] [--allow-epic-fallback] [--auto-finalize-epic]"
       echo ""
       echo "Options:"
       echo "  --bootstrap-prd     Attempt to auto-generate scripts/ralph/prd.json when missing/empty."
       echo "  --allow-epic-fallback  Allow switching from completed standalone PRD back into epic priming."
+      echo "  --auto-finalize-epic  When all stories pass, mark active epic done and commit epics.json."
       echo ""
       echo "Environment:"
       echo "  RALPH_BOOTSTRAP_PRD=1  Enable PRD bootstrap behavior."
+      echo "  RALPH_AUTO_FINALIZE_EPIC=1  Enable auto-finalize behavior."
       exit 0
       ;;
     *)
@@ -62,6 +68,9 @@ if [ "${RALPH_BOOTSTRAP_PRD:-0}" = "1" ] || [ "${RALPH_BOOTSTRAP_PRD:-}" = "true
 fi
 if [ "${RALPH_ALLOW_EPIC_FALLBACK:-0}" = "1" ] || [ "${RALPH_ALLOW_EPIC_FALLBACK:-}" = "true" ]; then
   ALLOW_EPIC_FALLBACK=true
+fi
+if [ "${RALPH_AUTO_FINALIZE_EPIC:-0}" = "1" ] || [ "${RALPH_AUTO_FINALIZE_EPIC:-}" = "true" ]; then
+  AUTO_FINALIZE_EPIC=true
 fi
 
 require_cmd() {
@@ -494,6 +503,63 @@ ensure_epic_status_synced_with_prd() {
   return 0
 }
 
+auto_finalize_active_epic_if_enabled() {
+  [ "$AUTO_FINALIZE_EPIC" = "true" ] || return 0
+  [ -n "${EPICS_FILE:-}" ] || return 0
+  [ -f "$EPICS_FILE" ] || return 0
+  jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1 || return 0
+
+  local prd_mode
+  prd_mode="$(get_active_prd_mode || true)"
+  if [ "$prd_mode" != "epic" ]; then
+    # Standalone PRD runs must never mutate sprint epic state.
+    return 0
+  fi
+
+  if ! prd_all_passes; then
+    return 0
+  fi
+
+  local epic_id epic_status status_line
+  epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
+  [ -n "$epic_id" ] || epic_id="$(infer_epic_id_from_prd_branch "$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)" || true)"
+  if [ -z "$epic_id" ]; then
+    echo "Auto-finalize skipped: no active epic could be resolved." >&2
+    return 0
+  fi
+
+  if ! jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1; then
+    echo "Auto-finalize failed: resolved epic $epic_id does not exist in $EPICS_FILE." >&2
+    return 1
+  fi
+
+  epic_status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .status // ""' "$EPICS_FILE")"
+  case "$epic_status" in
+    done|abandoned|aborted)
+      return 0
+      ;;
+  esac
+
+  # Guardrail: only auto-finalize when no extra pending work exists in the tree.
+  status_line="$(git status --porcelain --untracked-files=normal || true)"
+  if [ -n "$status_line" ]; then
+    echo "Auto-finalize skipped: worktree is not clean." >&2
+    printf '%s\n' "$status_line" >&2
+    echo "Commit or clean pending changes, then run: ./scripts/ralph/ralph-epic.sh set-status $epic_id done" >&2
+    return 0
+  fi
+
+  bash "$SCRIPT_DIR/ralph-epic.sh" set-status "$epic_id" done >/dev/null
+
+  git add "$EPICS_FILE"
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  git commit -m "chore(ralph): auto-finalize $epic_id done after loop completion"
+  echo "Auto-finalized epic $epic_id as done."
+}
+
 require_cmd jq
 require_cmd git
 require_cmd sed
@@ -687,6 +753,11 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   
   # Check for completion signal
   if has_complete_token "$CODEX_ITER_LAST_MESSAGE_FILE" || prd_all_passes; then
+    if ! auto_finalize_active_epic_if_enabled; then
+      echo "Ralph finished stories but epic auto-finalization failed." >&2
+      exit 1
+    fi
+
     echo ""
     echo "Ralph completed all tasks!"
     echo "Completed at iteration $i of $MAX_ITERATIONS"
