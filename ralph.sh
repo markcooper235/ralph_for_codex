@@ -457,6 +457,30 @@ infer_epic_id_from_prd_branch() {
   infer_epic_id_from_branch_path "$prd_branch"
 }
 
+to_repo_relative_path() {
+  local path="$1"
+  if [[ "$path" == "$WORKSPACE_ROOT/"* ]]; then
+    printf '%s\n' "${path#"$WORKSPACE_ROOT"/}"
+    return 0
+  fi
+  printf '%s\n' "$path"
+}
+
+has_tracked_changes_outside_file() {
+  local keep_path="$1"
+  local keep_rel
+  keep_rel="$(to_repo_relative_path "$keep_path")"
+
+  if ! git diff --quiet -- . ":(exclude)$keep_rel"; then
+    return 0
+  fi
+  if ! git diff --cached --quiet -- . ":(exclude)$keep_rel"; then
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_epic_status_synced_with_prd() {
   local prd_branch epic_id epic_status
 
@@ -540,10 +564,10 @@ auto_finalize_active_epic_if_enabled() {
       ;;
   esac
 
-  # Guardrail: only auto-finalize when no extra pending work exists in the tree.
-  status_line="$(git status --porcelain --untracked-files=normal || true)"
-  if [ -n "$status_line" ]; then
-    echo "Auto-finalize skipped: worktree is not clean." >&2
+  # Guardrail: only commit epics.json in this path; never absorb unrelated tracked edits.
+  if has_tracked_changes_outside_file "$EPICS_FILE"; then
+    status_line="$(git status --porcelain --untracked-files=no || true)"
+    echo "Auto-finalize skipped: tracked changes exist outside $EPICS_FILE." >&2
     printf '%s\n' "$status_line" >&2
     echo "Commit or clean pending changes, then run: ./scripts/ralph/ralph-epic.sh set-status $epic_id done" >&2
     return 0
@@ -558,6 +582,37 @@ auto_finalize_active_epic_if_enabled() {
 
   git commit -m "chore(ralph): auto-finalize $epic_id done after loop completion"
   echo "Auto-finalized epic $epic_id as done."
+}
+
+require_archive_step_outside_loop_on_branch_change() {
+  local current_branch last_branch
+  [ -f "$PRD_FILE" ] || return 0
+  [ -f "$LAST_BRANCH_FILE" ] || return 0
+
+  current_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")"
+  last_branch="$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")"
+
+  if [ -z "$current_branch" ] || [ -z "$last_branch" ] || [ "$current_branch" = "$last_branch" ]; then
+    return 0
+  fi
+
+  if ! has_archived_run_for_branch "$last_branch"; then
+    echo "Detected PRD branch switch ($last_branch -> $current_branch)." >&2
+    echo "Ralph loop no longer archives in-loop." >&2
+    echo "Run archive outside the loop first:" >&2
+    echo "  ./scripts/ralph/ralph-commit.sh" >&2
+    echo "  or ./scripts/ralph/ralph-archive.sh" >&2
+    return 1
+  fi
+
+  if has_live_run_artifacts; then
+    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+      [ -f "$iter_log" ] || continue
+      rm -f "$iter_log"
+    done
+    [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+    echo "Removed stale local run artifacts from already-archived prior branch: $last_branch"
+  fi
 }
 
 require_cmd jq
@@ -624,92 +679,8 @@ if ! ensure_epic_status_synced_with_prd; then
   exit 1
 fi
 
-# Archive previous run if branch changed
-if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
-  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-  LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
-  
-  if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
-    if has_archived_run_for_branch "$LAST_BRANCH"; then
-      echo "Previous run ($LAST_BRANCH) already archived; continuing."
-      if has_live_run_artifacts; then
-        for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-          [ -f "$iter_log" ] || continue
-          rm -f "$iter_log"
-        done
-        [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
-        echo "   Removed stale local run artifacts from already-archived run."
-      fi
-    else
-      # Archive the previous run
-      DATE=$(date +%Y-%m-%d)
-      FOLDER_NAME=$(slugify_branch "$LAST_BRANCH")
-      [ -n "$FOLDER_NAME" ] || FOLDER_NAME="ralph-run"
-      ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
-      if [ -e "$ARCHIVE_FOLDER" ]; then
-        ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME-$(date +%H%M%S)"
-      fi
-      
-      echo "Archiving previous run: $LAST_BRANCH"
-      mkdir -p "$ARCHIVE_FOLDER"
-      MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
-
-      ITER_SOURCE_COUNT=0
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
-      done
-
-      PLAYWRIGHT_SOURCE_PRESENT=0
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
-
-      [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
-      [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
-      [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        cp "$iter_log" "$ARCHIVE_FOLDER/"
-      done
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
-
-      ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
-      PLAYWRIGHT_ARCHIVE_PRESENT=0
-      [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
-
-      {
-        echo "archive_time=$(date -Iseconds)"
-        echo "source_branch=$LAST_BRANCH"
-        echo "source_iter_logs=$ITER_SOURCE_COUNT"
-        echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
-        echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
-        echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
-      } > "$MANIFEST_FILE"
-
-      if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
-        echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
-        echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
-        exit 1
-      fi
-
-      if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
-        echo "Archive verification failed: .playwright-cli missing from archive output." >&2
-        echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
-        exit 1
-      fi
-
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        rm -f "$iter_log"
-      done
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
-      echo "   Archived to: $ARCHIVE_FOLDER"
-      
-      # Reset progress file for new run
-      echo "# Ralph Progress Log" > "$PROGRESS_FILE"
-      echo "Started: $(date)" >> "$PROGRESS_FILE"
-      echo "---" >> "$PROGRESS_FILE"
-    fi
-  fi
+if ! require_archive_step_outside_loop_on_branch_change; then
+  exit 1
 fi
 
 # Track current branch
@@ -737,6 +708,13 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo "═══════════════════════════════════════════════════════"
 
   CODEX_ITER_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-iter-$i.txt"
+
+  {
+    echo "status=running"
+    echo "iteration=$i"
+    echo "started_at=$(date -Iseconds)"
+  } >"$CODEX_ITER_LAST_MESSAGE_FILE"
+  cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
 
   if ! ensure_prd_ready; then
     echo "Iteration $i aborted: PRD file is not ready."

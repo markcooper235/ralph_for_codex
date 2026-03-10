@@ -232,6 +232,10 @@ Notes:
 - `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
 - `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
+- `ralph.sh` no longer performs run archiving in-loop; archive/merge stays in `ralph-commit.sh` (or `ralph-archive.sh` manually).
+- On PRD branch switch, `ralph.sh` requires the previous branch to already be archived and exits with guidance if not.
+- `ralph.sh --auto-finalize-epic` only commits `epics.json` and skips if other tracked files are dirty.
+- During active iterations, `scripts/ralph/.codex-last-message-iter-N.txt` is initialized with a small `status=running` marker for observability.
 
 ## Key Files
 
@@ -342,6 +346,7 @@ Optional supporting files:
 ## Archiving
 
 Epic archive/merge flow is handled by `./scripts/ralph/ralph-commit.sh`, which calls `ralph-archive.sh` first.
+`./scripts/ralph/ralph.sh` does not archive runs; it expects archive/merge to happen outside the loop.
 
 Sprint closeout/merge is handled by `./scripts/ralph/ralph-sprint-commit.sh`.
 
