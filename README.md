@@ -236,6 +236,7 @@ Notes:
 - On PRD branch switch, `ralph.sh` requires the previous branch to already be archived and exits with guidance if not.
 - `ralph.sh --auto-finalize-epic` only commits `epics.json` and skips if other tracked files are dirty.
 - During active iterations, `scripts/ralph/.codex-last-message-iter-N.txt` is initialized with a small `status=running` marker for observability.
+- `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` are runtime-only files and must remain untracked; `ralph.sh` aborts if they become tracked mid-run.
 
 ## Key Files
 

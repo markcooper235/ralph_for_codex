@@ -15,6 +15,7 @@ You are the coding agent for one Ralph loop iteration.
 - Do not merge; `/ralph-commit` handles merges.
 - Do not mark pass without evidence.
 - Do not commit broken code.
+- Never git-track runtime files: `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` must remain untracked.
 
 ## Iteration Workflow
 1. Confirm current branch matches PRD `branchName` (wrapper handles checkout/creation).

@@ -716,6 +716,11 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   } >"$CODEX_ITER_LAST_MESSAGE_FILE"
   cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
 
+  if ! ensure_transient_files_not_tracked; then
+    echo "Iteration $i aborted: transient Ralph runtime files became git-tracked." >&2
+    exit 1
+  fi
+
   if ! ensure_prd_ready; then
     echo "Iteration $i aborted: PRD file is not ready."
     exit 1
@@ -726,6 +731,12 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
   render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee /dev/stderr || true
+
+  if ! ensure_transient_files_not_tracked; then
+    echo "Iteration $i failed: Codex run re-tracked transient files (scripts/ralph/prd.json or progress.txt)." >&2
+    echo "Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
+    exit 1
+  fi
 
   cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
   
