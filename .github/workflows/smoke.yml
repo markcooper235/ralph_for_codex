@@ -20,6 +20,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+      - name: Set git user name and email
+        run: |
+          git config --global user.name "Mark Cooper"
+          git config --global user.email "markcooper235@github.com"
       - name: Run install-repo smoke suite
         run: bash scripts/smoke/e2e-sanity.sh --ci
