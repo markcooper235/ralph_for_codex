@@ -9,9 +9,3 @@ Block format in this file:
 ...injected content...
 <!-- /RALPH:LOCAL:<NAME> -->
 ```
-
-<!-- RALPH:LOCAL:ROLE:HELPER -->
-    - Determine role with `./scripts/ralph/ralph-ui-role.sh`.
-    - Validate in authenticated required-role context.
-    - Missing/wrong role is a blocker; fix before claiming acceptance.
-<!-- /RALPH:LOCAL:ROLE:HELPER -->
