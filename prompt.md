@@ -15,7 +15,8 @@ You are the coding agent for one Ralph loop iteration.
 - Do not merge; `/ralph-commit` handles merges.
 - Do not mark pass without evidence.
 - Do not commit broken code.
-- Never git-track runtime files: `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` must remain untracked.
+- Never use `git add -f` / `git add --force`.
+- Never stage or commit `scripts/ralph/prd.json` or `scripts/ralph/progress.txt`.
 
 ## Iteration Workflow
 1. Confirm current branch matches PRD `branchName` (wrapper handles checkout/creation).
@@ -26,10 +27,7 @@ You are the coding agent for one Ralph loop iteration.
    - Do not run full suite per story by default.
 5. For UI criteria, validate in browser:
    - Preferred: Playwright; fallback: Cypress.
-   - Determine the required role from acceptance criteria and touched UI/auth surfaces.
-   - If present, use `./scripts/ralph/ralph-ui-role.sh` as a repo-specific helper.
-   - Validate in authenticated required-role context (or role matrix if applicable).
-   - Missing/wrong role is a blocker; fix before claiming acceptance.
+   <!-- RALPH:LOCAL:ROLE:HELPER -->
 6. If checks pass, commit:
    - `feat: [Story ID] - [Story Title]`
 7. Set story `passes: true` in `{{PRD_FILE}}`.

@@ -196,7 +196,7 @@ Ralph will:
 
 ### Repo-specific Utilities
 
-Use `scripts/ralph/prompt.local.md` for install-repo-specific instructions (for example, custom auth setup helpers or local utility scripts).  
+Use `scripts/ralph/prompt.local.md` for install-repo-specific instructions (for example, custom auth setup helpers or local utility scripts).
 `ralph.sh` appends this file to the generated loop prompt when present, and framework updates via `install.sh` do not overwrite it.
 
 ### Epic-level sequencing
@@ -232,11 +232,8 @@ Notes:
 - `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
 - `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
-- `ralph.sh` no longer performs run archiving in-loop; archive/merge stays in `ralph-commit.sh` (or `ralph-archive.sh` manually).
-- On PRD branch switch, `ralph.sh` requires the previous branch to already be archived and exits with guidance if not.
-- `ralph.sh --auto-finalize-epic` only commits `epics.json` and skips if other tracked files are dirty.
-- During active iterations, `scripts/ralph/.codex-last-message-iter-N.txt` is initialized with a small `status=running` marker for observability.
 - `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` are runtime-only files and must remain untracked; `ralph.sh` aborts if they become tracked mid-run.
+- `ralph.sh` now checks iteration commit history (not just net diff) and aborts if transient runtime files were committed then removed in the same iteration.
 
 ## Key Files
 

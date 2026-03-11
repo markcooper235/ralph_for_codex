@@ -1,11 +1,17 @@
 Use this repo-local extension file for non-framework Ralph behavior.
 
-Current local helper:
-- For UI stories with role-sensitive access, run `./scripts/ralph/ralph-ui-role.sh` to suggest required role coverage before browser validation.
+Use named block sections to inject content into matching markers in `prompt.md`.
+Marker format in `prompt.md`: `<!-- RALPH:LOCAL:<NAME> -->`
+Block format in this file:
 
-Future customizations:
-- Add instructions for any new local helper scripts/capabilities here instead of editing `prompt.md`.
-- Keep custom scripts under `scripts/ralph/` and reference them from this file so framework installs/updates do not disable project-specific behavior.
+```md
+<!-- RALPH:LOCAL:<NAME> -->
+...injected content...
+<!-- /RALPH:LOCAL:<NAME> -->
+```
 
-Reference:
-- See `scripts/ralph/README-local.md` for local extension conventions and upgrade checklist.
+<!-- RALPH:LOCAL:ROLE:HELPER -->
+    - Determine role with `./scripts/ralph/ralph-ui-role.sh`.
+    - Validate in authenticated required-role context.
+    - Missing/wrong role is a blocker; fix before claiming acceptance.
+<!-- /RALPH:LOCAL:ROLE:HELPER -->

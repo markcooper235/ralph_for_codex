@@ -98,6 +98,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-sprint.sh status` should treat missing PRDs with `promptContext` as generatable warnings, and only fail for missing PRDs that cannot be generated.
 - `ralph-sprint.sh status` now reports both `Active epic` and `Next epic` to avoid confusion when an epic is already active.
 - Keep repo-specific Ralph behavior in `scripts/ralph/prompt.local.md` (and optional local helper scripts referenced there) so framework updates can refresh core files without disabling one-off project utilities.
+- `ralph.sh` now supports marker-based local prompt injection: place `<!-- RALPH:LOCAL:<NAME> -->` in `prompt.md` and matching start/end blocks in `prompt.local.md`; empty local files are ignored and non-matching legacy local content falls back to append mode.
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.
 - Framework sanity smoke checks live in `scripts/smoke/e2e-sanity.sh`; local runs default to real Codex, CI runs with mock Codex for deterministic validation.

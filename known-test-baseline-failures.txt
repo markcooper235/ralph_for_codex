@@ -1,3 +1,6 @@
 # Jest test paths known to be unrelated baseline failures for Ralph loop full-suite gate.
 # One regex per line. Blank lines and lines starting with # are ignored.
-src/lib/__tests__/specialization-prerequisites\.test\.ts
+# Utility simulation/statistics suites are intentionally one-off analysis runs,
+# not deterministic regression gate tests.
+src/lib/utility-tests/
+src/data/utility-tests/

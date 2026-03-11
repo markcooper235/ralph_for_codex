@@ -7,7 +7,6 @@ set -euo pipefail
 MAX_ITERATIONS=10
 BOOTSTRAP_PRD=false
 ALLOW_EPIC_FALLBACK=false
-AUTO_FINALIZE_EPIC=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
@@ -35,20 +34,15 @@ for arg in "$@"; do
     --allow-epic-fallback)
       ALLOW_EPIC_FALLBACK=true
       ;;
-    --auto-finalize-epic)
-      AUTO_FINALIZE_EPIC=true
-      ;;
     -h|--help)
-      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd] [--allow-epic-fallback] [--auto-finalize-epic]"
+      echo "Usage: ./ralph.sh [max_iterations] [--bootstrap-prd] [--allow-epic-fallback]"
       echo ""
       echo "Options:"
       echo "  --bootstrap-prd     Attempt to auto-generate scripts/ralph/prd.json when missing/empty."
       echo "  --allow-epic-fallback  Allow switching from completed standalone PRD back into epic priming."
-      echo "  --auto-finalize-epic  When all stories pass, mark active epic done and commit epics.json."
       echo ""
       echo "Environment:"
       echo "  RALPH_BOOTSTRAP_PRD=1  Enable PRD bootstrap behavior."
-      echo "  RALPH_AUTO_FINALIZE_EPIC=1  Enable auto-finalize behavior."
       exit 0
       ;;
     *)
@@ -68,9 +62,6 @@ if [ "${RALPH_BOOTSTRAP_PRD:-0}" = "1" ] || [ "${RALPH_BOOTSTRAP_PRD:-}" = "true
 fi
 if [ "${RALPH_ALLOW_EPIC_FALLBACK:-0}" = "1" ] || [ "${RALPH_ALLOW_EPIC_FALLBACK:-}" = "true" ]; then
   ALLOW_EPIC_FALLBACK=true
-fi
-if [ "${RALPH_AUTO_FINALIZE_EPIC:-0}" = "1" ] || [ "${RALPH_AUTO_FINALIZE_EPIC:-}" = "true" ]; then
-  AUTO_FINALIZE_EPIC=true
 fi
 
 require_cmd() {
@@ -135,6 +126,121 @@ escape_sed_replacement() {
   printf '%s' "$1" | sed -e 's/[\\/&]/\\&/g'
 }
 
+file_has_non_whitespace() {
+  local path="$1"
+  [ -f "$path" ] || return 1
+  grep -q '[^[:space:]]' "$path"
+}
+
+local_prompt_has_named_blocks() {
+  local path="$1"
+  [ -f "$path" ] || return 1
+  grep -Eq '^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:[A-Za-z0-9:_-]+[[:space:]]*-->[[:space:]]*$' "$path"
+}
+
+local_prompt_block_keys() {
+  local path="$1"
+  awk '
+    match($0, /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m) {
+      key = m[1]
+      if (!seen[key]++) print key
+    }
+  ' "$path"
+}
+
+prompt_has_matching_local_marker() {
+  local local_prompt_path="$1"
+  local prompt_path="$2"
+  local key
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    if grep -Eq "^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:${key}[[:space:]]*-->[[:space:]]*$" "$prompt_path"; then
+      return 0
+    fi
+  done < <(local_prompt_block_keys "$local_prompt_path")
+  return 1
+}
+
+inject_local_prompt_blocks() {
+  local local_prompt_path="$1"
+  local rendered_prompt_path="$2"
+
+  awk '
+    FNR == NR {
+      if (match($0, /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
+        current = m[1]
+        in_block = 1
+        if (!(current in block_order_seen)) {
+          block_order[++block_count] = current
+          block_order_seen[current] = 1
+          block_content[current] = ""
+        }
+        next
+      }
+
+      if (match($0, /^[[:space:]]*<!--[[:space:]]*\/RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
+        if (in_block && m[1] == current) {
+          in_block = 0
+          current = ""
+        }
+        next
+      }
+
+      if (in_block) {
+        block_content[current] = block_content[current] $0 ORS
+      }
+      next
+    }
+
+    {
+      if (match($0, /^([[:space:]]*)<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
+        indent = m[1]
+        key = m[2]
+        if (key in block_content) {
+          line_count = split(block_content[key], lines, /\n/)
+          min_leading = -1
+          for (i = 1; i <= line_count; i++) {
+            if (i == line_count && lines[i] == "") {
+              continue
+            }
+            if (lines[i] == "") {
+              continue
+            }
+            non_ws_pos = match(lines[i], /[^ \t]/)
+            if (non_ws_pos == 0) {
+              leading = length(lines[i])
+            } else {
+              leading = non_ws_pos - 1
+            }
+            if (min_leading == -1 || leading < min_leading) {
+              min_leading = leading
+            }
+          }
+          if (min_leading < 0) {
+            min_leading = 0
+          }
+          for (i = 1; i <= line_count; i++) {
+            if (i == line_count && lines[i] == "") {
+              continue
+            }
+            if (lines[i] == "") {
+              print ""
+            } else {
+              normalized_line = lines[i]
+              if (min_leading > 0) {
+                normalized_line = substr(normalized_line, min_leading + 1)
+              }
+              print indent normalized_line
+            }
+          }
+          next
+        }
+      }
+      print
+    }
+  ' "$local_prompt_path" "$rendered_prompt_path"
+}
+
 slugify_branch() {
   printf '%s' "$1" \
     | sed 's|^ralph/||' \
@@ -169,23 +275,36 @@ has_live_run_artifacts() {
 }
 
 render_prompt() {
-  local ralph_dir prd_file progress_file local_prompt_file
+  local ralph_dir prd_file progress_file local_prompt_file rendered_prompt_file
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
   prd_file="$(escape_sed_replacement "$PRD_FILE")"
   progress_file="$(escape_sed_replacement "$PROGRESS_FILE")"
   local_prompt_file="$SCRIPT_DIR/prompt.local.md"
+  rendered_prompt_file="$(mktemp)"
 
   sed \
     -e "s|{{RALPH_DIR}}|$ralph_dir|g" \
     -e "s|{{PRD_FILE}}|$prd_file|g" \
     -e "s|{{PROGRESS_FILE}}|$progress_file|g" \
-    "$SCRIPT_DIR/prompt.md"
+    "$SCRIPT_DIR/prompt.md" >"$rendered_prompt_file"
 
-  if [ -f "$local_prompt_file" ]; then
-    printf '\n\n## Local Prompt Extensions\n'
-    printf '(Loaded from `%s`; preserved across framework updates.)\n\n' "$local_prompt_file"
-    cat "$local_prompt_file"
+  if ! file_has_non_whitespace "$local_prompt_file"; then
+    cat "$rendered_prompt_file"
+    rm -f "$rendered_prompt_file"
+    return 0
   fi
+
+  if local_prompt_has_named_blocks "$local_prompt_file" && prompt_has_matching_local_marker "$local_prompt_file" "$SCRIPT_DIR/prompt.md"; then
+    inject_local_prompt_blocks "$local_prompt_file" "$rendered_prompt_file"
+    rm -f "$rendered_prompt_file"
+    return 0
+  fi
+
+  cat "$rendered_prompt_file"
+  rm -f "$rendered_prompt_file"
+  printf '\n\n## Local Prompt Extensions\n'
+  printf '(Loaded from `%s`; preserved across framework updates.)\n\n' "$local_prompt_file"
+  cat "$local_prompt_file"
 }
 
 has_complete_token() {
@@ -308,7 +427,7 @@ EOF
 
   echo "PRD is missing/empty. Bootstrapping via Codex (prd + ralph skills)..."
   build_codex_exec_args "$CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE" codex_args
-  bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${codex_args[@]}" 2>&1 | tee /dev/stderr) || true
+  bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${codex_args[@]}" 2>&1) || true
 
   if echo "$bootstrap_output" | grep -qi "error"; then
     echo "Warning: bootstrap run reported errors; validating prd.json..."
@@ -403,6 +522,25 @@ ensure_transient_files_not_tracked() {
   return 0
 }
 
+ensure_no_transient_commits_in_range() {
+  local from_ref="$1"
+  local to_ref="$2"
+  local leaked
+  leaked="$(
+    git log --name-only --pretty=format: "$from_ref..$to_ref" -- "$PRD_FILE" "$PROGRESS_FILE" 2>/dev/null \
+      | sed '/^$/d' \
+      | sort -u || true
+  )"
+  if [ -n "$leaked" ]; then
+    echo "Ralph transient files were committed during this iteration (disallowed):" >&2
+    printf '%s\n' "$leaked" >&2
+    echo "Do not use git add -f/--force for transient files." >&2
+    echo "Repair with: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
+    return 1
+  fi
+  return 0
+}
+
 ensure_backlog_inputs_committed() {
   [ -n "${EPICS_FILE:-}" ] || return 0
   [ -f "$EPICS_FILE" ] || return 0
@@ -457,30 +595,6 @@ infer_epic_id_from_prd_branch() {
   infer_epic_id_from_branch_path "$prd_branch"
 }
 
-to_repo_relative_path() {
-  local path="$1"
-  if [[ "$path" == "$WORKSPACE_ROOT/"* ]]; then
-    printf '%s\n' "${path#"$WORKSPACE_ROOT"/}"
-    return 0
-  fi
-  printf '%s\n' "$path"
-}
-
-has_tracked_changes_outside_file() {
-  local keep_path="$1"
-  local keep_rel
-  keep_rel="$(to_repo_relative_path "$keep_path")"
-
-  if ! git diff --quiet -- . ":(exclude)$keep_rel"; then
-    return 0
-  fi
-  if ! git diff --cached --quiet -- . ":(exclude)$keep_rel"; then
-    return 0
-  fi
-
-  return 1
-}
-
 ensure_epic_status_synced_with_prd() {
   local prd_branch epic_id epic_status
 
@@ -525,94 +639,6 @@ ensure_epic_status_synced_with_prd() {
   fi
 
   return 0
-}
-
-auto_finalize_active_epic_if_enabled() {
-  [ "$AUTO_FINALIZE_EPIC" = "true" ] || return 0
-  [ -n "${EPICS_FILE:-}" ] || return 0
-  [ -f "$EPICS_FILE" ] || return 0
-  jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1 || return 0
-
-  local prd_mode
-  prd_mode="$(get_active_prd_mode || true)"
-  if [ "$prd_mode" != "epic" ]; then
-    # Standalone PRD runs must never mutate sprint epic state.
-    return 0
-  fi
-
-  if ! prd_all_passes; then
-    return 0
-  fi
-
-  local epic_id epic_status status_line
-  epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
-  [ -n "$epic_id" ] || epic_id="$(infer_epic_id_from_prd_branch "$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)" || true)"
-  if [ -z "$epic_id" ]; then
-    echo "Auto-finalize skipped: no active epic could be resolved." >&2
-    return 0
-  fi
-
-  if ! jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$EPICS_FILE" >/dev/null 2>&1; then
-    echo "Auto-finalize failed: resolved epic $epic_id does not exist in $EPICS_FILE." >&2
-    return 1
-  fi
-
-  epic_status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .status // ""' "$EPICS_FILE")"
-  case "$epic_status" in
-    done|abandoned|aborted)
-      return 0
-      ;;
-  esac
-
-  # Guardrail: only commit epics.json in this path; never absorb unrelated tracked edits.
-  if has_tracked_changes_outside_file "$EPICS_FILE"; then
-    status_line="$(git status --porcelain --untracked-files=no || true)"
-    echo "Auto-finalize skipped: tracked changes exist outside $EPICS_FILE." >&2
-    printf '%s\n' "$status_line" >&2
-    echo "Commit or clean pending changes, then run: ./scripts/ralph/ralph-epic.sh set-status $epic_id done" >&2
-    return 0
-  fi
-
-  bash "$SCRIPT_DIR/ralph-epic.sh" set-status "$epic_id" done >/dev/null
-
-  git add "$EPICS_FILE"
-  if git diff --cached --quiet; then
-    return 0
-  fi
-
-  git commit -m "chore(ralph): auto-finalize $epic_id done after loop completion"
-  echo "Auto-finalized epic $epic_id as done."
-}
-
-require_archive_step_outside_loop_on_branch_change() {
-  local current_branch last_branch
-  [ -f "$PRD_FILE" ] || return 0
-  [ -f "$LAST_BRANCH_FILE" ] || return 0
-
-  current_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")"
-  last_branch="$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")"
-
-  if [ -z "$current_branch" ] || [ -z "$last_branch" ] || [ "$current_branch" = "$last_branch" ]; then
-    return 0
-  fi
-
-  if ! has_archived_run_for_branch "$last_branch"; then
-    echo "Detected PRD branch switch ($last_branch -> $current_branch)." >&2
-    echo "Ralph loop no longer archives in-loop." >&2
-    echo "Run archive outside the loop first:" >&2
-    echo "  ./scripts/ralph/ralph-commit.sh" >&2
-    echo "  or ./scripts/ralph/ralph-archive.sh" >&2
-    return 1
-  fi
-
-  if has_live_run_artifacts; then
-    for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-      [ -f "$iter_log" ] || continue
-      rm -f "$iter_log"
-    done
-    [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
-    echo "Removed stale local run artifacts from already-archived prior branch: $last_branch"
-  fi
 }
 
 require_cmd jq
@@ -679,8 +705,92 @@ if ! ensure_epic_status_synced_with_prd; then
   exit 1
 fi
 
-if ! require_archive_step_outside_loop_on_branch_change; then
-  exit 1
+# Archive previous run if branch changed
+if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
+  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
+  LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
+  
+  if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
+    if has_archived_run_for_branch "$LAST_BRANCH"; then
+      echo "Previous run ($LAST_BRANCH) already archived; continuing."
+      if has_live_run_artifacts; then
+        for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+          [ -f "$iter_log" ] || continue
+          rm -f "$iter_log"
+        done
+        [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+        echo "   Removed stale local run artifacts from already-archived run."
+      fi
+    else
+      # Archive the previous run
+      DATE=$(date +%Y-%m-%d)
+      FOLDER_NAME=$(slugify_branch "$LAST_BRANCH")
+      [ -n "$FOLDER_NAME" ] || FOLDER_NAME="ralph-run"
+      ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
+      if [ -e "$ARCHIVE_FOLDER" ]; then
+        ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME-$(date +%H%M%S)"
+      fi
+      
+      echo "Archiving previous run: $LAST_BRANCH"
+      mkdir -p "$ARCHIVE_FOLDER"
+      MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
+
+      ITER_SOURCE_COUNT=0
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
+      done
+
+      PLAYWRIGHT_SOURCE_PRESENT=0
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
+
+      [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
+      [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
+      [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        cp "$iter_log" "$ARCHIVE_FOLDER/"
+      done
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
+
+      ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
+      PLAYWRIGHT_ARCHIVE_PRESENT=0
+      [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
+
+      {
+        echo "archive_time=$(date -Iseconds)"
+        echo "source_branch=$LAST_BRANCH"
+        echo "source_iter_logs=$ITER_SOURCE_COUNT"
+        echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
+        echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
+        echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
+      } > "$MANIFEST_FILE"
+
+      if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
+        echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
+        echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
+        exit 1
+      fi
+
+      if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
+        echo "Archive verification failed: .playwright-cli missing from archive output." >&2
+        echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
+        exit 1
+      fi
+
+      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+        [ -f "$iter_log" ] || continue
+        rm -f "$iter_log"
+      done
+      [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+      echo "   Archived to: $ARCHIVE_FOLDER"
+      
+      # Reset progress file for new run
+      echo "# Ralph Progress Log" > "$PROGRESS_FILE"
+      echo "Started: $(date)" >> "$PROGRESS_FILE"
+      echo "---" >> "$PROGRESS_FILE"
+    fi
+  fi
 fi
 
 # Track current branch
@@ -708,18 +818,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo "═══════════════════════════════════════════════════════"
 
   CODEX_ITER_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-iter-$i.txt"
-
-  {
-    echo "status=running"
-    echo "iteration=$i"
-    echo "started_at=$(date -Iseconds)"
-  } >"$CODEX_ITER_LAST_MESSAGE_FILE"
-  cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
-
-  if ! ensure_transient_files_not_tracked; then
-    echo "Iteration $i aborted: transient Ralph runtime files became git-tracked." >&2
-    exit 1
-  fi
+  ITERATION_START_HEAD="$(git rev-parse HEAD)"
 
   if ! ensure_prd_ready; then
     echo "Iteration $i aborted: PRD file is not ready."
@@ -730,23 +829,23 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
-  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee /dev/stderr || true
-
-  if ! ensure_transient_files_not_tracked; then
-    echo "Iteration $i failed: Codex run re-tracked transient files (scripts/ralph/prd.json or progress.txt)." >&2
-    echo "Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
-    exit 1
-  fi
+  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" || true
 
   cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
+
+  ITERATION_END_HEAD="$(git rev-parse HEAD)"
+  if [ "$ITERATION_START_HEAD" != "$ITERATION_END_HEAD" ]; then
+    if ! ensure_no_transient_commits_in_range "$ITERATION_START_HEAD" "$ITERATION_END_HEAD"; then
+      exit 1
+    fi
+  fi
+
+  if ! ensure_transient_files_not_tracked; then
+    exit 1
+  fi
   
   # Check for completion signal
   if has_complete_token "$CODEX_ITER_LAST_MESSAGE_FILE" || prd_all_passes; then
-    if ! auto_finalize_active_epic_if_enabled; then
-      echo "Ralph finished stories but epic auto-finalization failed." >&2
-      exit 1
-    fi
-
     echo ""
     echo "Ralph completed all tasks!"
     echo "Completed at iteration $i of $MAX_ITERATIONS"
