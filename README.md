@@ -197,7 +197,7 @@ Ralph will:
 ### Repo-specific Utilities
 
 Use `scripts/ralph/prompt.local.md` for install-repo-specific instructions (for example, custom auth setup helpers or local utility scripts).
-`ralph.sh` appends this file to the generated loop prompt when present, and framework updates via `install.sh` do not overwrite it.
+`ralph.sh` prefers marker-based injection from this file into `prompt.md` when matching `<!-- RALPH:LOCAL:<NAME> -->` markers are present, ignores empty/whitespace-only files, and falls back to appending as `## Local Prompt Extensions` when no matching marker blocks are found. Framework updates via `install.sh` do not overwrite `prompt.local.md`.
 
 ### Epic-level sequencing
 
@@ -251,7 +251,7 @@ Notes:
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
 | `ralph-cleanup.sh` | Reset local Ralph artifacts (including active markers) without creating archive |
 | `prompt.md` | Instructions given to each Codex run |
-| `prompt.local.md` | Optional repo-local prompt extension automatically appended by `ralph.sh`; use for one-off utilities/policies that must survive framework updates |
+| `prompt.local.md` | Optional repo-local prompt extension file; supports marker-based injection into `prompt.md` (`<!-- RALPH:LOCAL:<NAME> -->`) with append fallback for legacy content |
 | `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
