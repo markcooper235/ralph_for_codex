@@ -150,10 +150,13 @@ set_epic_active() {
 set_active_epic_prd() {
   local epic_id="$1"
   local source_path="$2"
+  local base_branch
+  base_branch="ralph/sprint/$ACTIVE_SPRINT"
   cat >"$ACTIVE_PRD_FILE" <<EOF
 {
   "mode": "epic",
   "epicId": "$epic_id",
+  "baseBranch": "$base_branch",
   "sourcePath": "$source_path",
   "activatedAt": "$(date -Iseconds)"
 }

@@ -17,6 +17,8 @@ DRY_RUN=false
 CREATE_BRANCH_IF_MISSING=false
 KEEP_SOURCE=false
 SPRINT_BRANCH_PREFIX="ralph/sprint"
+ACTIVE_PRD_MODE=""
+ACTIVE_PRD_BASE_BRANCH=""
 
 usage() {
   cat <<'EOF'
@@ -25,10 +27,12 @@ Usage: ./scripts/ralph/ralph-commit.sh [--target <branch>] [--dry-run] [--keep]
 Behavior:
   1. Validates scripts/ralph/prd.json has all userStories with passes=true
   2. Archives current Ralph run via ./scripts/ralph/ralph-archive.sh
-  3. Merges PRD branchName into sprint branch (ralph/sprint/<active-sprint>) by default
+  3. Merges PRD branchName into mode-aware default target:
+     - epic mode: sprint branch (ralph/sprint/<active-sprint>)
+     - standalone mode: base branch (master/main)
 
 Options:
-  --target BRANCH  Explicit merge target branch (overrides sprint default)
+  --target BRANCH  Explicit merge target branch (overrides mode default)
   --create-branch-if-missing  Create feature branch from current HEAD if missing
   --dry-run        Print planned actions without changing git state
   --keep           Keep source feature branch after successful merge
@@ -82,6 +86,22 @@ default_base_branch() {
 get_active_prd_epic_id() {
   if [ -f "$ACTIVE_PRD_FILE" ]; then
     jq -r 'if .mode == "epic" then (.epicId // empty) else empty end' "$ACTIVE_PRD_FILE" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
+
+get_active_prd_mode() {
+  if [ -f "$ACTIVE_PRD_FILE" ]; then
+    jq -r 'if (.mode | type == "string") then (.mode | ascii_downcase) else empty end' "$ACTIVE_PRD_FILE" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
+
+get_active_prd_base_branch() {
+  if [ -f "$ACTIVE_PRD_FILE" ]; then
+    jq -r 'if (.baseBranch | type == "string") then .baseBranch else empty end' "$ACTIVE_PRD_FILE" 2>/dev/null
     return 0
   fi
   return 1
@@ -300,6 +320,8 @@ require_cmd jq
 require_cmd awk
 require_cmd sed
 resolve_epics_file
+ACTIVE_PRD_MODE="$(get_active_prd_mode || true)"
+ACTIVE_PRD_BASE_BRANCH="$(get_active_prd_base_branch || true)"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Must be run inside a git repository." >&2
@@ -323,11 +345,41 @@ if ! jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)
 fi
 
 if [ -z "$TARGET_BRANCH" ]; then
-  ACTIVE_SPRINT="$(get_active_sprint || true)"
-  if [ -n "$ACTIVE_SPRINT" ]; then
-    TARGET_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
+  if [ -n "${ACTIVE_PRD_BASE_BRANCH:-}" ]; then
+    TARGET_BRANCH="$ACTIVE_PRD_BASE_BRANCH"
   else
-    TARGET_BRANCH="$(default_base_branch)"
+    case "${ACTIVE_PRD_MODE:-}" in
+      epic)
+        ACTIVE_SPRINT="$(get_active_sprint || true)"
+        if [ -z "$ACTIVE_SPRINT" ]; then
+          echo "Active PRD mode is epic but no active sprint is set." >&2
+          echo "Run ./scripts/ralph/ralph-sprint.sh use <sprint-name> or pass --target explicitly." >&2
+          exit 1
+        fi
+        TARGET_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
+        ;;
+      standalone)
+        TARGET_BRANCH="$(default_base_branch)"
+        ;;
+      "")
+        # Backward-compatible fallback for repos missing .active-prd metadata.
+        ACTIVE_SPRINT="$(get_active_sprint || true)"
+        if [ -n "$ACTIVE_SPRINT" ]; then
+          TARGET_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
+        else
+          TARGET_BRANCH="$(default_base_branch)"
+        fi
+        ;;
+      *)
+        echo "Unknown active PRD mode '${ACTIVE_PRD_MODE}' in $ACTIVE_PRD_FILE; falling back to legacy target selection." >&2
+        ACTIVE_SPRINT="$(get_active_sprint || true)"
+        if [ -n "$ACTIVE_SPRINT" ]; then
+          TARGET_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
+        else
+          TARGET_BRANCH="$(default_base_branch)"
+        fi
+        ;;
+    esac
   fi
 fi
 
@@ -372,6 +424,8 @@ echo "Ralph commit plan:"
 echo "  feature branch: $FEATURE_BRANCH"
 echo "  target branch:  $TARGET_BRANCH"
 echo "  current branch: $CURRENT_BRANCH"
+echo "  prd mode:       ${ACTIVE_PRD_MODE:-unknown}"
+echo "  prd base:       ${ACTIVE_PRD_BASE_BRANCH:-unknown}"
 echo "  archive first:  yes"
 if [ "$KEEP_SOURCE" = "true" ]; then
   echo "  delete source:  no (--keep)"
@@ -408,7 +462,11 @@ if [ "$CURRENT_BRANCH" != "$FEATURE_BRANCH" ]; then
   git checkout "$FEATURE_BRANCH"
 fi
 
-sync_epic_status_for_completed_prd "$FEATURE_BRANCH"
+if [ "${ACTIVE_PRD_MODE:-}" = "epic" ]; then
+  sync_epic_status_for_completed_prd "$FEATURE_BRANCH"
+else
+  echo "Skipping epic status sync (mode=${ACTIVE_PRD_MODE:-unknown})."
+fi
 
 git checkout "$TARGET_BRANCH"
 if ! git -c merge.renames=false merge --no-ff "$FEATURE_BRANCH" -m "merge: Ralph run $FEATURE_BRANCH"; then

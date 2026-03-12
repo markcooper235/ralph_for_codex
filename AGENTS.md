@@ -38,6 +38,9 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Framework sanity smoke test (disposable install-repo E2E)
 ./scripts/smoke/e2e-sanity.sh --ci
 ./scripts/smoke/e2e-sanity.sh --with-loop
+./scripts/smoke/e2e-sanity.sh --with-loop-standalone
+./scripts/smoke/e2e-sanity.sh --with-loop-epic
+./scripts/smoke/e2e-sanity.sh --with-loop --app-mode ui
 
 # Archive / merge / cleanup lifecycle
 ./ralph-commit.sh
@@ -54,7 +57,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
 - `ralph-epic.sh` - CLI to list/select/update epic order and status
 - `ralph-archive.sh` - Archive run artifacts into sprint/standalone task archives and reset `prd.json`
-- `ralph-commit.sh` - Validate completion, archive run, merge epic branch into sprint branch, and sync epic status
+- `ralph-commit.sh` - Validate completion, archive run, merge using mode-aware default target (epic -> sprint branch, standalone -> base branch), and sync epic status in epic mode
 - `ralph-sprint-commit.sh` - Validate sprint completion, archive sprint-level state, and merge sprint branch into `master`/`main`
 - `ralph-cleanup.sh` - Reset local Ralph artifacts without creating an archive
 - `doctor.sh` - Sanity checks for a target repo
@@ -73,7 +76,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 4. Select next epic via `./ralph-epic.sh start-next`
 5. Prime loop input via `./ralph-prime.sh`
 6. Run loop via `./ralph.sh [max_iterations]`
-7. Run `./ralph-commit.sh` to archive + merge to sprint branch (it auto-marks the matching epic `done`)
+7. Run `./ralph-commit.sh` to archive + merge using mode-aware defaults (epic -> sprint branch, standalone -> base branch); epic runs auto-mark matching epic `done`
 8. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
 
 Epic lifecycle helpers:
@@ -93,6 +96,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
 - `ralph-epic.sh add ...` provides a non-interactive epic creation path; use it for automation.
 - `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default; pass `--keep` to retain them.
+- `.active-prd` now includes explicit `baseBranch`; `ralph-commit.sh` should use it before fallback target inference.
 - OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.
 - Fresh-install epics should include `promptContext` so `ralph-prime.sh` can generate missing PRD markdown when starter `prdPaths` are not yet on disk.
 - `ralph-sprint.sh status` should treat missing PRDs with `promptContext` as generatable warnings, and only fail for missing PRDs that cannot be generated.

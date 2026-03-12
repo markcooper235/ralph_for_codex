@@ -369,14 +369,23 @@ write_active_prd_state() {
   local mode="$1"
   local source_path="${2:-scripts/ralph/prd.json}"
   local epic_id=""
+  local base_branch=""
   if [ "$mode" = "epic" ]; then
     local prd_branch
     prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
     epic_id="$(infer_epic_id_from_branch_path "$prd_branch" || true)"
+    local active_sprint
+    active_sprint="$(get_active_sprint || true)"
+    if [ -n "$active_sprint" ]; then
+      base_branch="$(sprint_branch_name "$active_sprint")"
+    fi
+  else
+    base_branch="$(default_base_branch || true)"
   fi
   cat >"$ACTIVE_PRD_FILE" <<EOF
 {
   "mode": "$mode",
+  "baseBranch": "${base_branch}",
   "sourcePath": "$source_path",
   "epicId": "${epic_id}",
   "activatedAt": "$(date -Iseconds)"

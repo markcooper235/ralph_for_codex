@@ -61,6 +61,12 @@ Run install-repo E2E sanity checks in a disposable project:
 bash scripts/smoke/e2e-sanity.sh
 # Optional: include real ralph.sh loop runs + token summary
 bash scripts/smoke/e2e-sanity.sh --with-loop
+# Isolated standalone-only benchmark
+bash scripts/smoke/e2e-sanity.sh --with-loop-standalone
+# Isolated epic-only benchmark
+bash scripts/smoke/e2e-sanity.sh --with-loop-epic
+# UI app profile (browser validation + higher overhead)
+bash scripts/smoke/e2e-sanity.sh --with-loop --app-mode ui
 ```
 
 Notes:
@@ -68,6 +74,9 @@ Notes:
 - CI mode (`--ci`) uses `scripts/smoke/mock-codex.sh` by default for deterministic checks (no Codex auth required).
 - Override with `--real-codex` or `--mock-codex` when needed.
 - `--with-loop` runs actual Ralph loop iterations for standalone + sprint epic flows and prints token totals from loop logs.
+- `--with-loop-standalone` and `--with-loop-epic` run each loop mode independently in separate temp repos for isolated token/issue benchmarking.
+- `--loop-mode standalone|epic|both` provides the same control in one flag.
+- `--app-mode ui` switches the disposable demo app from console output to a simple browser UI (`#app`) and includes browser validation checks.
 - Uses throwaway temp directories and auto-cleans on success/failure.
 
 ### Install as Codex skills (recommended)
@@ -218,7 +227,7 @@ Recommended cycle:
 2. Select next epic (`start-next`)
 3. Prime `scripts/ralph/prd.json` for that epic (`ralph-prime.sh`)
 4. Run `ralph.sh`
-5. Run `ralph-commit.sh` to archive + merge epic branch into sprint branch; it auto-marks the matching epic `done`
+5. Run `ralph-commit.sh` to archive + merge using mode-aware defaults (epic -> sprint branch, standalone -> base branch); in epic mode it auto-marks the matching epic `done`
 6. When all sprint epics are done/abandoned, run `ralph-sprint-commit.sh` to archive sprint closeout and merge sprint branch into `master`/`main`
 
 Notes:
@@ -230,6 +239,7 @@ Notes:
 - `ralph-sprint-commit.sh` deletes the merged sprint branch by default; use `--keep` to retain it.
 - `ralph-prime.sh --auto` now auto-commits primed epic status changes by default.
 - `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
+- `.active-prd` now records explicit `baseBranch`; `ralph-commit.sh` prefers it to avoid merge-target guesswork.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
 - `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
 - `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` are runtime-only files and must remain untracked; `ralph.sh` aborts if they become tracked mid-run.
@@ -247,7 +257,7 @@ Notes:
 | `ralph-sprint.sh` | Manage sprint containers (`create`, `use`, `status`, `add-epic(s)`, `remove`); status reports both active and next epic |
 | `ralph-epic.sh` | CLI to list/select/activate epic order and add epics non-interactively within active sprint |
 | `ralph-archive.sh` | Archive run artifacts and reset `prd.json` |
-| `ralph-commit.sh` | Validate, archive, merge epic branch into sprint branch, and sync epic `done` status |
+| `ralph-commit.sh` | Validate, archive, merge using mode-aware default target (epic -> sprint branch, standalone -> base branch), and sync epic `done` status in epic mode |
 | `ralph-sprint-commit.sh` | Validate sprint completion, archive sprint closeout, and merge sprint branch into `master`/`main` |
 | `ralph-cleanup.sh` | Reset local Ralph artifacts (including active markers) without creating archive |
 | `prompt.md` | Instructions given to each Codex run |

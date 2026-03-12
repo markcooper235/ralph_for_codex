@@ -51,7 +51,7 @@ discover_targeted_tests() {
   # Include changed test files directly.
   while IFS= read -r f; do
     case "$f" in
-      *test.ts|*test.tsx|*test.js|*test.jsx|*spec.ts|*spec.tsx|*spec.js|*spec.jsx)
+      *test.ts|*test.tsx|*test.js|*test.jsx|*test.mjs|*test.cjs|*spec.ts|*spec.tsx|*spec.js|*spec.jsx|*spec.mjs|*spec.cjs)
         [ -f "$f" ] && tests+="$f"$'\n'
         ;;
     esac
@@ -65,7 +65,7 @@ discover_targeted_tests() {
         local base
         base="$(basename "$f")"
         base="${base%.*}"
-        rg --files src app 2>/dev/null | rg "/__tests__/|\.test\.|\.spec\." | rg "/${base}(\.test|\.spec)\." || true
+        rg --files src app tests 2>/dev/null | rg "/__tests__/|\.test\.|\.spec\." | rg "/${base}(\.test|\.spec)\." || true
         ;;
     esac
   done <<< "$changed" >> /tmp/ralph-targeted-tests.$$ || true

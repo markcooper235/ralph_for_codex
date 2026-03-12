@@ -74,9 +74,21 @@ require_cmd() {
 
 mark_active_standalone_prd() {
   local source_path="${1:-scripts/ralph/prd.json}"
+  local base_branch
+  base_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$base_branch" ]; then
+    if git show-ref --verify --quiet refs/heads/master; then
+      base_branch="master"
+    elif git show-ref --verify --quiet refs/heads/main; then
+      base_branch="main"
+    else
+      base_branch="main"
+    fi
+  fi
   cat >"$ACTIVE_PRD_FILE" <<JSON
 {
   "mode": "standalone",
+  "baseBranch": "$base_branch",
   "sourcePath": "$source_path",
   "activatedAt": "$(date -Iseconds)"
 }
