@@ -294,6 +294,8 @@ echo "[smoke] app mode: $APP_MODE"
 
 cd "$TEST_REPO"
 git init -b main >/dev/null
+git config user.name "Ralph Smoke"
+git config user.email "ralph-smoke@example.com"
 
 if [ "$APP_MODE" = "ui" ]; then
 cat > package.json <<'JSON'
@@ -691,7 +693,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       cd "$EPIC_REPO/scripts/ralph"
       CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
       ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
-      RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1
+      RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
       ./ralph-epic.sh add \
         --title "Change Hello Message: Hello Sprint Ralph" \
         --status planned \

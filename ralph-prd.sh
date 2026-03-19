@@ -465,7 +465,7 @@ if [ "$QUICK_QUESTIONS_MODE" = "off" ]; then
   SCOPE_LEVEL="Not provided"
 fi
 
-if [ -t 0 ]; then
+if [ -t 0 ] && { [ -z "$FEATURE_CONCEPT" ] || [ "$QUICK_QUESTIONS_MODE" != "off" ]; }; then
   collect_prd_intake_via_editor
 fi
 

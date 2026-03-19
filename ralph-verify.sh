@@ -41,12 +41,45 @@ collect_changed_files() {
   } | sed '/^$/d' | sort -u
 }
 
+list_repo_test_files() {
+  rg --files src app tests 2>/dev/null | rg '(^|/)(__tests__/.*|.*\.(test|spec)\.[^.]+)$' || true
+}
+
+append_matching_tests_for_source() {
+  local source_path="$1"
+  local tests_file="$2"
+  local base dir stem dir_base
+
+  base="$(basename "$source_path")"
+  stem="${base%.*}"
+  dir="$(dirname "$source_path")"
+  dir_base="$(basename "$dir")"
+
+  list_repo_test_files | while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    case "$candidate" in
+      *"/${stem}.test."*|*"/${stem}.spec."*)
+        printf '%s\n' "$candidate"
+        ;;
+      *"/${dir_base}.test."*|*"/${dir_base}.spec."*)
+        # Catch index/module-style sources like src/index.ts -> tests/hello.test.mjs
+        if [ "$stem" = "index" ] || [ "$stem" = "main" ] || [ "$stem" = "mod" ]; then
+          printf '%s\n' "$candidate"
+        fi
+        ;;
+    esac
+  done >> "$tests_file"
+}
+
 discover_targeted_tests() {
-  local changed tests
+  local changed tests tmp_tests has_changed_source test_count repo_tests
   changed="$(collect_changed_files)"
   [ -n "$changed" ] || return 0
 
   tests=""
+  tmp_tests="/tmp/ralph-targeted-tests.$$"
+  : > "$tmp_tests"
+  has_changed_source=0
 
   # Include changed test files directly.
   while IFS= read -r f; do
@@ -57,25 +90,39 @@ discover_targeted_tests() {
     esac
   done <<< "$changed"
 
-  # For changed source files, infer nearby tests by basename in src/app/tests folders.
+  # For changed source files, infer related tests by source stem and common entrypoint/module patterns.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     case "$f" in
       src/*|app/*)
-        local base
-        base="$(basename "$f")"
-        base="${base%.*}"
-        rg --files src app tests 2>/dev/null | rg "/__tests__/|\.test\.|\.spec\." | rg "/${base}(\.test|\.spec)\." || true
+        has_changed_source=1
+        append_matching_tests_for_source "$f" "$tmp_tests"
         ;;
     esac
-  done <<< "$changed" >> /tmp/ralph-targeted-tests.$$ || true
+  done <<< "$changed"
 
-  if [ -s /tmp/ralph-targeted-tests.$$ ]; then
-    tests+="$(cat /tmp/ralph-targeted-tests.$$)"$'\n'
+  if [ -s "$tmp_tests" ]; then
+    tests+="$(sort -u "$tmp_tests")"$'\n'
   fi
-  rm -f /tmp/ralph-targeted-tests.$$ || true
+  rm -f "$tmp_tests" || true
 
-  printf '%s' "$tests" | sed '/^$/d' | sort -u
+  tests="$(printf '%s' "$tests" | sed '/^$/d' | sort -u)"
+  test_count="$(printf '%s\n' "$tests" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+  if [ "$has_changed_source" -eq 1 ] && [ "${test_count:-0}" -eq 0 ]; then
+    repo_tests="$(list_repo_test_files | sed '/^$/d' | sort -u)"
+    if [ "$(printf '%s\n' "$repo_tests" | sed '/^$/d' | wc -l | tr -d ' ')" -eq 1 ]; then
+      tests="$repo_tests"
+      test_count=1
+    fi
+  fi
+
+  if [ "$has_changed_source" -eq 1 ] && [ "${test_count:-0}" -eq 0 ]; then
+    echo "[ralph-verify] no related targeted tests inferred for changed source files; falling back to full test suite" >&2
+    return 2
+  fi
+
+  printf '%s' "$tests"
 }
 
 build_ignore_regex() {
@@ -84,14 +131,20 @@ build_ignore_regex() {
 }
 
 run_targeted_tests() {
-  local tests
-  tests="$(discover_targeted_tests || true)"
+  local tests discover_status
+  discover_status=0
+  tests="$(discover_targeted_tests)" || discover_status=$?
+  if [ "$discover_status" -eq 2 ]; then
+    run_full_suite
+    return 0
+  fi
   if [ -z "$tests" ]; then
     echo "[ralph-verify] no targeted test files inferred from changed files; skipping targeted test run"
     return 0
   fi
 
-  echo "[ralph-verify] running targeted tests"
+  echo "[ralph-verify] running targeted tests:"
+  printf '%s\n' "$tests" | sed 's/^/  - /'
   # shellcheck disable=SC2206
   local args=( $tests )
   npm test -- --runInBand --runTestsByPath "${args[@]}"

@@ -106,3 +106,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 
 - Keep interactive wrappers minimal by default; provide `--detailed` mode for deeper prompts and CLI flags for non-interactive runs.
 - Framework sanity smoke checks live in `scripts/smoke/e2e-sanity.sh`; local runs default to real Codex, CI runs with mock Codex for deterministic validation.
+- Disposable smoke repos should configure a local git identity during setup so E2E runs do not depend on the developer having global `user.name` and `user.email` configured.
+- `ralph-prd.sh --feature ... --no-questions` should stay non-interactive even when launched from a TTY; only open editor intake when the feature concept is missing or quick-question intake is still enabled.
+- When the smoke harness runs under a TTY, explicitly redirect stdin from `/dev/null` for intentionally interactive wrappers (for example `ralph-sprint.sh create`) that are being used in automation-only setup steps.
+- `ralph-verify.sh --targeted` should infer related tests for changed source files more broadly than exact basenames, and fall back to the full test suite when source files changed but no related targeted tests can be inferred.
