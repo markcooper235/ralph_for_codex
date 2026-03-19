@@ -11,7 +11,7 @@ run_case() {
   local name="$2"
   local feature_text="$3"
   local constraints_text="$4"
-  local expected_recommend="$5"
+  local expected_auto_compact="$5"
 
   local prompt_file stderr_file stdout_file compact_prompt_file compact_stderr_file compact_stdout_file
   prompt_file="$tmpdir/${name}.prompt.txt"
@@ -38,22 +38,17 @@ run_case() {
         >"$stdout_file" 2>"$stderr_file"
   )
 
-  local recommend="no"
   local default_compact_prompt="no"
   local compact_prompt="no"
 
-  if rg -q "compact mode recommended" "$stderr_file"; then
-    recommend="yes"
-  fi
   if rg -q "compact Ralph planning package" "$prompt_file"; then
     default_compact_prompt="yes"
   fi
 
-  # Safety check: recommendation-only mode must not switch prompts automatically.
-  [ "$default_compact_prompt" = "no" ] || {
-    echo "[matrix] FAIL: $name auto-switched to compact prompt without --compact" >&2
+  if [ "$default_compact_prompt" != "$expected_auto_compact" ]; then
+    echo "[matrix] FAIL: $name default prompt selection mismatch (expected $expected_auto_compact got $default_compact_prompt)" >&2
     exit 1
-  }
+  fi
 
   (
     cd "$tmpdir"
@@ -76,12 +71,12 @@ run_case() {
   }
 
   local verdict="match"
-  if [ "$recommend" != "$expected_recommend" ]; then
+  if [ "$default_compact_prompt" != "$expected_auto_compact" ]; then
     verdict="mismatch"
   fi
 
-  printf "%s\texpected=%s\trecommend=%s\tdefault_prompt=%s\texplicit_compact=%s\tverdict=%s\n" \
-    "$name" "$expected_recommend" "$recommend" "$default_compact_prompt" "$compact_prompt" "$verdict"
+  printf "%s\texpected_auto=%s\tdefault_prompt=%s\texplicit_compact=%s\tverdict=%s\n" \
+    "$name" "$expected_auto_compact" "$default_compact_prompt" "$compact_prompt" "$verdict"
 }
 
 main() {
@@ -135,7 +130,7 @@ EOF
       run_case "$tmpdir" "ui_small_two_file" \
         "Update button label" \
         "Keep changes limited to src/app.ts and tests/app.test.mjs only. Verify browser output." \
-        "yes"
+        "no"
       run_case "$tmpdir" "api_copy_small" \
         "Adjust API response copy" \
         "Keep changes limited to src/api/messages.ts and tests/messages.test.ts." \
@@ -163,16 +158,16 @@ EOF
 
   local total matches mismatches
   total="$(printf '%s\n' "$results" | sed '/^$/d' | wc -l | tr -d ' ')"
-  matches="$(printf '%s\n' "$results" | awk -F '\t' '$6=="verdict=match"{count+=1} END{print count+0}')"
-  mismatches="$(printf '%s\n' "$results" | awk -F '\t' '$6=="verdict=mismatch"{count+=1} END{print count+0}')"
+  matches="$(printf '%s\n' "$results" | awk -F '\t' '$5=="verdict=match"{count+=1} END{print count+0}')"
+  mismatches="$(printf '%s\n' "$results" | awk -F '\t' '$5=="verdict=mismatch"{count+=1} END{print count+0}')"
 
   echo "[matrix] summary: total=$total matches=$matches mismatches=$mismatches"
   [ "$mismatches" -eq 0 ] || {
-    echo "[matrix] FAIL: recommendation heuristics mismatched expected outcomes" >&2
+    echo "[matrix] FAIL: compact auto-selection heuristics mismatched expected outcomes" >&2
     exit 1
   }
 
-  echo "[matrix] PASS: compact recommendation matrix"
+  echo "[matrix] PASS: compact auto-selection matrix"
 }
 
 main "$@"
