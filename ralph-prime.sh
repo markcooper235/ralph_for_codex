@@ -12,6 +12,9 @@ EPICS_FILE=""
 EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
 ACTIVE_SPRINT=""
+PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
+CODEX_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message.txt"
+WORKSPACE_ROOT_PLAYWRIGHT_DIR="$WORKSPACE_ROOT/.playwright-cli"
 
 AUTO_MODE=0
 REGEN_PRD=0
@@ -194,6 +197,23 @@ validate_generated_prd() {
     (.userStories | type == "array" and length > 0)
   ' "$PRD_FILE" >/dev/null 2>&1 || return 1
   return 0
+}
+
+reset_local_run_artifacts() {
+  local iter_log
+
+  rm -f "$CODEX_LAST_MESSAGE_FILE"
+  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+    [ -f "$iter_log" ] || continue
+    rm -f "$iter_log"
+  done
+  [ -d "$WORKSPACE_ROOT_PLAYWRIGHT_DIR" ] && rm -rf "$WORKSPACE_ROOT_PLAYWRIGHT_DIR"
+
+  {
+    echo "# Ralph Progress Log"
+    echo "Started: $(date)"
+    echo "---"
+  } > "$PROGRESS_FILE"
 }
 
 slugify_branch_segment() {
@@ -419,6 +439,7 @@ main() {
   # Mark active only after PRD conversion/validation succeeds.
   set_epic_active "$next_epic"
   set_active_epic_prd "$next_epic" "$source_prd"
+  reset_local_run_artifacts
   if [ "$AUTO_COMMIT" -eq 1 ]; then
     commit_primed_epic_state_if_needed "$next_epic"
   fi

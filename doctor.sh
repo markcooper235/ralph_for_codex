@@ -11,6 +11,7 @@ PROMPT_FILE="$SCRIPT_DIR/prompt.md"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
+LEGACY_ARCHIVE_DIR="$SCRIPT_DIR/archive"
 
 fail() {
   echo "ERROR: $1" >&2
@@ -49,6 +50,11 @@ if [ -f "$ACTIVE_SPRINT_FILE" ]; then
       echo "WARN: Active sprint is set to '$ACTIVE_SPRINT' but epics file is missing: $EPICS_FILE"
     fi
   fi
+fi
+
+if [ -d "$LEGACY_ARCHIVE_DIR" ] && find "$LEGACY_ARCHIVE_DIR" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+  echo "WARN: Legacy Ralph archive path still contains files: $LEGACY_ARCHIVE_DIR"
+  echo "      Canonical archive path is: $SCRIPT_DIR/tasks/archive"
 fi
 
 if [ -f "$ACTIVE_PRD_FILE" ]; then

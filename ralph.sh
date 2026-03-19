@@ -264,6 +264,23 @@ has_archived_run_for_branch() {
   return 1
 }
 
+reset_local_run_artifacts() {
+  local iter_log
+
+  rm -f "$CODEX_LAST_MESSAGE_LATEST_FILE"
+  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+    [ -f "$iter_log" ] || continue
+    rm -f "$iter_log"
+  done
+  [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+
+  {
+    echo "# Ralph Progress Log"
+    echo "Started: $(date)"
+    echo "---"
+  } > "$PROGRESS_FILE"
+}
+
 has_live_run_artifacts() {
   local iter_log
   for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
@@ -722,14 +739,8 @@ if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
   if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
     if has_archived_run_for_branch "$LAST_BRANCH"; then
       echo "Previous run ($LAST_BRANCH) already archived; continuing."
-      if has_live_run_artifacts; then
-        for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-          [ -f "$iter_log" ] || continue
-          rm -f "$iter_log"
-        done
-        [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
-        echo "   Removed stale local run artifacts from already-archived run."
-      fi
+      reset_local_run_artifacts
+      echo "   Removed stale local run artifacts from already-archived run and reset progress."
     else
       # Archive the previous run
       DATE=$(date +%Y-%m-%d)
@@ -787,17 +798,8 @@ if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
         exit 1
       fi
 
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        rm -f "$iter_log"
-      done
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+      reset_local_run_artifacts
       echo "   Archived to: $ARCHIVE_FOLDER"
-      
-      # Reset progress file for new run
-      echo "# Ralph Progress Log" > "$PROGRESS_FILE"
-      echo "Started: $(date)" >> "$PROGRESS_FILE"
-      echo "---" >> "$PROGRESS_FILE"
     fi
   fi
 fi

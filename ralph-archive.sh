@@ -68,6 +68,18 @@ infer_prd_mode_from_branch() {
   fi
 }
 
+reset_local_run_artifacts() {
+  local iter_log
+
+  rm -f "$SCRIPT_DIR/.codex-last-message.txt"
+  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
+    [ -f "$iter_log" ] || continue
+    rm -f "$iter_log"
+  done
+  [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+  rm -f "$PROGRESS_FILE"
+}
+
 require_cmd jq
 require_cmd git
 require_cmd sed
@@ -175,11 +187,7 @@ if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne
   exit 1
 fi
 
-for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-  [ -f "$iter_log" ] || continue
-  rm -f "$iter_log"
-done
-[ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
+reset_local_run_artifacts
 
 : > "$PRD_FILE"
 

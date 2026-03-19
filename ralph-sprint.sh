@@ -14,6 +14,7 @@ ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
 EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
+LEGACY_ARCHIVE_DIR="$SCRIPT_DIR/archive"
 
 # shellcheck source=./lib/editor-intake.sh
 source "$EDITOR_HELPER"
@@ -213,6 +214,11 @@ get_active_sprint() {
     return 0
   fi
   return 1
+}
+
+legacy_archive_has_entries() {
+  [ -d "$LEGACY_ARCHIVE_DIR" ] || return 1
+  find "$LEGACY_ARCHIVE_DIR" -mindepth 1 -print -quit 2>/dev/null | grep -q .
 }
 
 set_active_sprint() {
@@ -588,6 +594,10 @@ readiness_status() {
     echo "Sprint branch: $sprint_branch (missing)"
   fi
   echo "Current branch: $current_branch"
+  if legacy_archive_has_entries; then
+    echo "Legacy archive drift detected: $LEGACY_ARCHIVE_DIR still contains files."
+    echo "Canonical Ralph archives live under: $TASKS_ROOT/archive"
+  fi
 
   local active_epic_id active_epic_line
   active_epic_id="$(jq -r '.activeEpicId // empty' "$epics_file")"
