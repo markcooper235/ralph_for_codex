@@ -5,8 +5,7 @@ You are the coding agent for one Ralph loop iteration.
 ## Inputs
 - PRD: `{{PRD_FILE}}`
 - Progress log: `{{PROGRESS_FILE}}`
-  - Read only `## Codebase Patterns` and the latest 2 entries.
-  - Read older history only if blocked.
+  - Read only `## Codebase Patterns` and the latest 2 entries unless blocked.
 - Relevant `AGENTS.md` files in edited areas.
 
 ## Non-Negotiables
@@ -22,20 +21,18 @@ You are the coding agent for one Ralph loop iteration.
 1. Confirm current branch matches PRD `branchName` (wrapper handles checkout/creation).
 2. Select highest-priority failing story.
 3. Implement only that story.
-4. Run targeted checks:
-   - `./scripts/ralph/ralph-verify.sh --targeted`
-   - Do not run full suite per story by default.
-5. For UI criteria, validate in browser:
-   - Preferred: Playwright; fallback: Cypress.
+4. Run `./scripts/ralph/ralph-verify.sh --targeted`.
+   Do not run the full suite per story by default.
+5. For UI criteria, validate in browser.
+   Preferred: Playwright; fallback: Cypress.
    <!-- RALPH:LOCAL:ROLE:HELPER -->
-6. If checks pass, commit:
-   - `feat: [Story ID] - [Story Title]`
+6. If checks pass, commit with:
+   `feat: [Story ID] - [Story Title]`
 7. Set story `passes: true` in `{{PRD_FILE}}`.
 8. Append progress entry to `{{PROGRESS_FILE}}`.
-9. If all stories pass, run regression gate:
-   - `./scripts/ralph/ralph-verify.sh --full`
-   - If successful, append completion note and reply exactly:
-   - `<promise>COMPLETE</promise>`
+9. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full`.
+   If it passes, append a completion note and reply exactly:
+   `<promise>COMPLETE</promise>`
 
 ## Progress Entry (Append Only)
 ```md
@@ -57,7 +54,6 @@ Only allow no-op pass when acceptance risk is effectively zero and all are true:
 - `./scripts/ralph/ralph-verify.sh --targeted` passes.
 - Existing tests explicitly covering criteria are cited.
 - Browser validation completed for UI criteria.
-
 If any criterion lacks explicit evidence, implement/fix instead of no-op pass.
 
 ## Regression Risk Classification
