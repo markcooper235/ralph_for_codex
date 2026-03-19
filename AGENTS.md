@@ -113,3 +113,4 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-prd.sh` now supports an opt-in compact planning path (`--compact` or `RALPH_PRD_COMPACT=1`) for tightly scoped work; keep it non-default so broader tasks still use the full planning prompt.
 - `ralph.sh` should skip the loop entirely when completion is already stable: all stories pass, completion evidence exists, and only transient Ralph artifacts remain dirty.
 - Keep `prompt.md` terse because every Ralph iteration pays for it again; compress wording before adding new always-on instructions.
+- Smoke telemetry should report both token totals and loop iteration counts/completion iteration so efficiency regressions can be traced to either planning cost or extra loop churn.

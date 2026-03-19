@@ -168,6 +168,32 @@ extract_tokens_from_log() {
   ' "$log_file"
 }
 
+extract_iteration_count_from_log() {
+  local log_file="$1"
+  [ -f "$log_file" ] || {
+    echo 0
+    return 0
+  }
+
+  awk '
+    /Ralph Iteration [0-9]+ of [0-9]+/ { count += 1 }
+    END { print count + 0 }
+  ' "$log_file"
+}
+
+extract_completed_iteration_from_log() {
+  local log_file="$1"
+  [ -f "$log_file" ] || {
+    echo 0
+    return 0
+  }
+
+  awk '
+    match($0, /Completed at iteration ([0-9]+) of [0-9]+/, m) { completed = m[1] }
+    END { print completed + 0 }
+  ' "$log_file"
+}
+
 run_with_retries_logged() {
   local retries="$1"
   local log_file="$2"
@@ -602,6 +628,10 @@ if [ "$WITH_LOOP" -eq 1 ]; then
   epic_tokens=0
   standalone_planning_tokens=0
   epic_planning_tokens=0
+  standalone_iterations=0
+  epic_iterations=0
+  standalone_completed_iteration=0
+  epic_completed_iteration=0
 
   if [ "$LOOP_MODE" = "standalone" ] || [ "$LOOP_MODE" = "both" ]; then
     standalone_expected_target="$(resolve_default_base_branch "$STANDALONE_REPO")"
@@ -673,6 +703,8 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     assert_contains "$WORK_DIR/commit-standalone.log" "Deleted source branch:"
     standalone_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-standalone.log")"
     standalone_tokens=$((standalone_tokens + standalone_planning_tokens))
+    standalone_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-standalone.log")"
+    standalone_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-standalone.log")"
   fi
 
   if [ "$LOOP_MODE" = "epic" ] || [ "$LOOP_MODE" = "both" ]; then
@@ -767,6 +799,8 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     assert_contains "$WORK_DIR/commit-epic.log" "Deleted source branch:"
     epic_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-epic.log")"
     epic_tokens=$((epic_tokens + epic_planning_tokens))
+    epic_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-epic.log")"
+    epic_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-epic.log")"
   fi
 
   total_tokens=$((standalone_tokens + epic_tokens))
@@ -775,6 +809,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
   else
     echo "[smoke] token summary (planning+loop): app_mode=$APP_MODE mode=$LOOP_MODE standalone=$standalone_tokens epic=$epic_tokens total=$total_tokens"
     echo "[smoke] token detail: standalone_planning=$standalone_planning_tokens standalone_loop=$((standalone_tokens-standalone_planning_tokens)) epic_planning=$epic_planning_tokens epic_loop=$((epic_tokens-epic_planning_tokens))"
+    echo "[smoke] loop detail: standalone_iterations=$standalone_iterations standalone_completed_iteration=$standalone_completed_iteration epic_iterations=$epic_iterations epic_completed_iteration=$epic_completed_iteration"
   fi
 fi
 
