@@ -2,6 +2,7 @@
   "name": "ralph-for-codex",
   "private": true,
   "scripts": {
-    "test:regression": "node --test __tests__/ralph-run-state.test.js"
+    "test:regression": "node --test __tests__/ralph-run-state.test.js __tests__/ralph-verify.test.js",
+    "test:verify-regression": "node --test __tests__/ralph-verify.test.js"
   }
 }

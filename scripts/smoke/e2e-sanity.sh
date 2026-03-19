@@ -16,6 +16,8 @@ LOOP_MODE="${LOOP_MODE:-both}"
 LOOP_RETRY_MAX="${LOOP_RETRY_MAX:-2}"
 LOOP_TOTAL_MAX_ITERATIONS="${LOOP_TOTAL_MAX_ITERATIONS:-10}"
 APP_MODE="${APP_MODE:-console}"
+BENCH_DIR="$REPO_ROOT/scripts/smoke/.benchmarks"
+BENCH_FILE="$BENCH_DIR/e2e-history.tsv"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -192,6 +194,25 @@ extract_completed_iteration_from_log() {
     match($0, /Completed at iteration ([0-9]+) of [0-9]+/, m) { completed = m[1] }
     END { print completed + 0 }
   ' "$log_file"
+}
+
+append_benchmark_row() {
+  local status="$1"
+  mkdir -p "$BENCH_DIR"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date -Iseconds)" \
+    "$status" \
+    "$APP_MODE" \
+    "$LOOP_MODE" \
+    "$standalone_planning_tokens" \
+    "$((standalone_tokens-standalone_planning_tokens))" \
+    "$epic_planning_tokens" \
+    "$((epic_tokens-epic_planning_tokens))" \
+    "$standalone_iterations" \
+    "$standalone_completed_iteration" \
+    "$epic_iterations" \
+    "$epic_completed_iteration" \
+    >>"$BENCH_FILE"
 }
 
 run_with_retries_logged() {
@@ -692,6 +713,11 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     assert_prime_log_ok "$WORK_DIR/prime-standalone.log"
     assert_contains "$WORK_DIR/loop-standalone.log" "Iteration"
     assert_not_contains "$WORK_DIR/loop-standalone.log" "node: bad option: --runInBand"
+    if [ "$APP_MODE" = "console" ]; then
+      assert_contains "$WORK_DIR/ralph-prd-standalone.log" "Create a compact Ralph planning package for a tightly scoped change\."
+    else
+      assert_not_contains "$WORK_DIR/ralph-prd-standalone.log" "Create a compact Ralph planning package for a tightly scoped change\."
+    fi
     if [ "$APP_MODE" = "ui" ]; then
       assert_contains "$WORK_DIR/runtime-standalone.log" "browser ok: $standalone_expected_msg"
     else
@@ -813,6 +839,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     echo "[smoke] token summary (planning+loop): app_mode=$APP_MODE mode=$LOOP_MODE standalone=$standalone_tokens epic=$epic_tokens total=$total_tokens"
     echo "[smoke] token detail: standalone_planning=$standalone_planning_tokens standalone_loop=$((standalone_tokens-standalone_planning_tokens)) epic_planning=$epic_planning_tokens epic_loop=$((epic_tokens-epic_planning_tokens))"
     echo "[smoke] loop detail: standalone_iterations=$standalone_iterations standalone_completed_iteration=$standalone_completed_iteration epic_iterations=$epic_iterations epic_completed_iteration=$epic_completed_iteration"
+    append_benchmark_row "pass"
   fi
 fi
 
