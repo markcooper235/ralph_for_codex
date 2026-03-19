@@ -10,6 +10,8 @@ WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 PRD_JSON="${PRD_JSON_PATH:-$SCRIPT_DIR/prd.json}"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
+METRICS_DIR="$SCRIPT_DIR/.metrics"
+COMPACT_RECOMMEND_LOG="$METRICS_DIR/compact-recommendations.jsonl"
 EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
 
 # shellcheck source=./lib/editor-intake.sh
@@ -30,6 +32,10 @@ ASSUME_YES=0
 PRIMARY_GOAL="Not provided"
 TARGET_USERS="Not provided"
 SCOPE_LEVEL="Not provided"
+COMPACT_RECOMMENDED=0
+COMPACT_RECOMMEND_REASON="none"
+COMPACT_HEURISTIC_PATH_COUNT=0
+COMPACT_HEURISTIC_FEATURE_LEN=0
 
 usage() {
   cat <<'USAGE'
@@ -64,6 +70,10 @@ log() {
   fi
 }
 
+warn() {
+  printf '%s\n' "$*" >&2
+}
+
 fail() {
   printf 'Error: %s\n' "$*" >&2
   exit 1
@@ -73,6 +83,90 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+count_distinct_file_paths() {
+  printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS" \
+    | grep -Eo '([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.[A-Za-z0-9]+' \
+    | sort -u \
+    | wc -l \
+    | tr -d ' '
+}
+
+should_recommend_compact_mode() {
+  local combined lower explicit_scope path_count feature_len
+  combined="$(printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS")"
+  lower="$(printf '%s' "$combined" | tr '[:upper:]' '[:lower:]')"
+  feature_len="$(printf '%s' "$FEATURE_CONCEPT" | wc -c | tr -d ' ')"
+  path_count="$(count_distinct_file_paths)"
+  COMPACT_HEURISTIC_FEATURE_LEN="$feature_len"
+  COMPACT_HEURISTIC_PATH_COUNT="$path_count"
+
+  case "$lower" in
+    *auth*|*session*|*database*|*migration*|*schema*|*routing*|*router*|*provider*|*permission*|*"api contract"*|*"shared state"*|*"event pipeline"*|*"global config"*|*refactor*|*architecture*|*epic*|*sprint*)
+      return 1
+      ;;
+  esac
+
+  explicit_scope=0
+  case "$lower" in
+    *"limited to"*|*"keep changes limited to"*|*"only these files"*|*"only these file"*|*"only change"*|*"just update"*|*"single file"*|*"two files"*)
+      explicit_scope=1
+      ;;
+  esac
+
+  if [ "$path_count" -gt 0 ] && [ "$path_count" -le 2 ] && [ "$feature_len" -le 180 ]; then
+    COMPACT_RECOMMEND_REASON="scoped_paths"
+    return 0
+  fi
+
+  if [ "$explicit_scope" -eq 1 ] && [ "$feature_len" -le 180 ]; then
+    COMPACT_RECOMMEND_REASON="explicit_scope"
+    return 0
+  fi
+
+  return 1
+}
+
+maybe_recommend_compact_mode() {
+  [ "$COMPACT_MODE" -eq 0 ] || return 0
+  should_recommend_compact_mode || return 0
+  COMPACT_RECOMMENDED=1
+  warn "Tip: compact mode recommended for this request."
+  warn "Use \`--compact\` (or \`RALPH_PRD_COMPACT=1\`) to keep planning lighter for this tightly scoped change."
+}
+
+record_compact_recommendation_observation() {
+  local story_count observation_id review_label
+  mkdir -p "$METRICS_DIR"
+  story_count="$(jq '.userStories | length' "$PRD_JSON")"
+  observation_id="$(date +%Y%m%dT%H%M%S)-$$"
+  review_label="not_applicable"
+  if [ "$COMPACT_RECOMMENDED" -eq 1 ]; then
+    review_label="pending"
+  fi
+
+  jq -cn \
+    --arg id "$observation_id" \
+    --arg ts "$(date -Iseconds)" \
+    --arg reason "$COMPACT_RECOMMEND_REASON" \
+    --argjson recommended "$([ "$COMPACT_RECOMMENDED" -eq 1 ] && echo true || echo false)" \
+    --argjson compact_selected "$([ "$COMPACT_MODE" -eq 1 ] && echo true || echo false)" \
+    --argjson feature_length "${COMPACT_HEURISTIC_FEATURE_LEN:-0}" \
+    --argjson path_count "${COMPACT_HEURISTIC_PATH_COUNT:-0}" \
+    --argjson story_count "${story_count:-0}" \
+    --arg review_label "$review_label" \
+    '{
+      id: $id,
+      timestamp: $ts,
+      recommendedCompact: $recommended,
+      compactSelected: $compact_selected,
+      recommendationReason: $reason,
+      featureLength: $feature_length,
+      distinctPathCount: $path_count,
+      generatedStoryCount: $story_count,
+      reviewLabel: $review_label
+    }' >> "$COMPACT_RECOMMEND_LOG"
 }
 
 mark_active_standalone_prd() {
@@ -485,6 +579,8 @@ if [ -z "$FEATURE_CONCEPT" ]; then
   fail "Feature concept is required."
 fi
 
+maybe_recommend_compact_mode
+
 if [ "$QUICK_QUESTIONS_MODE" = "on" ]; then
   :
 fi
@@ -618,6 +714,7 @@ fi
 
 log "Done."
 mark_active_standalone_prd "$PRD_JSON_REL"
+record_compact_recommendation_observation
 printf 'PRD Markdown: %s\n' "$PRD_MARKDOWN_PATH"
 printf 'PRD JSON: %s\n' "$PRD_JSON"
 printf 'Stories: %s\n' "$(jq '.userStories | length' "$PRD_JSON")"

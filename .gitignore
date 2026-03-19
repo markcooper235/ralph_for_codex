@@ -3,6 +3,7 @@ scripts/ralph/.active-prd
 scripts/ralph/.active-sprint
 scripts/ralph/.last-branch
 scripts/ralph/.codex-last-message*.txt
+scripts/ralph/.metrics/
 scripts/ralph/prd.json
 scripts/ralph/progress.txt
 prd.json
