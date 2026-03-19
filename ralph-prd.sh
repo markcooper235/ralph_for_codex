@@ -31,6 +31,7 @@ PRIMARY_GOAL="Not provided"
 TARGET_USERS="Not provided"
 SCOPE_LEVEL="Not provided"
 AUTO_COMPACT_SELECTED=0
+UI_SINGLE_SLICE_HINT=0
 
 usage() {
   cat <<'USAGE'
@@ -107,6 +108,40 @@ should_auto_compact_mode() {
   [ "$explicit_scope" -eq 1 ] || return 1
   [ "$path_count" -ge 1 ] && [ "$path_count" -le 2 ] || return 1
   [ "$feature_len" -le 120 ] || return 1
+  return 0
+}
+
+should_hint_single_slice_ui_story() {
+  local combined lower explicit_scope path_count feature_len
+  combined="$(printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS")"
+  lower="$(printf '%s' "$combined" | tr '[:upper:]' '[:lower:]')"
+  feature_len="$(printf '%s' "$FEATURE_CONCEPT" | wc -c | tr -d ' ')"
+  path_count="$(count_distinct_file_paths)"
+
+  case "$lower" in
+    *browser*|*ui*|*"#app"*|*render*)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  case "$lower" in
+    *auth*|*session*|*database*|*migration*|*schema*|*routing*|*router*|*provider*|*permission*|*"api contract"*|*"shared state"*|*"event pipeline"*|*"global config"*|*refactor*|*architecture*|*epic*|*sprint*|*cross-cutting*|*shared\ hook*|*shared\ component*|*state\ management*|*playwright*|*cypress*)
+      return 1
+      ;;
+  esac
+
+  explicit_scope=0
+  case "$lower" in
+    *"keep changes limited to "*|*"only change "*|*"limited to "*)
+      explicit_scope=1
+      ;;
+  esac
+
+  [ "$explicit_scope" -eq 1 ] || return 1
+  [ "$path_count" -ge 1 ] && [ "$path_count" -le 2 ] || return 1
+  [ "$feature_len" -le 200 ] || return 1
   return 0
 }
 
@@ -525,6 +560,10 @@ if [ "$COMPACT_MODE" -eq 0 ] && should_auto_compact_mode; then
   AUTO_COMPACT_SELECTED=1
 fi
 
+if [ "$COMPACT_MODE" -eq 0 ] && should_hint_single_slice_ui_story; then
+  UI_SINGLE_SLICE_HINT=1
+fi
+
 if [ "$QUICK_QUESTIONS_MODE" = "on" ]; then
   :
 fi
@@ -573,6 +612,17 @@ Return a short summary with:
 PROMPT_EOF
 )
 else
+SINGLE_SLICE_GUIDANCE=""
+if [ "$UI_SINGLE_SLICE_HINT" -eq 1 ]; then
+SINGLE_SLICE_GUIDANCE=$(cat <<'GUIDANCE_EOF'
+
+Additional guidance for this request:
+- This is still a normal planning pass because browser/UI evidence is required, but treat the work as a single implementation slice unless unmistakable sequencing forces a split.
+- If the same 1-2 file change can cover the UI copy update, matching regression update, and browser verification evidence, keep them in one story.
+- Do not create a separate regression-only story or browser-verification-only story when those checks naturally belong to the same constrained change.
+GUIDANCE_EOF
+)
+fi
 PROMPT=$(
   cat <<PROMPT_EOF
 Use the \`prd\` skill and then the \`ralph\` skill, in that order.
@@ -589,6 +639,7 @@ Quick clarifier answers (if provided):
 - Primary goal: $PRIMARY_GOAL
 - Target users: $TARGET_USERS
 - Scope level: $SCOPE_LEVEL
+$SINGLE_SLICE_GUIDANCE
 
 Guidance:
 1. Follow the PRD skill workflow. If information is already sufficient, keep clarifying questions minimal.

@@ -118,3 +118,4 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Smoke runs should persist a lightweight local benchmark history under `scripts/smoke/.benchmarks/` so before/after efficiency changes can be compared without re-reading full logs.
 - Keep a direct regression test for `ralph-verify.sh --targeted` selecting a related test for source-only changes; that behavior is important enough to test independently from the larger loop smoke.
 - The tiny console standalone smoke case should assert that compact PRD mode actually activated, while UI smoke should assert that the normal planning path remained in use.
+- For tiny file-scoped UI copy tasks that still require browser evidence, keep normal planning mode but explicitly nudge PRD generation toward a single story that combines the implementation change, matching regression update, and browser verification unless real sequencing is required.
