@@ -19,6 +19,7 @@ QUIET=0
 FEATURE_CONCEPT=""
 HARD_CONSTRAINTS=""
 ACTIVATE_CURRENT_ONLY=0
+COMPACT_MODE=0
 
 # Quick question modes: ask (prompt user), on (force), off (skip)
 QUICK_QUESTIONS_MODE="ask"
@@ -40,6 +41,7 @@ Options:
   --feature TEXT           Feature concept (skip editor for this field)
   --constraints TEXT       Hard constraints/dependencies (skip editor for this field)
   --activate-current       Mark the current prd.json as active standalone PRD and exit
+  --compact                Use a lighter-weight planning prompt for tightly scoped work
   --remove PATH            Remove/archive an existing PRD markdown file
   --hard                   With --remove: permanently delete instead of archive
   --yes                    With --remove: skip confirmation prompt
@@ -52,6 +54,7 @@ Environment:
   CODEX_BIN                Codex CLI command (default: codex)
   PRD_JSON_PATH            Output path for prd.json (default: <script-dir>/prd.json)
   RALPH_EDITOR             Editor command for intake (fallback: VISUAL, EDITOR, nano, vi)
+  RALPH_PRD_COMPACT        Set to 1/true to default to --compact mode
 USAGE
 }
 
@@ -397,6 +400,10 @@ while [[ $# -gt 0 ]]; do
       ACTIVATE_CURRENT_ONLY=1
       shift
       ;;
+    --compact)
+      COMPACT_MODE=1
+      shift
+      ;;
     --remove)
       REMOVE_TARGET="${2:-}"
       [ -n "$REMOVE_TARGET" ] || fail "--remove requires a path/slug argument"
@@ -437,6 +444,10 @@ fi
 
 if [ -z "$REMOVE_TARGET" ] && { [ "$REMOVE_HARD" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ]; }; then
   fail "--hard/--yes are only valid together with --remove"
+fi
+
+if [ "${RALPH_PRD_COMPACT:-0}" = "1" ] || [ "${RALPH_PRD_COMPACT:-}" = "true" ]; then
+  COMPACT_MODE=1
 fi
 
 if [ "$ACTIVATE_CURRENT_ONLY" -eq 1 ]; then
@@ -483,6 +494,45 @@ if [[ "$PRD_JSON" == "$WORKSPACE_ROOT/"* ]]; then
   PRD_JSON_REL="${PRD_JSON#$WORKSPACE_ROOT/}"
 fi
 
+if [ "$COMPACT_MODE" -eq 1 ]; then
+PROMPT=$(
+  cat <<PROMPT_EOF
+Use the \`prd\` skill and then the \`ralph\` skill, in that order.
+
+Create a compact Ralph planning package for a tightly scoped change.
+
+Feature concept:
+$FEATURE_CONCEPT
+
+Hard constraints/dependencies (if any):
+${HARD_CONSTRAINTS:-None provided}
+
+Quick clarifier answers (if provided):
+- Primary goal: $PRIMARY_GOAL
+- Target users: $TARGET_USERS
+- Scope level: $SCOPE_LEVEL
+
+Compact planning rules:
+1. Keep the PRD markdown concise and execution-focused.
+2. Prefer the fewest dependency-ordered stories that still keep verification evidence honest.
+3. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
+4. Avoid long narrative sections or speculative detail.
+5. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
+6. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+7. Every story acceptance criteria must include:
+   - "Typecheck passes"
+   - "Lint passes"
+   - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
+8. For UI stories, include "Verify in browser using dev-browser skill".
+9. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+
+Return a short summary with:
+- PRD markdown path
+- prd.json path
+- Number of user stories created
+PROMPT_EOF
+)
+else
 PROMPT=$(
   cat <<PROMPT_EOF
 Use the \`prd\` skill and then the \`ralph\` skill, in that order.
@@ -520,6 +570,7 @@ Return a short summary with:
 - Number of user stories created
 PROMPT_EOF
 )
+fi
 
 log "Generating PRD and prd.json via Codex skills..."
 before_prd_state="$(mktemp)"

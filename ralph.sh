@@ -330,9 +330,47 @@ has_complete_token() {
   grep -q "<promise>COMPLETE</promise>" "$path"
 }
 
+progress_has_completion_entry() {
+  [ -f "$PROGRESS_FILE" ] || return 1
+  grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE"
+}
+
 prd_all_passes() {
   [ -f "$PRD_FILE" ] || return 1
   jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$PRD_FILE" >/dev/null 2>&1
+}
+
+has_non_transient_worktree_changes() {
+  local status_output filtered
+  status_output="$(git status --porcelain --untracked-files=all || true)"
+  [ -n "$status_output" ] || return 1
+
+  filtered="$(
+    printf '%s\n' "$status_output" | awk '
+      {
+        path = substr($0, 4)
+        if (path ~ /^scripts\/ralph\/prd\.json$/) next
+        if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.active-prd$/) next
+        if (path ~ /^scripts\/ralph\/\.last-branch$/) next
+        if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
+        if (path ~ /^\.playwright-cli(\/|$)/) next
+        if (path ~ /^scripts\/ralph\/\.playwright-cli(\/|$)/) next
+        print
+      }
+    '
+  )"
+
+  [ -n "$filtered" ]
+}
+
+completion_is_stable() {
+  prd_all_passes || return 1
+  has_non_transient_worktree_changes && return 1
+  if has_complete_token "$CODEX_LAST_MESSAGE_LATEST_FILE"; then
+    return 0
+  fi
+  progress_has_completion_entry
 }
 
 prd_has_unfinished_stories() {
@@ -686,6 +724,16 @@ if ! resolve_sprint_paths; then
   exit 1
 fi
 
+if ! ensure_prd_ready; then
+  echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
+  exit 1
+fi
+
+if completion_is_stable; then
+  echo "Ralph already has stable completion evidence; skipping loop."
+  exit 0
+fi
+
 # Guard before priming so auto-commit cannot absorb unrelated epics backlog edits.
 if ! ensure_backlog_inputs_committed; then
   exit 1
@@ -714,11 +762,6 @@ fi
 
 if [ ! -f "$SCRIPT_DIR/prompt.md" ]; then
   echo "Missing prompt file: $SCRIPT_DIR/prompt.md" >&2
-  exit 1
-fi
-
-if ! ensure_prd_ready; then
-  echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
   exit 1
 fi
 
@@ -856,7 +899,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   fi
   
   # Check for completion signal
-  if has_complete_token "$CODEX_ITER_LAST_MESSAGE_FILE" || prd_all_passes; then
+  if completion_is_stable; then
     echo ""
     echo "Ralph completed all tasks!"
     echo "Completed at iteration $i of $MAX_ITERATIONS"

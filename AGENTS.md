@@ -110,3 +110,5 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-prd.sh --feature ... --no-questions` should stay non-interactive even when launched from a TTY; only open editor intake when the feature concept is missing or quick-question intake is still enabled.
 - When the smoke harness runs under a TTY, explicitly redirect stdin from `/dev/null` for intentionally interactive wrappers (for example `ralph-sprint.sh create`) that are being used in automation-only setup steps.
 - `ralph-verify.sh --targeted` should infer related tests for changed source files more broadly than exact basenames, and fall back to the full test suite when source files changed but no related targeted tests can be inferred.
+- `ralph-prd.sh` now supports an opt-in compact planning path (`--compact` or `RALPH_PRD_COMPACT=1`) for tightly scoped work; keep it non-default so broader tasks still use the full planning prompt.
+- `ralph.sh` should skip the loop entirely when completion is already stable: all stories pass, completion evidence exists, and only transient Ralph artifacts remain dirty.
