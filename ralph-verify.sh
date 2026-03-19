@@ -5,6 +5,9 @@ MODE="targeted"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 RALPH_DIR="$WORKSPACE_ROOT/scripts/ralph"
 IGNORE_FILE="$RALPH_DIR/known-test-baseline-failures.txt"
+DEFAULT_FULL_IGNORE_PATTERNS=(
+  "<rootDir>/tests/playwright/"
+)
 
 usage() {
   cat <<USAGE
@@ -126,8 +129,10 @@ discover_targeted_tests() {
 }
 
 build_ignore_regex() {
-  [ -f "$IGNORE_FILE" ] || return 0
-  awk 'NF && $1 !~ /^#/' "$IGNORE_FILE" | paste -sd'|' -
+  {
+    printf '%s\n' "${DEFAULT_FULL_IGNORE_PATTERNS[@]}"
+    [ -f "$IGNORE_FILE" ] && awk 'NF && $1 !~ /^#/' "$IGNORE_FILE"
+  } | sed '/^$/d' | sort -u | paste -sd'|' -
 }
 
 run_targeted_tests() {

@@ -318,6 +318,9 @@ echo "[smoke] work dir: $WORK_DIR"
 echo "[smoke] codex: $CODEX_BIN_VALUE"
 echo "[smoke] app mode: $APP_MODE"
 
+echo "[smoke] running framework run-state regression test"
+node --test "$REPO_ROOT/__tests__/ralph-run-state.test.js" >/dev/null
+
 cd "$TEST_REPO"
 git init -b main >/dev/null
 git config user.name "Ralph Smoke"

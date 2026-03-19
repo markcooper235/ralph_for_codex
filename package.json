@@ -1,0 +1,7 @@
+{
+  "name": "ralph-for-codex",
+  "private": true,
+  "scripts": {
+    "test:regression": "node --test __tests__/ralph-run-state.test.js"
+  }
+}

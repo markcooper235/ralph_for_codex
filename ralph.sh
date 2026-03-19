@@ -97,6 +97,19 @@ default_base_branch() {
   return 1
 }
 
+ensure_sprint_branch_exists() {
+  local sprint="$1"
+  local sprint_branch base_branch
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+    return 0
+  fi
+
+  base_branch="$(default_base_branch)"
+  git branch "$sprint_branch" "$base_branch"
+  echo "Created sprint branch $sprint_branch from base branch $base_branch."
+}
+
 resolve_sprint_paths() {
   local active_sprint
   active_sprint="$(get_active_sprint || true)"
@@ -530,18 +543,16 @@ ensure_feature_branch_for_active_prd() {
   feature_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
   [ -n "$feature_branch" ] || return 0
 
+  active_sprint="$(get_active_sprint || true)"
+  if [ -n "$active_sprint" ]; then
+    ensure_sprint_branch_exists "$active_sprint" || return 1
+  fi
+
   if ! git show-ref --verify --quiet "refs/heads/$feature_branch"; then
-    active_sprint="$(get_active_sprint || true)"
     if [ -n "$active_sprint" ]; then
       sprint_branch="$(sprint_branch_name "$active_sprint")"
-      if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
-        git branch "$feature_branch" "$sprint_branch"
-        echo "Created feature branch $feature_branch from sprint branch $sprint_branch."
-      else
-        base_branch="$(default_base_branch)"
-        git branch "$feature_branch" "$base_branch"
-        echo "Created feature branch $feature_branch from base branch $base_branch (sprint branch missing)."
-      fi
+      git branch "$feature_branch" "$sprint_branch"
+      echo "Created feature branch $feature_branch from sprint branch $sprint_branch."
     else
       base_branch="$(default_base_branch)"
       git branch "$feature_branch" "$base_branch"
@@ -724,11 +735,6 @@ if ! resolve_sprint_paths; then
   exit 1
 fi
 
-if ! ensure_prd_ready; then
-  echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
-  exit 1
-fi
-
 if completion_is_stable; then
   echo "Ralph already has stable completion evidence; skipping loop."
   exit 0
@@ -746,6 +752,11 @@ fi
 
 if ! commit_prime_epic_state_if_needed; then
   echo "Unable to commit primed epic state before loop." >&2
+  exit 1
+fi
+
+if ! ensure_prd_ready; then
+  echo "Unable to initialize PRD file before Ralph loop: $PRD_FILE" >&2
   exit 1
 fi
 
