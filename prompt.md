@@ -16,7 +16,7 @@ You are the coding agent for one Ralph loop iteration.
 - Do not commit broken code.
 - Never use `git add -f` / `git add --force`.
 - Never stage or commit `scripts/ralph/prd.json` or `scripts/ralph/progress.txt`.
-- Treat epic implementation as `src/**` and tests only; commit config-only changes separately and do not count them as story progress.
+- Treat epic implementation as application code plus tests only; commit config-only changes separately and do not count them as story progress.
 
 ## Iteration Workflow
 1. Confirm current branch matches PRD `branchName` (wrapper handles checkout/creation).
