@@ -225,9 +225,14 @@ EOF
 
 commit_primed_epic_state_if_needed() {
   local epic_id="$1"
-  local status_line epic_title
+  local source_prd_path="${2:-}"
+  local source_prd_abs="" status_line epic_title
 
-  status_line="$(git status --porcelain -- "$EPICS_FILE" || true)"
+  if [ -n "$source_prd_path" ]; then
+    source_prd_abs="$WORKSPACE_ROOT/$source_prd_path"
+  fi
+
+  status_line="$(git status --porcelain -- "$EPICS_FILE" ${source_prd_abs:+"$source_prd_abs"} || true)"
   [ -n "$status_line" ] || return 0
 
   if ! jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1; then
@@ -236,7 +241,10 @@ commit_primed_epic_state_if_needed() {
 
   epic_title="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .title // empty' "$EPICS_FILE")"
 
-  git add "$EPICS_FILE"
+  git add -- "$EPICS_FILE"
+  if [ -n "$source_prd_abs" ] && [ -f "$source_prd_abs" ]; then
+    git add -- "$source_prd_abs"
+  fi
   if git diff --cached --quiet; then
     return 0
   fi
@@ -501,7 +509,7 @@ main() {
   set_active_epic_prd "$next_epic" "$source_prd"
   reset_local_run_artifacts
   if [ "$AUTO_COMMIT" -eq 1 ]; then
-    commit_primed_epic_state_if_needed "$next_epic"
+    commit_primed_epic_state_if_needed "$next_epic" "$source_prd"
   fi
 
   local remaining

@@ -84,6 +84,11 @@ if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.writeFileSync(destination, JSON.stringify(output, null, 2));
 }
+if (input.includes('Generate a complete PRD markdown from this epic context and write it to:')) {
+  const destination = (input.match(/write it to:\\n\`([^\\\`]+)\`/) || [null, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'])[1];
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.writeFileSync(destination, '# PRD\\n\\n## User Stories\\n\\n### US-001: Stub story\\n- Typecheck passes\\n- Lint passes\\n- Tests pass\\n');
+}
 `
   )
   fs.chmodSync(stubPath, 0o755)
@@ -488,4 +493,46 @@ test('ralph-prime and archive treat EPIC-R sprint branches as epic-mode runs', (
   const archivedFolders = fs.readdirSync(archiveRoot)
   assert.equal(archivedFolders.length, 1)
   assert.match(archivedFolders[0], /sprint-test-epic-r1/)
+})
+
+test('ralph-prime auto-commit persists generated epic markdown when promptContext creates it', () => {
+  const repoDir = initTempRepo()
+  const env = { PATH: installCodexStub(repoDir) }
+
+  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Generated EPIC Test',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md'],
+            goal: 'Test goal',
+            promptContext: 'Generate the PRD from prompt context.',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add sprint backlog without generated prd'], { cwd: repoDir })
+
+  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
+
+  const generatedPath = path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md')
+  assert.equal(fs.existsSync(generatedPath), true)
+  assert.match(run('git', ['ls-files', '--', 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md'], { cwd: repoDir }), /prd-epic-001-generated-epic-test\.md/)
+
+  const lastCommit = run('git', ['log', '-1', '--pretty=%s'], { cwd: repoDir }).trim()
+  assert.equal(lastCommit, 'chore(ralph): prime EPIC-001 active for loop startup')
 })
