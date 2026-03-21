@@ -189,7 +189,28 @@ build_codex_exec_args() {
   fi
 }
 
+commit_generated_prd_markdown_if_needed() {
+  local rel_path="$1"
+  local abs_path status_line
+
+  [ -n "$rel_path" ] || return 0
+  abs_path="$WORKSPACE_ROOT/$rel_path"
+  [ -f "$abs_path" ] || return 0
+
+  status_line="$(git status --porcelain -- "$abs_path" || true)"
+  [ -n "$status_line" ] || return 0
+
+  git add -- "$abs_path"
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  git commit -m "chore(ralph): add standalone PRD spec" >/dev/null
+  log "Committed standalone PRD spec: $rel_path"
+}
+
 snapshot_prd_markdown_state() {
+  mkdir -p "$SCRIPT_DIR/tasks/prds"
   find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' -printf '%P|%s|%T@\n' 2>/dev/null | sort
 }
 
@@ -711,6 +732,7 @@ if ! jq -e '
 fi
 
 log "Done."
+commit_generated_prd_markdown_if_needed "$PRD_MARKDOWN_PATH"
 mark_active_standalone_prd "$PRD_JSON_REL"
 printf 'PRD Markdown: %s\n' "$PRD_MARKDOWN_PATH"
 printf 'PRD JSON: %s\n' "$PRD_JSON"
