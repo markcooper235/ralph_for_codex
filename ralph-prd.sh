@@ -615,16 +615,22 @@ Quick clarifier answers (if provided):
 Compact planning rules:
 1. Keep the PRD markdown concise and execution-focused.
 2. Prefer the fewest dependency-ordered stories that still keep verification evidence honest.
-3. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
-4. Avoid long narrative sections or speculative detail.
-5. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
-6. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-7. Every story acceptance criteria must include:
+3. Fit the PRD into 1-6 executable stories.
+4. Use task classes that naturally fit that range:
+   - micro: 1 story
+   - small: 2-3 stories
+   - medium: 4-6 stories
+5. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
+6. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
+7. Avoid long narrative sections or speculative detail.
+8. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
+9. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+10. Every story acceptance criteria must include:
    - "Typecheck passes"
    - "Lint passes"
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-8. For UI stories, include "Verify in browser using dev-browser skill".
-9. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+11. For UI stories, include "Verify in browser using dev-browser skill".
+12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
 
 Return a short summary with:
 - PRD markdown path
@@ -665,16 +671,22 @@ $SINGLE_SLICE_GUIDANCE
 Guidance:
 1. Follow the PRD skill workflow. If information is already sufficient, keep clarifying questions minimal.
 2. If critical gaps remain, infer using explicit assumptions instead of blocking.
-3. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
-4. Break work into small, one-iteration user stories ordered by dependency.
-5. Set clear story priorities (1..N in execution order).
-6. Every story acceptance criteria must include:
+3. Fit the PRD into 1-6 executable stories.
+4. Use task classes that naturally fit that range:
+   - micro: 1 story
+   - small: 2-3 stories
+   - medium: 4-6 stories
+5. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
+6. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
+7. Break work into small, one-iteration user stories ordered by dependency.
+8. Set clear story priorities (1..N in execution order).
+9. Every story acceptance criteria must include:
    - "Typecheck passes"
    - "Lint passes"
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-7. For UI stories, include "Verify in browser using dev-browser skill".
-8. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-9. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+10. For UI stories, include "Verify in browser using dev-browser skill".
+11. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
 
 Return a short summary with:
 - PRD markdown path

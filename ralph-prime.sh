@@ -368,9 +368,15 @@ Inputs:
 
 Requirements:
 1. Output must be a complete PRD markdown suitable for later Ralph JSON conversion.
-2. Keep stories small, ordered by dependency, with clear acceptance criteria.
-3. Include explicit assumptions where context is ambiguous.
-4. Overwrite destination if it exists.
+2. Fit the PRD into 1-6 executable stories.
+3. Use task classes that naturally fit that range:
+   - micro: 1 story
+   - small: 2-3 stories
+   - medium: 4-6 stories
+4. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
+5. Keep stories small, ordered by dependency, with clear acceptance criteria.
+6. Include explicit assumptions where context is ambiguous.
+7. Overwrite destination if it exists.
 
 Return a short summary and the exact output path.
 EOF
