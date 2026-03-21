@@ -26,6 +26,9 @@ You are the coding agent for one Ralph loop iteration.
    Do not run the full suite per story by default.
 5. For UI criteria, validate in browser.
    Preferred: Playwright; fallback: Cypress.
+   For tiny file-scoped UI/copy tasks, keep implementation inside the requested app/test files.
+   Do not modify browser helper scripts, build scripts, configs, or fixtures just to make browser validation pass.
+   If browser validation depends on built assets, rebuild locally first and use that as evidence instead of editing verification helpers.
    <!-- RALPH:LOCAL:ROLE:HELPER -->
 6. If checks pass, commit with:
    `feat: [Story ID] - [Story Title]`

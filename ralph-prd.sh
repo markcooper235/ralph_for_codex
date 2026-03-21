@@ -699,11 +699,11 @@ fi
 
 if ! jq -e '
   all(.userStories[];
-    any(.acceptanceCriteria[]; test("(?i)typecheck passes")) and
-    any(.acceptanceCriteria[]; test("(?i)lint passes")) and
+    any(.acceptanceCriteria[]; test("(?i)(typecheck passes|typecheck.*passes|npm run typecheck.*passes)")) and
+    any(.acceptanceCriteria[]; test("(?i)(lint passes|lint.*passes|npm run lint.*passes)")) and
     (
-      any(.acceptanceCriteria[]; test("(?i)unit tests pass")) or
-      any(.acceptanceCriteria[]; test("(?i)tests pass"))
+      any(.acceptanceCriteria[]; test("(?i)(unit tests pass|unit tests.*pass|npm test.*pass)")) or
+      any(.acceptanceCriteria[]; test("(?i)(tests pass|tests.*pass)"))
     )
   )
 ' "$PRD_JSON" >/dev/null 2>&1; then
