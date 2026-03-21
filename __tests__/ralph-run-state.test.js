@@ -388,6 +388,47 @@ test('ralph.sh cold-start primes the next epic before requiring a populated prd.
   assert.match(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-prd'), 'utf8'), /"epicId": "EPIC-001"/)
 })
 
+test('completion transient matcher ignores generated prompt-context epic markdown', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated.md'), '# Generated PRD\n')
+
+  const statusOutput = run('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: repoDir })
+  const filtered = execFileSync(
+    'bash',
+    [
+      '-lc',
+      [
+        'printf "%s\\n" "$STATUS_OUTPUT" | awk \'{',
+        'path = substr($0, 4);',
+        'if (path ~ /^scripts\\/ralph\\/prd\\.json$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/progress\\.txt$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/\\.active-prd$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/\\.last-branch$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/\\.codex-last-message(\\-iter-[0-9]+|-prd-bootstrap)?\\.txt$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/tasks(\\/[^/]+)?\\/?$/) next;',
+        'if (path ~ /^scripts\\/ralph\\/tasks\\/[^/]+\\/prd-epic-[^/]+\\.md$/) next;',
+        'if (path ~ /^\\.playwright-cli(\\/|$)/) next;',
+        'if (path ~ /^scripts\\/ralph\\/\\.playwright-cli(\\/|$)/) next;',
+        'print',
+        '}\'',
+      ].join(' '),
+    ],
+    {
+      cwd: repoDir,
+      env: {
+        ...process.env,
+        STATUS_OUTPUT: statusOutput,
+      },
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }
+  ).trim()
+
+  assert.equal(statusOutput.trim(), '?? scripts/ralph/tasks/sprint-test/prd-epic-001-generated.md')
+  assert.equal(filtered, '')
+})
+
 test('ralph-prime and archive treat EPIC-R sprint branches as epic-mode runs', () => {
   const repoDir = initTempRepo()
   const env = { PATH: installCodexStub(repoDir) }

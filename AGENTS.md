@@ -115,6 +115,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph.sh` should skip the loop entirely when completion is already stable: all stories pass, completion evidence exists, and only transient Ralph artifacts remain dirty.
 - Keep `prompt.md` terse because every Ralph iteration pays for it again; compress wording before adding new always-on instructions.
 - For tiny file-scoped UI tasks, the loop prompt should prefer rebuilding local assets for browser verification over editing helper scripts like `scripts/browser-check.mjs`; keep the change inside the requested app/test files unless the PRD explicitly expands scope.
+- Keep loop-context reads tight: prefer `## Codebase Patterns`, the latest single progress entry, and the nearest relevant `AGENTS.md` before expanding outward.
 - Smoke telemetry should report both token totals and loop iteration counts/completion iteration so efficiency regressions can be traced to either planning cost or extra loop churn.
 - Smoke runs should persist a lightweight local benchmark history under `scripts/smoke/.benchmarks/` so before/after efficiency changes can be compared without re-reading full logs.
 - Keep a direct regression test for `ralph-verify.sh --targeted` selecting a related test for source-only changes; that behavior is important enough to test independently from the larger loop smoke.

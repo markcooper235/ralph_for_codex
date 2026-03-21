@@ -409,6 +409,8 @@ has_non_transient_worktree_changes() {
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
         if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
+        if (path ~ /^scripts\/ralph\/tasks(\/[^/]+)?\/?$/) next
+        if (path ~ /^scripts\/ralph\/tasks\/[^/]+\/prd-epic-[^/]+\.md$/) next
         if (path ~ /^\.playwright-cli(\/|$)/) next
         if (path ~ /^scripts\/ralph\/\.playwright-cli(\/|$)/) next
         print

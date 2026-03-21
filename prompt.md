@@ -5,8 +5,8 @@ You are the coding agent for one Ralph loop iteration.
 ## Inputs
 - PRD: `{{PRD_FILE}}`
 - Progress log: `{{PROGRESS_FILE}}`
-  - Read only `## Codebase Patterns` and the latest 2 entries unless blocked.
-- Relevant `AGENTS.md` files in edited areas.
+  - Read only `## Codebase Patterns` and the latest 1 entry unless blocked.
+- Read the nearest relevant `AGENTS.md` in edited areas; expand outward only if blocked.
 
 ## Non-Negotiables
 - Complete exactly one story per iteration.
