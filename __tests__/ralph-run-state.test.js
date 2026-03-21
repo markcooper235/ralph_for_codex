@@ -387,3 +387,64 @@ test('ralph.sh cold-start primes the next epic before requiring a populated prd.
   assert.equal(primed.branchName, 'ralph/sprint-test/epic-001')
   assert.match(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-prd'), 'utf8'), /"epicId": "EPIC-001"/)
 })
+
+test('ralph-prime and archive treat EPIC-R sprint branches as epic-mode runs', () => {
+  const repoDir = initTempRepo()
+  const env = { PATH: installCodexStub(repoDir) }
+
+  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-R1',
+            title: 'EPIC R Test',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-r1.md'],
+            goal: 'Test goal',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'), '# Test PRD\n')
+  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'], {
+    cwd: repoDir,
+  })
+  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
+
+  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
+
+  const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
+  assert.equal(primed.branchName, 'ralph/sprint-test/epic-r1')
+
+  const activePrd = fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-prd'), 'utf8')
+  assert.match(activePrd, /"mode": "epic"/)
+  assert.match(activePrd, /"epicId": "EPIC-R1"/)
+
+  writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-r1\n')
+  run(
+    'bash',
+    [
+      '-lc',
+      'git add -A && (git diff --cached --quiet || git commit -m "sync Ralph tracked state")',
+    ],
+    { cwd: repoDir }
+  )
+
+  run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
+
+  const archiveRoot = path.join(repoDir, 'scripts/ralph/tasks/archive/sprint-test')
+  const archivedFolders = fs.readdirSync(archiveRoot)
+  assert.equal(archivedFolders.length, 1)
+  assert.match(archivedFolders[0], /sprint-test-epic-r1/)
+})

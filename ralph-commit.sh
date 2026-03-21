@@ -109,12 +109,15 @@ get_active_prd_base_branch() {
 
 infer_epic_id_from_feature_branch() {
   local feature_branch="$1"
-  if [[ "$feature_branch" =~ ^ralph/epic-([0-9]+)$ ]]; then
-    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
-    return 0
+  local epic_suffix=""
+  if [[ "$feature_branch" =~ ^ralph/epic-([A-Za-z0-9-]+)$ ]]; then
+    epic_suffix="${BASH_REMATCH[1]}"
+  elif [[ "$feature_branch" =~ ^ralph/[^/]+/epic-([A-Za-z0-9-]+)$ ]]; then
+    epic_suffix="${BASH_REMATCH[1]}"
   fi
-  if [[ "$feature_branch" =~ ^ralph/[^/]+/epic-([0-9]+)$ ]]; then
-    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+
+  if [ -n "$epic_suffix" ]; then
+    printf 'EPIC-%s\n' "$(printf '%s' "$epic_suffix" | tr '[:lower:]' '[:upper:]')"
     return 0
   fi
 
@@ -191,6 +194,11 @@ enforce_transient_files_untracked() {
   fi
 }
 
+reset_local_run_state() {
+  rm -f "$ACTIVE_PRD_FILE"
+  rm -f "$SCRIPT_DIR/.last-branch"
+}
+
 validate_archive_before_merge() {
   local archive_dir manifest_file source_playwright archived_playwright source_iter archived_iter
   archive_dir="$1"
@@ -265,12 +273,14 @@ sync_epic_status_for_completed_prd() {
       | map(
           if .id == $id then
             .status = "done"
+          elif .status == "active" then
+            .status = "ready"
           else
             .
           end
         )
     )
-    | if .activeEpicId == $id then .activeEpicId = null else . end
+    | .activeEpicId = null
   ' "$EPICS_FILE" > "$tmp_file"
   mv "$tmp_file" "$EPICS_FILE"
 
@@ -493,5 +503,7 @@ if [ "$KEEP_SOURCE" != "true" ]; then
 else
   echo "Kept source branch: $FEATURE_BRANCH"
 fi
+
+reset_local_run_state
 
 echo "Merge complete: $FEATURE_BRANCH -> $TARGET_BRANCH"

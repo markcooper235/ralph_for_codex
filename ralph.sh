@@ -25,6 +25,7 @@ CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
 PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
+LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
 
 for arg in "$@"; do
   case "$arg" in
@@ -69,6 +70,20 @@ require_cmd() {
     echo "Missing required command: $1" >&2
     exit 1
   fi
+}
+
+acquire_workflow_lock() {
+  if [ "${RALPH_LOCK_HELD:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "Another Ralph workflow command is already running. Wait for it to finish and retry." >&2
+    exit 1
+  fi
+
+  export RALPH_LOCK_HELD=1
+  trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
 }
 
 get_active_sprint() {
@@ -304,6 +319,33 @@ has_live_run_artifacts() {
   return 1
 }
 
+require_previous_run_archived() {
+  local current_branch last_branch
+  [ -f "$PRD_FILE" ] || return 0
+  [ -f "$LAST_BRANCH_FILE" ] || return 0
+
+  current_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  last_branch="$(cat "$LAST_BRANCH_FILE" 2>/dev/null || true)"
+
+  if [ -z "$current_branch" ] || [ -z "$last_branch" ] || [ "$current_branch" = "$last_branch" ]; then
+    return 0
+  fi
+
+  if ! has_live_run_artifacts; then
+    return 0
+  fi
+
+  if has_archived_run_for_branch "$last_branch"; then
+    echo "Previous run ($last_branch) already archived; resetting stale local run artifacts."
+    reset_local_run_artifacts
+    return 0
+  fi
+
+  echo "Previous run artifacts for $last_branch are still present and not archived." >&2
+  echo "Run ./scripts/ralph/ralph-commit.sh (or ./scripts/ralph/ralph-archive.sh) before starting a new loop." >&2
+  return 1
+}
+
 render_prompt() {
   local ralph_dir prd_file progress_file local_prompt_file rendered_prompt_file
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
@@ -412,7 +454,7 @@ infer_prd_mode_from_branch() {
   local prd_branch
   prd_is_valid_json || return 1
   prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
-  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]] || [[ "$prd_branch" =~ ^ralph/[^/]+/epic-[0-9]+$ ]]; then
+  if [[ "$prd_branch" =~ ^ralph/epic-[A-Za-z0-9-]+$ ]] || [[ "$prd_branch" =~ ^ralph/[^/]+/epic-[A-Za-z0-9-]+$ ]]; then
     printf 'epic\n'
   else
     printf 'standalone\n'
@@ -421,12 +463,15 @@ infer_prd_mode_from_branch() {
 
 infer_epic_id_from_branch_path() {
   local branch_path="$1"
-  if [[ "$branch_path" =~ ^ralph/epic-([0-9]+)$ ]]; then
-    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
-    return 0
+  local epic_suffix=""
+  if [[ "$branch_path" =~ ^ralph/epic-([A-Za-z0-9-]+)$ ]]; then
+    epic_suffix="${BASH_REMATCH[1]}"
+  elif [[ "$branch_path" =~ ^ralph/[^/]+/epic-([A-Za-z0-9-]+)$ ]]; then
+    epic_suffix="${BASH_REMATCH[1]}"
   fi
-  if [[ "$branch_path" =~ ^ralph/[^/]+/epic-([0-9]+)$ ]]; then
-    printf 'EPIC-%03d\n' "$((10#${BASH_REMATCH[1]}))"
+
+  if [ -n "$epic_suffix" ]; then
+    printf 'EPIC-%s\n' "$(printf '%s' "$epic_suffix" | tr '[:lower:]' '[:upper:]')"
     return 0
   fi
   printf ''
@@ -631,47 +676,13 @@ ensure_backlog_inputs_committed() {
   return 0
 }
 
-commit_prime_epic_state_if_needed() {
-  [ -n "${EPICS_FILE:-}" ] || return 0
-  [ -f "$EPICS_FILE" ] || return 0
-
-  local status_line epic_id epic_title
-  status_line="$(git status --porcelain -- "$EPICS_FILE" || true)"
-  [ -n "$status_line" ] || return 0
-
-  if ! jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1; then
-    echo "Cannot auto-commit primed epic state: invalid $EPICS_FILE" >&2
-    return 1
-  fi
-
-  epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
-  if [ -n "$epic_id" ]; then
-    epic_title="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .title // empty' "$EPICS_FILE")"
-  else
-    epic_title=""
-  fi
-
-  git add "$EPICS_FILE"
-  if git diff --cached --quiet; then
-    return 0
-  fi
-
-  if [ -n "$epic_id" ]; then
-    git commit -m "chore(ralph): prime $epic_id active for loop startup"
-    echo "Committed primed epic state: $epic_id ${epic_title:+- $epic_title}"
-  else
-    git commit -m "chore(ralph): sync epic backlog state before loop"
-    echo "Committed epic backlog state before loop start."
-  fi
-}
-
 infer_epic_id_from_prd_branch() {
   local prd_branch="$1"
   infer_epic_id_from_branch_path "$prd_branch"
 }
 
 ensure_epic_status_synced_with_prd() {
-  local prd_branch epic_id epic_status
+  local prd_branch epic_id epic_status active_epic_id
 
   [ -f "$EPICS_FILE" ] || return 0
   jq -e '.epics and (.epics|type=="array")' "$EPICS_FILE" >/dev/null 2>&1 || return 0
@@ -689,6 +700,7 @@ ensure_epic_status_synced_with_prd() {
   fi
 
   epic_status="$(jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | .status // ""' "$EPICS_FILE")"
+  active_epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE")"
 
   if prd_all_passes; then
     case "$epic_status" in
@@ -704,10 +716,22 @@ ensure_epic_status_synced_with_prd() {
   fi
 
   if prd_has_unfinished_stories; then
+    if [ -n "$active_epic_id" ] && [ "$active_epic_id" != "$epic_id" ]; then
+      echo "PRD is for $epic_id but active sprint epic is $active_epic_id." >&2
+      echo "Re-prime the backlog state before starting the loop." >&2
+      return 1
+    fi
     case "$epic_status" in
       done|abandoned|aborted)
         echo "PRD has unfinished stories but epic $epic_id is status '$epic_status'." >&2
         echo "Re-prime or set the epic back to active/planned before loop start." >&2
+        return 1
+        ;;
+      active)
+        ;;
+      *)
+        echo "PRD has unfinished stories but epic $epic_id is status '$epic_status'." >&2
+        echo "Re-prime the epic so sprint metadata and PRD state match before loop start." >&2
         return 1
         ;;
     esac
@@ -724,6 +748,7 @@ require_cmd awk
 require_cmd find
 require_cmd tr
 require_cmd "$CODEX_BIN"
+acquire_workflow_lock
 
 if ! ensure_transient_files_not_tracked; then
   exit 1
@@ -740,6 +765,10 @@ if completion_is_stable; then
   exit 0
 fi
 
+if ! ensure_epic_status_synced_with_prd; then
+  exit 1
+fi
+
 # Guard before priming so auto-commit cannot absorb unrelated epics backlog edits.
 if ! ensure_backlog_inputs_committed; then
   exit 1
@@ -747,11 +776,6 @@ fi
 
 if ! try_prime_prd; then
   echo "Unable to prime PRD for next loop." >&2
-  exit 1
-fi
-
-if ! commit_prime_epic_state_if_needed; then
-  echo "Unable to commit primed epic state before loop." >&2
   exit 1
 fi
 
@@ -785,77 +809,8 @@ if ! ensure_epic_status_synced_with_prd; then
   exit 1
 fi
 
-# Archive previous run if branch changed
-if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
-  CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-  LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
-  
-  if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
-    if has_archived_run_for_branch "$LAST_BRANCH"; then
-      echo "Previous run ($LAST_BRANCH) already archived; continuing."
-      reset_local_run_artifacts
-      echo "   Removed stale local run artifacts from already-archived run and reset progress."
-    else
-      # Archive the previous run
-      DATE=$(date +%Y-%m-%d)
-      FOLDER_NAME=$(slugify_branch "$LAST_BRANCH")
-      [ -n "$FOLDER_NAME" ] || FOLDER_NAME="ralph-run"
-      ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
-      if [ -e "$ARCHIVE_FOLDER" ]; then
-        ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME-$(date +%H%M%S)"
-      fi
-      
-      echo "Archiving previous run: $LAST_BRANCH"
-      mkdir -p "$ARCHIVE_FOLDER"
-      MANIFEST_FILE="$ARCHIVE_FOLDER/archive-manifest.txt"
-
-      ITER_SOURCE_COUNT=0
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
-      done
-
-      PLAYWRIGHT_SOURCE_PRESENT=0
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && PLAYWRIGHT_SOURCE_PRESENT=1
-
-      [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
-      [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
-      [ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_FOLDER/"
-      for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-        [ -f "$iter_log" ] || continue
-        cp "$iter_log" "$ARCHIVE_FOLDER/"
-      done
-      [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_FOLDER/"
-
-      ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_FOLDER" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
-      PLAYWRIGHT_ARCHIVE_PRESENT=0
-      [ -d "$ARCHIVE_FOLDER/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
-
-      {
-        echo "archive_time=$(date -Iseconds)"
-        echo "source_branch=$LAST_BRANCH"
-        echo "source_iter_logs=$ITER_SOURCE_COUNT"
-        echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
-        echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
-        echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
-      } > "$MANIFEST_FILE"
-
-      if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
-        echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
-        echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
-        exit 1
-      fi
-
-      if [ "$PLAYWRIGHT_SOURCE_PRESENT" -eq 1 ] && [ "$PLAYWRIGHT_ARCHIVE_PRESENT" -ne 1 ]; then
-        echo "Archive verification failed: .playwright-cli missing from archive output." >&2
-        echo "Artifacts were NOT deleted. See: $MANIFEST_FILE" >&2
-        exit 1
-      fi
-
-      reset_local_run_artifacts
-      echo "   Archived to: $ARCHIVE_FOLDER"
-    fi
-  fi
+if ! require_previous_run_archived; then
+  exit 1
 fi
 
 # Track current branch

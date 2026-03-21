@@ -61,7 +61,7 @@ infer_prd_mode_from_branch() {
     return 1
   fi
   prd_branch="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
-  if [[ "$prd_branch" =~ ^ralph/epic-[0-9]+$ ]] || [[ "$prd_branch" =~ ^ralph/[^/]+/epic-[0-9]+$ ]]; then
+  if [[ "$prd_branch" =~ ^ralph/epic-[A-Za-z0-9-]+$ ]] || [[ "$prd_branch" =~ ^ralph/[^/]+/epic-[A-Za-z0-9-]+$ ]]; then
     printf 'epic\n'
   else
     printf 'standalone\n'

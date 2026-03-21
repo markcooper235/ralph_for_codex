@@ -642,12 +642,28 @@ readiness_status() {
   fi
 
   local next_output
+  local active_prd_mode active_epic_status
+  active_prd_mode=""
+  active_epic_status=""
+  if [ -f "$SCRIPT_DIR/.active-prd" ]; then
+    active_prd_mode="$(jq -r '.mode // empty' "$SCRIPT_DIR/.active-prd" 2>/dev/null || true)"
+  fi
+  if [ -n "$active_epic_id" ]; then
+    active_epic_status="$(jq -r --arg id "$active_epic_id" '.epics[] | select(.id == $id) | (.status // "")' "$epics_file" 2>/dev/null || true)"
+  fi
   if next_output="$(RALPH_EPICS_FILE="$epics_file" "$SCRIPT_DIR/ralph-epic.sh" next 2>/dev/null)"; then
     echo "$next_output"
   else
     echo "No eligible next epic."
   fi
-  echo "Sprint is ready for ralph-prime."
+  if [ "$active_prd_mode" = "epic" ] && [ -f "$SCRIPT_DIR/prd.json" ] \
+     && jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$SCRIPT_DIR/prd.json" >/dev/null 2>&1; then
+    echo "Next action: run ./scripts/ralph/ralph-commit.sh to finish the completed epic."
+  elif [ -n "$active_epic_id" ] && [ "$active_epic_status" = "active" ]; then
+    echo "Next action: run ./scripts/ralph/ralph.sh to continue the active epic."
+  else
+    echo "Next action: run ./scripts/ralph/ralph-prime.sh to activate the next epic."
+  fi
 }
 
 bootstrap_current() {

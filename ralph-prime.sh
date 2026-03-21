@@ -15,6 +15,7 @@ ACTIVE_SPRINT=""
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
 CODEX_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 WORKSPACE_ROOT_PLAYWRIGHT_DIR="$WORKSPACE_ROOT/.playwright-cli"
+LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
 
 AUTO_MODE=0
 REGEN_PRD=0
@@ -52,6 +53,49 @@ get_active_sprint() {
   return 1
 }
 
+sprint_branch_name() {
+  local sprint="$1"
+  printf 'ralph/sprint/%s' "$sprint"
+}
+
+default_base_branch() {
+  if git show-ref --verify --quiet refs/heads/master; then
+    printf 'master\n'
+    return 0
+  fi
+  if git show-ref --verify --quiet refs/heads/main; then
+    printf 'main\n'
+    return 0
+  fi
+  fail "Could not find base branch (master or main)."
+}
+
+ensure_sprint_branch_exists() {
+  local sprint="$1"
+  local sprint_branch base_branch
+  sprint_branch="$(sprint_branch_name "$sprint")"
+  if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
+    return 0
+  fi
+
+  base_branch="$(default_base_branch)"
+  git branch "$sprint_branch" "$base_branch"
+  echo "Created sprint branch $sprint_branch from $base_branch."
+}
+
+prepare_backlog_branch() {
+  local sprint_branch current_branch
+  [ -n "$ACTIVE_SPRINT" ] || return 0
+
+  ensure_sprint_branch_exists "$ACTIVE_SPRINT"
+  sprint_branch="$(sprint_branch_name "$ACTIVE_SPRINT")"
+  current_branch="$(git branch --show-current)"
+  if [ "$current_branch" != "$sprint_branch" ]; then
+    git checkout "$sprint_branch" >/dev/null
+    echo "Checked out sprint backlog branch: $sprint_branch"
+  fi
+}
+
 resolve_epics_file() {
   ACTIVE_SPRINT="$(get_active_sprint || true)"
   if [ -z "$ACTIVE_SPRINT" ]; then
@@ -64,6 +108,19 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+acquire_workflow_lock() {
+  if [ "${RALPH_LOCK_HELD:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    fail "Another Ralph workflow command is already running. Wait for it to finish and retry."
+  fi
+
+  export RALPH_LOCK_HELD=1
+  trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
 }
 
 supports_codex_yolo() {
@@ -242,9 +299,10 @@ Convert this PRD markdown file into Ralph JSON at \`scripts/ralph/prd.json\`:
 
 Requirements:
 1. Produce valid JSON with keys: project, branchName, description, userStories.
-2. Set \`branchName\` to: \`ralph/$sprint_slug/$epic_slug\`.
-3. Keep user stories small, ordered by dependency, and execution-ready.
-4. Include acceptance criteria with typecheck/lint/tests requirements.
+2. Set \`project\` to exactly: \`$(basename "$WORKSPACE_ROOT")\`.
+3. Set \`branchName\` to: \`ralph/$sprint_slug/$epic_slug\`.
+4. Keep user stories small, ordered by dependency, and execution-ready.
+5. Include acceptance criteria with typecheck/lint/tests requirements.
 
 Return only a short summary after writing the file.
 EOF
@@ -372,8 +430,10 @@ main() {
   require_cmd tr
   require_cmd git
   require_cmd "$CODEX_BIN"
+  acquire_workflow_lock
   resolve_epics_file
   ensure_transient_files_not_tracked
+  prepare_backlog_branch
 
   # In non-interactive/automation mode, default to committing primed epic state.
   if [ "$AUTO_MODE" -eq 1 ] && [ "$AUTO_COMMIT" -eq 0 ]; then
