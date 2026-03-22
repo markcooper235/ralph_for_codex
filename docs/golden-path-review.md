@@ -44,7 +44,7 @@ The framework now has strong support for:
 
 That closes the largest structural golden-path gap without changing the existing loop primitives.
 
-### 3. Spec tracking is now coherent, but policy enforcement still relies heavily on prompts
+### 3. Spec tracking is now coherent, and scoped execution rules now have light runtime enforcement
 
 The system now behaves correctly in the happy path:
 
@@ -52,15 +52,15 @@ The system now behaves correctly in the happy path:
 - runtime state is transient
 - archived runtime evidence is preserved separately
 
-But some important rules are still enforced mainly by prompt behavior and smoke expectations, rather than hard script validation.
+The largest scoped-execution gap is now partially closed in [`ralph.sh`](../ralph.sh).
 
 Examples:
 
-- bounded-scope verification behavior is mostly governed by [`prompt.md`](../prompt.md)
-- scoped verification expansion rules are mostly prompt-level, not a runtime validator
+- when PRD/source text clearly says source changes are limited to named files, `ralph.sh` now validates that iteration commits stay inside that explicit source scope
+- verification/test-file expansion is allowed outside that scope, but only for verification-oriented paths
 - story decomposition quality is mostly prompt-level, not schema-enforced beyond basic structure checks
 
-That is workable, but it means some correctness still depends on model compliance rather than script guarantees.
+That is a good tradeoff: it hardens the highest-value scoped-work rule without adding a heavy policy engine. Some correctness still depends on model compliance, but less than before.
 
 ### 4. Worst-case smoke is useful, but still contains brittle assertions
 
@@ -256,7 +256,7 @@ Recommended default:
 - preserve active and completed work unless a low-churn reopen is clearly safer
 - prefer new follow-up epics or new sprints over reopening closed sprints when the refinement would otherwise create broad churn
 
-### 2. Keep enforcing durable-spec / transient-runtime separation
+### 3. Keep enforcing durable-spec / transient-runtime separation
 
 Current policy is good and should stay:
 
@@ -266,17 +266,22 @@ Current policy is good and should stay:
 
 This part should not be loosened.
 
-### 3. Move a few prompt-only rules into light validation where practical
+### 4. Keep light validation narrow and focused on explicit scope contracts
 
-Best candidates:
+What is now covered:
 
-- scoped verification should not broaden source scope
-- bounded source changes should remain bounded
-- verification expansion should remain verification-only
+- explicitly file-scoped source changes should remain inside named implementation files
+- verification expansion outside that source scope should remain verification-only
 
-These do not need a heavy policy engine, but a small validator would reduce model dependence.
+What should stay prompt-level for now:
 
-### 4. Relax brittle smoke assertions that enforce spelling, not behavior
+- broad story-shaping quality
+- nuanced decomposition judgment
+- non-explicit scope interpretation
+
+This remains the right design rule: validate only low-ambiguity, high-value constraints.
+
+### 5. Relax brittle smoke assertions that enforce spelling, not behavior
 
 In particular, worst-case smoke should prefer behavior checks over exact source spelling where equivalent implementations are acceptable.
 
@@ -284,7 +289,7 @@ Good target:
 
 - accept either literal `data-state` attribute handling or equivalent DOM API forms such as `dataset.state`
 
-### 5. Continue monitoring real-world lock behavior separately from smoke behavior
+### 6. Continue monitoring real-world lock behavior separately from smoke behavior
 
 Current smoke fix is appropriate.
 
@@ -293,7 +298,7 @@ Recommendation:
 - keep watching for stale-lock failures in non-smoke project runs
 - only then decide whether core lock behavior needs PID-aware or stale-owner logic
 
-### 6. Keep the loop prompt lean, but avoid over-compressing benchmark scenario prompts
+### 7. Keep the loop prompt lean, but avoid over-compressing benchmark scenario prompts
 
 Best practice:
 
@@ -310,13 +315,22 @@ The framework now matches the intended artifact policy well:
 - runtime state transient
 - runtime evidence archived
 
-The main gap is not in loop execution or closeout anymore.
+The main gap is not in the first planning layer anymore.
 
-The main gap is in the very first planning layer:
+The main remaining issues are lighter-weight and more tactical:
 
-- turning a broad roadmap into an ordered multi-sprint, multi-epic plan still depends on operator-driven use of the existing sprint/epic tools rather than a dedicated framework workflow.
+- worst-case smoke still contains at least one brittle implementation-spelling assertion
+- some higher-level behavior rules still intentionally remain prompt-led rather than validator-enforced
+- real-world lock behavior should still be observed separately from smoke-only behavior
 
-That means Ralph is currently strongest as:
+That means Ralph is now strongest as:
 
-- a PRD-to-execution framework
-- not yet a full roadmap-to-portfolio planning framework
+- a roadmap-to-sprint planning and PRD-to-execution framework
+- with its main remaining risks in test-harness sharp edges and selective prompt-led policy areas, not core workflow shape
+
+## Updated Priority Order
+
+1. Relax brittle worst-case smoke assertions so behavior is tested more than exact implementation spelling.
+2. Keep the new explicit-scope validator narrow and extend it only if repeated real failures show a clear low-ambiguity pattern.
+3. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
+4. Keep benchmark scenario prompts semantically exact while continuing to trim the always-paid loop prompt.

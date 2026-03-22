@@ -26,7 +26,7 @@ You are the coding agent for one Ralph loop iteration.
 5. For UI criteria, validate in browser.
    Prefer Playwright; fallback: Cypress.
    Keep scoped source changes inside the requested files unless the PRD expands scope.
-   Verification for scoped work is always allowed, but only to verify that scoped work.
+   Verification-only expansion is allowed for scoped work.
    Do not edit helpers, build scripts, configs, or fixtures just to make browser checks pass.
    If browser checks need built assets, rebuild locally and use that evidence.
    <!-- RALPH:LOCAL:ROLE:HELPER -->

@@ -390,6 +390,99 @@ progress_has_completion_entry() {
   grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE"
 }
 
+get_active_prd_source_path() {
+  [ -f "$ACTIVE_PRD_FILE" ] || return 1
+  jq -r '.sourcePath // empty' "$ACTIVE_PRD_FILE" 2>/dev/null
+}
+
+is_verification_only_path() {
+  local path="$1"
+  case "$path" in
+    tests/*|test/*|__tests__/*|e2e/*|cypress/*|playwright/*|*.test.*|*.spec.*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+scope_signal_present() {
+  local text="$1"
+  printf '%s\n' "$text" | tr '[:upper:]' '[:lower:]' | grep -Eq \
+    'keep (source )?changes limited to|only change|change(s)? limited to|scoped work'
+}
+
+extract_explicit_scope_paths() {
+  local text="$1"
+  printf '%s\n' "$text" \
+    | awk '
+        BEGIN { IGNORECASE=1 }
+        /keep (source )?changes limited to|only change|change(s)? limited to|scoped work/ { print }
+      ' \
+    | grep -Eo '([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.[A-Za-z0-9]+' \
+    | sort -u
+}
+
+collect_scope_hint_text() {
+  local source_path text
+  source_path="$(get_active_prd_source_path || true)"
+
+  if [ -n "$source_path" ] && [ -f "$WORKSPACE_ROOT/$source_path" ]; then
+    cat "$WORKSPACE_ROOT/$source_path"
+    printf '\n'
+  fi
+
+  if [ -f "$PRD_FILE" ]; then
+    jq -r '
+      [.description, (.userStories[]?.notes // ""), (.userStories[]?.acceptanceCriteria[]? // "")]
+      | map(select(type == "string" and length > 0))
+      | .[]
+    ' "$PRD_FILE" 2>/dev/null || true
+  fi
+}
+
+ensure_explicit_scope_changes_valid() {
+  local from_ref="$1"
+  local to_ref="$2"
+  local scope_text allowed_paths changed_files bad_changes
+
+  scope_text="$(collect_scope_hint_text)"
+  scope_signal_present "$scope_text" || return 0
+
+  allowed_paths="$(extract_explicit_scope_paths "$scope_text")"
+  [ -n "$allowed_paths" ] || return 0
+
+  changed_files="$(
+    git log --name-only --pretty=format: "$from_ref..$to_ref" 2>/dev/null \
+      | sed '/^$/d' \
+      | sort -u
+  )"
+  [ -n "$changed_files" ] || return 0
+
+  bad_changes="$(
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
+        continue
+      fi
+      if is_verification_only_path "$path"; then
+        continue
+      fi
+      printf '%s\n' "$path"
+    done <<< "$changed_files"
+  )"
+
+  if [ -n "$bad_changes" ]; then
+    echo "Ralph iteration changed files outside explicit scoped implementation paths:" >&2
+    printf '%s\n' "$bad_changes" >&2
+    echo "Allowed implementation paths:" >&2
+    printf '%s\n' "$allowed_paths" >&2
+    echo "Only verification/test files may expand beyond explicit source scope." >&2
+    return 1
+  fi
+
+  return 0
+}
+
 prd_all_passes() {
   [ -f "$PRD_FILE" ] || return 1
   jq -e '(.userStories | length) > 0 and all(.userStories[]; .passes == true)' "$PRD_FILE" >/dev/null 2>&1
@@ -858,6 +951,9 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   ITERATION_END_HEAD="$(git rev-parse HEAD)"
   if [ "$ITERATION_START_HEAD" != "$ITERATION_END_HEAD" ]; then
     if ! ensure_no_transient_commits_in_range "$ITERATION_START_HEAD" "$ITERATION_END_HEAD"; then
+      exit 1
+    fi
+    if ! ensure_explicit_scope_changes_valid "$ITERATION_START_HEAD" "$ITERATION_END_HEAD"; then
       exit 1
     fi
   fi
