@@ -15,25 +15,24 @@ You are the coding agent for one Ralph loop iteration.
 - Do not mark pass without evidence.
 - Do not commit broken code.
 - Never use `git add -f` / `git add --force`.
-- Never stage or commit `scripts/ralph/prd.json` or `scripts/ralph/progress.txt`.
+- Never stage or commit `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`, or `scripts/ralph/.completion-state.json`.
 - Epic story work is app code plus tests only; config-only changes do not count as story progress.
 
 ## Iteration Workflow
-1. Confirm current branch matches PRD `branchName` (wrapper handles checkout/creation).
-2. Select highest-priority failing story.
-3. Implement only that story.
-4. Run `./scripts/ralph/ralph-verify.sh --targeted` unless stricter coverage is clearly needed.
-5. For UI criteria, validate in browser.
+1. Select highest-priority failing story.
+2. Implement only that story.
+3. Run `./scripts/ralph/ralph-verify.sh --targeted` unless stricter coverage is clearly needed.
+4. For UI criteria, validate in browser.
    Prefer Playwright; fallback: Cypress.
    Keep source changes inside the requested files unless the PRD expands scope; verification-only expansion is allowed.
    Do not edit helpers, build scripts, configs, or fixtures just to make browser checks pass.
    If browser checks need built assets, rebuild locally and use that evidence.
    <!-- RALPH:LOCAL:ROLE:HELPER -->
-6. If checks pass, commit with `feat: [Story ID] - [Story Title]`.
-7. Set story `passes: true` in `{{PRD_FILE}}`.
-8. Append progress entry to `{{PROGRESS_FILE}}`.
-9. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full`. If it passes, append a completion note and set the handoff to `status: "completed"` with `completionSignal: true`.
-10. End your reply with a compact Ralph handoff block for the next iteration using this exact wrapper:
+5. If checks pass, commit with `feat: [Story ID] - [Story Title]`.
+6. Set story `passes: true` in `{{PRD_FILE}}`.
+7. Append progress entry to `{{PROGRESS_FILE}}`.
+8. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full` and record the result in `{{PROGRESS_FILE}}`.
+9. End your reply with a compact Ralph handoff block using this exact wrapper:
 
 ```text
 <ralph_handoff>
@@ -46,6 +45,7 @@ Rules for the handoff:
 - Include only the most important 0-2 items per array.
 - Use valid JSON only inside the wrapper.
 - Do not include narrative outside the JSON inside the wrapper.
+- Use `status: "completed"` with `completionSignal: true` only after full verification passes.
 
 ## Progress Entry (Append Only)
 ```md
