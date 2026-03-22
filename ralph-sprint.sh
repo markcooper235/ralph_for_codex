@@ -201,6 +201,9 @@ ensure_sprint_structure() {
 {
   "version": 1,
   "project": "$(basename "$WORKSPACE_ROOT")",
+  "sprint": "$sprint",
+  "capacityTarget": 8,
+  "capacityCeiling": 10,
   "activeEpicId": null,
   "epics": []
 }
@@ -405,6 +408,8 @@ append_epic_from_editor() {
   epic_id="$(printf '%s\n' "$intake_block" | kv_from_block "EPIC_ID" | trim_whitespace)"
   title="$(printf '%s\n' "$intake_block" | kv_from_block "TITLE" | trim_whitespace)"
   priority="$(printf '%s\n' "$intake_block" | kv_from_block "PRIORITY" | trim_whitespace)"
+  local effort
+  effort="$(printf '%s\n' "$intake_block" | kv_from_block "EFFORT" | trim_whitespace)"
   status="$(printf '%s\n' "$intake_block" | kv_from_block "STATUS" | trim_whitespace)"
   depends_on="$(printf '%s\n' "$intake_block" | kv_from_block "DEPENDS_ON" | trim_whitespace)"
   prd_paths_input="$(printf '%s\n' "$intake_block" | kv_from_block "PRD_PATHS" | trim_whitespace)"
@@ -426,6 +431,7 @@ append_epic_from_editor() {
   [ -n "$epic_id" ] || epic_id="$default_id"
   [ -n "$status" ] || status="planned"
   [ -n "$priority" ] || priority="$(jq '.epics | length + 1' "$epics_file")"
+  [ -n "$effort" ] || effort="3"
   [ -n "$open_q" ] || open_q="None currently."
   [ -n "$prompt_context" ] || fail "PROMPT_CONTEXT is required to generate PRD task markdown."
 
@@ -437,6 +443,7 @@ append_epic_from_editor() {
   fi
   [ -n "$title" ] || fail "Title is required."
   [[ "$priority" =~ ^[0-9]+$ ]] || fail "Priority must be numeric."
+  [[ "$effort" =~ ^(1|2|3|5)$ ]] || fail "Effort must be one of: 1, 2, 3, 5."
   [ -n "$goal" ] || fail "Goal is required."
   [ -n "$prd_paths_input" ] || fail "At least one PRD path is required."
 
@@ -520,6 +527,7 @@ append_epic_from_editor() {
   jq --arg id "$epic_id" \
     --arg title "$title" \
     --argjson priority "$priority" \
+    --argjson effort "$effort" \
     --arg status "$status" \
     --arg goal "$goal" \
     --argjson dependsOn "$deps_json" \
@@ -530,6 +538,7 @@ append_epic_from_editor() {
         id: $id,
         title: $title,
         priority: $priority,
+        effort: $effort,
         status: $status,
         dependsOn: $dependsOn,
         prdPaths: $prdPaths,
@@ -576,6 +585,7 @@ readiness_status() {
   local sprint="$1"
   local epics_file
   local sprint_branch current_branch
+  local capacity_target capacity_ceiling planned_effort
   epics_file="$(sprint_epics_file "$sprint")"
   sprint_branch="$(sprint_branch_name "$sprint")"
   current_branch="$(git branch --show-current)"
@@ -588,6 +598,13 @@ readiness_status() {
   echo "Active sprint: $sprint"
   echo "Epics file: $epics_file"
   echo "Epic count: $(jq '.epics | length' "$epics_file")"
+  capacity_target="$(jq -r '.capacityTarget // 8' "$epics_file")"
+  capacity_ceiling="$(jq -r '.capacityCeiling // 10' "$epics_file")"
+  planned_effort="$(jq -r '[.epics[]?.effort // 0] | add // 0' "$epics_file")"
+  echo "Sprint capacity: target=$capacity_target ceiling=$capacity_ceiling planned=$planned_effort"
+  if [ "$planned_effort" -gt "$capacity_ceiling" ]; then
+    echo "Capacity warning: planned effort exceeds sprint ceiling."
+  fi
   if git show-ref --verify --quiet "refs/heads/$sprint_branch"; then
     echo "Sprint branch: $sprint_branch (exists)"
   else
@@ -605,7 +622,7 @@ readiness_status() {
     active_epic_line="$(jq -r --arg id "$active_epic_id" '
       .epics[]
       | select(.id == $id)
-      | "Active epic: \(.id) (P\(.priority)) - \(.title)\nStatus: \(.status)\nDependsOn: \((.dependsOn // []) | join(", "))"
+      | "Active epic: \(.id) (P\(.priority) E\(.effort // 0)) - \(.title)\nStatus: \(.status)\nDependsOn: \((.dependsOn // []) | join(", "))"
     ' "$epics_file")"
     if [ -n "$active_epic_line" ]; then
       echo "$active_epic_line"

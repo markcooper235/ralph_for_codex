@@ -55,6 +55,7 @@ Add options:
   --id EPIC-XXX             Explicit epic ID (default: next sequential ID)
   --title TEXT              Epic title (required)
   --priority N              Priority integer (default: next available)
+  --effort N                Sprint planning effort: 1, 2, 3, or 5 (default: 3)
   --status STATUS           planned|ready|blocked|active|done|abandoned (default: planned)
   --depends-on CSV          Comma-separated epic IDs (default: none)
   --prd-path PATH           PRD markdown path (default generated under active sprint tasks)
@@ -127,10 +128,11 @@ list_epics() {
   jq -r '
     .epics
     | sort_by(.priority, .id)
-    | (["ID","P","STATUS","DEPENDS","TITLE","PRDS"] | @tsv),
+    | (["ID","P","EFF","STATUS","DEPENDS","TITLE","PRDS"] | @tsv),
       (.[] | [
         .id,
         (.priority | tostring),
+        ((.effort // 0) | tostring),
         .status,
         ((.dependsOn // []) | join(",")),
         .title,
@@ -280,7 +282,7 @@ show_next() {
   jq -r --arg id "$next_id" '
     .epics[]
     | select(.id == $id)
-    | "Next epic: \(.id) (P\(.priority)) - \(.title)\nStatus: \(.status)\nDependsOn: \((.dependsOn // []) | join(", "))"
+    | "Next epic: \(.id) (P\(.priority) E\(.effort // 0)) - \(.title)\nStatus: \(.status)\nDependsOn: \((.dependsOn // []) | join(", "))"
   ' "$EPICS_FILE"
 }
 
@@ -328,6 +330,7 @@ add_epic() {
   local epic_id=""
   local title=""
   local priority=""
+  local effort="3"
   local status="planned"
   local depends_csv=""
   local prd_path=""
@@ -347,6 +350,10 @@ add_epic() {
         ;;
       --priority)
         priority="${2:-}"
+        shift 2
+        ;;
+      --effort)
+        effort="${2:-}"
         shift 2
         ;;
       --status)
@@ -396,6 +403,7 @@ add_epic() {
     priority="$(next_priority)"
   fi
   [[ "$priority" =~ ^[0-9]+$ ]] || fail "Priority must be an integer."
+  [[ "$effort" =~ ^(1|2|3|5)$ ]] || fail "Effort must be one of: 1, 2, 3, 5"
 
   if [ -z "$goal" ]; then
     goal="$title"
@@ -431,6 +439,7 @@ add_epic() {
   jq --arg id "$epic_id" \
      --arg title "$title" \
      --argjson priority "$priority" \
+     --argjson effort "$effort" \
      --arg status "$status" \
      --arg prd "$prd_path" \
      --arg goal "$goal" \
@@ -440,6 +449,7 @@ add_epic() {
       id: $id,
       title: $title,
       priority: $priority,
+      effort: $effort,
       status: $status,
       dependsOn: $depends,
       prdPaths: [$prd],

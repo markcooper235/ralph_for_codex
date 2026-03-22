@@ -1,5 +1,5 @@
 ---
-description: Archive the current Ralph run (copy prd.json and progress.txt into scripts/ralph/archive)
+description: Archive the current Ralph run into scripts/ralph/tasks/archive
 argument-hint: none
 ---
 

@@ -16,6 +16,9 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Generate and convert PRD into scripts/ralph/prd.json
 ./ralph-prd.sh
 
+# Convert roadmap vision into sprint/epic backlogs
+./ralph-roadmap.sh --vision "Roadmap from baseline to target state"
+
 # Optional OpenSpec -> Ralph conversion path (outside scripts/ralph runtime)
 ./scripts/openspec/openspec-skill.sh convert --change <change-name>
 
@@ -27,7 +30,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Epic backlog sequencing helpers
 ./ralph-epic.sh list
 ./ralph-epic.sh start-next
-./ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Epic planning context"
+./ralph-epic.sh add --title "My Epic" --effort 3 --depends-on EPIC-001 --prompt-context "Epic planning context"
 
 # Prime prd.json for active/next eligible epic
 ./ralph-prime.sh
@@ -52,6 +55,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 ## Key Files
 
 - `ralph-prd.sh` - Interactive/non-interactive wrapper to create PRDs and convert to `prd.json`
+- `ralph-roadmap.sh` - Roadmap planner that turns a broad future-state vision into sprint backlogs with effort-bounded epics
 - `ralph.sh` - The bash loop that spawns fresh Codex runs
 - `ralph-prime.sh` - Auto-selects/uses active epic and primes `prd.json` for loop startup
 - `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
@@ -72,12 +76,13 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 1. Run `./doctor.sh`
 2. If you changed local skills, run `./install.sh --install-skills` before PRD/prime runs
-3. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
-4. Select next epic via `./ralph-epic.sh start-next`
-5. Prime loop input via `./ralph-prime.sh`
-6. Run loop via `./ralph.sh [max_iterations]`
-7. Run `./ralph-commit.sh` to archive + merge using mode-aware defaults (epic -> sprint branch, standalone -> base branch); epic runs auto-mark matching epic `done`
-8. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
+3. Create the roadmap/sprint plan via `./ralph-roadmap.sh --vision "..."`
+4. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
+5. Select next epic via `./ralph-epic.sh start-next`
+6. Prime loop input via `./ralph-prime.sh`
+7. Run loop via `./ralph.sh [max_iterations]`
+8. Run `./ralph-commit.sh` to archive + merge using mode-aware defaults (epic -> sprint branch, standalone -> base branch); epic runs auto-mark matching epic `done`
+9. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
 
 Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
@@ -95,6 +100,8 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Fresh installs already seed `sprint-1`; create additional sprints only when needed.
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run immediately.
 - `ralph-epic.sh add ...` provides a non-interactive epic creation path; use it for automation.
+- Roadmap planning should keep sprint effort at or under capacity ceiling and use only sprint-safe epic effort scores (`1`, `2`, `3`, `5`); overflow work belongs in later sprints, not the current one.
+- Keep explicit epic dependencies sprint-local; cross-sprint sequencing should be represented by sprint order, not cross-sprint `dependsOn` links.
 - `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default; pass `--keep` to retain them.
 - `.active-prd` now includes explicit `baseBranch`; `ralph-commit.sh` should use it before fallback target inference.
 - OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.

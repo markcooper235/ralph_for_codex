@@ -148,6 +148,7 @@ copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
 copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
+copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
 copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
@@ -174,6 +175,7 @@ chmod +x \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-commit.sh" \
   "$DEST_DIR_REL/ralph-epic.sh" \
+  "$DEST_DIR_REL/ralph-roadmap.sh" \
   "$DEST_DIR_REL/ralph-prime.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
@@ -287,13 +289,14 @@ fi
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
-echo "  2) ./$DEST_DIR_REL/ralph-sprint.sh status"
-echo "  3) ./$DEST_DIR_REL/ralph-epic.sh list"
-echo "  4) ./$DEST_DIR_REL/ralph-prd.sh  (standalone flow) OR ./$DEST_DIR_REL/ralph-prime.sh  (epic flow)"
-echo "  5) ./$DEST_DIR_REL/ralph.sh 10"
+echo "  2) ./$DEST_DIR_REL/ralph-roadmap.sh --vision \"Baseline to target-state roadmap\""
+echo "  3) ./$DEST_DIR_REL/ralph-sprint.sh status"
+echo "  4) ./$DEST_DIR_REL/ralph-epic.sh list"
+echo "  5) ./$DEST_DIR_REL/ralph-prd.sh  (standalone flow) OR ./$DEST_DIR_REL/ralph-prime.sh  (epic flow)"
+echo "  6) ./$DEST_DIR_REL/ralph.sh 10"
 if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
   echo "Optional OpenSpec adapter:"
   echo "  ./$OPENSPEC_DEST_REL/openspec-skill.sh convert --change <name>"
 fi
-echo "  6) ./$DEST_DIR_REL/ralph-commit.sh  (merge epic -> sprint branch)"
-echo "  7) ./$DEST_DIR_REL/ralph-sprint-commit.sh  (close sprint: merge sprint -> master/main)"
+echo "  7) ./$DEST_DIR_REL/ralph-commit.sh  (merge epic -> sprint branch)"
+echo "  8) ./$DEST_DIR_REL/ralph-sprint-commit.sh  (close sprint: merge sprint -> master/main)"

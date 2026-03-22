@@ -1,12 +1,16 @@
 {
   "version": 1,
   "project": "YourProject",
+  "sprint": "sprint-1",
+  "capacityTarget": 8,
+  "capacityCeiling": 10,
   "activeEpicId": null,
   "epics": [
     {
       "id": "EPIC-001",
       "title": "Foundation Epic",
       "priority": 1,
+      "effort": 3,
       "status": "ready",
       "dependsOn": [],
       "prdPaths": [
@@ -20,6 +24,7 @@
       "id": "EPIC-002",
       "title": "Follow-on Epic",
       "priority": 2,
+      "effort": 2,
       "status": "planned",
       "dependsOn": [
         "EPIC-001"

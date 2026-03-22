@@ -9,6 +9,7 @@ Context:
 EPIC_ID: {{DEFAULT_EPIC_ID}}
 TITLE:
 PRIORITY: {{DEFAULT_PRIORITY}}
+EFFORT: 3
 STATUS: planned
 DEPENDS_ON:
 PRD_PATHS: scripts/ralph/tasks/{{SPRINT_NAME}}/prd-epic-{{EPIC_NUM_LOWER}}-short-title.md

@@ -2,15 +2,20 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repeatedly until all PRD items are complete. Each iteration is a fresh Codex run with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
+Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repeatedly until all PRD items are complete. Each iteration is a fresh Codex run with clean context. Durable memory persists through git history and committed PRD markdown; transient run state lives in `prd.json` and `progress.txt` until archive/closeout.
 
-## Current Repo State (2026-03-05)
+## Current Repo State (2026-03-22)
 
 - Sprint-aware workflow is enabled by default (`scripts/ralph/sprints/<sprint>/epics.json` + `.active-sprint`).
 - The installer now provisions full lifecycle scripts: planning (`ralph-prd.sh`, `ralph-prime.sh`), loop execution (`ralph.sh`), sprint/epic management (`ralph-sprint.sh`, `ralph-epic.sh`), and completion/archive (`ralph-commit.sh`, `ralph-sprint-commit.sh`, `ralph-archive.sh`, `ralph-cleanup.sh`).
 - An optional OpenSpec adapter is available at `scripts/openspec/openspec-skill.sh` for converting OpenSpec changes into `scripts/ralph/prd.json`.
 - Codex assets in this repo include skills (`skills/prd`, `skills/ralph`, `skills/setup`) and reusable command prompts (`prompts/*.md`), both installable via `install.sh`.
 - Archive output now lives under `scripts/ralph/tasks/archive/<active-sprint>/...` for epic runs or `scripts/ralph/tasks/archive/prds/...` for standalone PRDs.
+- Generated standalone and epic PRD markdown specs are now committed when created; `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` remain transient runtime files.
+- `ralph-roadmap.sh` now provides a first-class roadmap planner that decomposes a broad future-state vision into sprint backlogs with dependency-aware epics and bounded sprint effort.
+- Loop prompts now explicitly allow verification of scoped work while keeping source changes inside scope unless the PRD expands it.
+- Smoke retry handling now clears only provably stale workflow locks in disposable smoke repos; core Ralph lock semantics are unchanged.
+- Sprint backlogs now carry capacity metadata (`capacityTarget` / `capacityCeiling`) and epics carry lightweight effort scores so roadmap planning can roll overflow work into later sprints.
 
 ## Project Origin
 
@@ -42,6 +47,7 @@ From your project root:
 ```bash
 bash /path/to/ralph/install.sh
 ./scripts/ralph/doctor.sh
+./scripts/ralph/ralph-roadmap.sh --vision "Describe the future-state roadmap"
 ./scripts/ralph/ralph-sprint.sh status
 ./scripts/ralph/ralph-prime.sh
 ./scripts/ralph/ralph.sh 10
@@ -162,12 +168,20 @@ The wrapper enforces small, ordered stories and requires completion criteria lik
 
 ```bash
 ./scripts/ralph/doctor.sh
+./scripts/ralph/ralph-roadmap.sh --vision "Describe the roadmap from current baseline to future state"
 ./scripts/ralph/ralph-sprint.sh status
 ./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-prime.sh
 ```
 
 `ralph-sprint.sh status` now displays both the current `Active epic` (if any) and the `Next epic` candidate to reduce sequencing ambiguity.
+
+Roadmap planning rules:
+- Sprint target effort defaults to `8`, with a ceiling of `10`.
+- Epic effort must be one of `1`, `2`, `3`, or `5`.
+- If a sprint would overflow, roadmap planning rolls lower-priority work into later sprints.
+- If a single epic is too large to be sprint-safe, roadmap planning splits it before backlog creation.
+- Sprint order carries cross-sprint sequencing; explicit `dependsOn` stays sprint-local.
 
 ### Alternative Planning Path: OpenSpec -> Ralph
 
@@ -216,7 +230,7 @@ Use epic backlog sequencing to decide what to run next before preparing each loo
 ./scripts/ralph/ralph-epic.sh list
 ./scripts/ralph/ralph-epic.sh next
 ./scripts/ralph/ralph-epic.sh start-next
-./scripts/ralph/ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Planning context"
+./scripts/ralph/ralph-epic.sh add --title "My Epic" --effort 3 --depends-on EPIC-001 --prompt-context "Planning context"
 ./scripts/ralph/ralph-epic.sh set-status EPIC-001 done
 ./scripts/ralph/ralph-epic.sh abandon EPIC-009 "superseded by EPIC-011"
 ./scripts/ralph/ralph-epic.sh remove EPIC-009
@@ -240,6 +254,8 @@ Notes:
 - `ralph-prime.sh --auto` now auto-commits primed epic status changes by default.
 - `ralph-prime.sh` falls back to the currently active epic when no next eligible epic exists.
 - `.active-prd` now records explicit `baseBranch`; `ralph-commit.sh` prefers it to avoid merge-target guesswork.
+- Generated standalone and epic PRD markdown specs are committed when created; only runtime state stays transient.
+- Verification of scoped work is allowed, but should only verify that scoped work.
 - `ralph-sprint.sh create` / `add-epic` use editor intake and generate the primary PRD task file before writing the new epic entry to `epics.json`.
 - `ralph-sprint.sh remove <sprint> [--hard --yes --drop-branch]` archives/removes sprint state; `--hard` implies branch deletion.
 - `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` are runtime-only files and must remain untracked; `ralph.sh` aborts if they become tracked mid-run.
@@ -250,6 +266,7 @@ Notes:
 | File | Purpose |
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
+| `ralph-roadmap.sh` | Convert a broad future-state roadmap into sprint backlogs with capacity-aware epic planning |
 | `ralph-prime.sh` | Prime `prd.json` from next eligible epic, or fall back to active epic when needed; auto-commits primed epic state in `--auto` mode |
 | `ralph-verify.sh` | Standardized verification wrapper (`--targeted` per iteration, `--full` before completion) |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
@@ -265,7 +282,7 @@ Notes:
 | `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
-| `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority/dependencies/activeEpicId |
+| `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority, effort, dependencies, activeEpicId, and sprint capacity metadata |
 | `epics.json.example` | Example epic backlog template |
 | `lib/editor-intake.sh` | Shared editor launcher/parsing helpers used by sprint/PRD intake flows |
 | `templates/epic-intake.md` | Editor template for epic metadata and prompt context capture |
