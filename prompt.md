@@ -33,6 +33,19 @@ You are the coding agent for one Ralph loop iteration.
 7. Set story `passes: true` in `{{PRD_FILE}}`.
 8. Append progress entry to `{{PROGRESS_FILE}}`.
 9. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full`. If it passes, append a completion note and reply exactly `<promise>COMPLETE</promise>`.
+10. End your reply with a compact Ralph handoff block for the next iteration using this exact wrapper:
+
+```text
+<ralph_handoff>
+{"status":"progressed|blocked|no_change|completed","story":{"id":"STORY-ID","title":"Story title"},"summary":"One-sentence outcome.","errors":["Short blocker or empty if none."],"directionChanges":["Short pivot or empty if none."],"verification":["Most important checks only."],"filesChanged":["path/to/file"],"assumptions":["Only important assumptions."],"nextLoopAdvice":["Highest-value next-step guidance."],"completionSignal":false}
+</ralph_handoff>
+```
+
+Rules for the handoff:
+- Keep it short and high-signal.
+- Include only the most important 0-2 items per array.
+- Use valid JSON only inside the wrapper.
+- Do not include narrative outside the JSON inside the wrapper.
 
 ## Progress Entry (Append Only)
 ```md

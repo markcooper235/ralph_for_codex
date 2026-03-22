@@ -24,6 +24,8 @@ PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 CODEX_BIN="${CODEX_BIN:-codex}"
 CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
+ITERATION_TRANSCRIPT_LATEST_FILE="$SCRIPT_DIR/.iteration-log-latest.txt"
+ITERATION_HANDOFF_LATEST_FILE="$SCRIPT_DIR/.iteration-handoff-latest.json"
 PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
 LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
 EXPLICIT_SCOPE_SIGNAL_PATTERN='keep (source )?changes limited to|only change|change(s)? limited to|scoped work'
@@ -294,12 +296,21 @@ has_archived_run_for_branch() {
 }
 
 reset_local_run_artifacts() {
-  local iter_log
+  local iter_log iter_transcript iter_handoff
 
   rm -f "$CODEX_LAST_MESSAGE_LATEST_FILE"
+  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
   for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
     [ -f "$iter_log" ] || continue
     rm -f "$iter_log"
+  done
+  for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
+    [ -f "$iter_transcript" ] || continue
+    rm -f "$iter_transcript"
+  done
+  for iter_handoff in "$SCRIPT_DIR"/.iteration-handoff-iter-*.json; do
+    [ -f "$iter_handoff" ] || continue
+    rm -f "$iter_handoff"
   done
   [ -d "$PLAYWRIGHT_CLI_DIR" ] && rm -rf "$PLAYWRIGHT_CLI_DIR"
 
@@ -311,13 +322,69 @@ reset_local_run_artifacts() {
 }
 
 has_live_run_artifacts() {
-  local iter_log
+  local iter_log iter_transcript iter_handoff
   for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
     [ -f "$iter_log" ] && return 0
+  done
+  for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
+    [ -f "$iter_transcript" ] && return 0
+  done
+  for iter_handoff in "$SCRIPT_DIR"/.iteration-handoff-iter-*.json; do
+    [ -f "$iter_handoff" ] && return 0
   done
 
   [ -d "$PLAYWRIGHT_CLI_DIR" ] && return 0
   return 1
+}
+
+read_latest_iteration_handoff_prompt() {
+  [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] || return 1
+  jq -r '
+    "## Latest Iteration Handoff\n" +
+    "- Status: " + (.status // "unknown") + "\n" +
+    (
+      if (.story.id // "") != "" or (.story.title // "") != "" then
+        "- Story: " + ((.story.id // "") + (if (.story.id // "") != "" and (.story.title // "") != "" then " - " else "" end) + (.story.title // "")) + "\n"
+      else
+        ""
+      end
+    ) +
+    (
+      if (.summary // "") != "" then
+        "- Summary: " + .summary + "\n"
+      else
+        ""
+      end
+    ) +
+    (
+      if ((.errors // []) | length) > 0 then
+        "- Errors: " + ((.errors // []) | join(" | ")) + "\n"
+      else
+        ""
+      end
+    ) +
+    (
+      if ((.directionChanges // []) | length) > 0 then
+        "- Direction Changes: " + ((.directionChanges // []) | join(" | ")) + "\n"
+      else
+        ""
+      end
+    ) +
+    (
+      if ((.verification // []) | length) > 0 then
+        "- Verification: " + ((.verification // []) | join(" | ")) + "\n"
+      else
+        ""
+      end
+    ) +
+    (
+      if ((.nextLoopAdvice // []) | length) > 0 then
+        "- Next Loop Advice: " + ((.nextLoopAdvice // []) | join(" | ")) + "\n"
+      else
+        ""
+      end
+    )
+  ' "$ITERATION_HANDOFF_LATEST_FILE" 2>/dev/null
 }
 
 require_previous_run_archived() {
@@ -349,11 +416,13 @@ require_previous_run_archived() {
 
 render_prompt() {
   local ralph_dir prd_file progress_file local_prompt_file rendered_prompt_file
+  local handoff_prompt=""
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
   prd_file="$(escape_sed_replacement "$PRD_FILE")"
   progress_file="$(escape_sed_replacement "$PROGRESS_FILE")"
   local_prompt_file="$SCRIPT_DIR/prompt.local.md"
   rendered_prompt_file="$(mktemp)"
+  handoff_prompt="$(read_latest_iteration_handoff_prompt || true)"
 
   sed \
     -e "s|{{RALPH_DIR}}|$ralph_dir|g" \
@@ -363,12 +432,18 @@ render_prompt() {
 
   if ! file_has_non_whitespace "$local_prompt_file"; then
     cat "$rendered_prompt_file"
+    if [ -n "$handoff_prompt" ]; then
+      printf '\n\n%s\n' "$handoff_prompt"
+    fi
     rm -f "$rendered_prompt_file"
     return 0
   fi
 
   if local_prompt_has_named_blocks "$local_prompt_file" && prompt_has_matching_local_marker "$local_prompt_file" "$SCRIPT_DIR/prompt.md"; then
     inject_local_prompt_blocks "$local_prompt_file" "$rendered_prompt_file"
+    if [ -n "$handoff_prompt" ]; then
+      printf '\n\n%s\n' "$handoff_prompt"
+    fi
     rm -f "$rendered_prompt_file"
     return 0
   fi
@@ -378,6 +453,73 @@ render_prompt() {
   printf '\n\n## Local Prompt Extensions\n'
   printf '(Loaded from `%s`; preserved across framework updates.)\n\n' "$local_prompt_file"
   cat "$local_prompt_file"
+  if [ -n "$handoff_prompt" ]; then
+    printf '\n\n%s\n' "$handoff_prompt"
+  fi
+}
+
+extract_ralph_handoff_json() {
+  local source_file="$1"
+  awk '
+    /<ralph_handoff>/ { in_block=1; next }
+    /<\/ralph_handoff>/ { in_block=0; exit }
+    in_block { print }
+  ' "$source_file"
+}
+
+write_iteration_handoff() {
+  local iteration="$1"
+  local transcript_file="$2"
+  local last_message_file="$3"
+  local output_file="$SCRIPT_DIR/.iteration-handoff-iter-$iteration.json"
+  local tmp_json source_json branch_name timestamp
+
+  tmp_json="$(mktemp)"
+  source_json=""
+
+  if [ -f "$last_message_file" ]; then
+    source_json="$(extract_ralph_handoff_json "$last_message_file" || true)"
+  fi
+  if [ -z "$source_json" ] && [ -f "$transcript_file" ]; then
+    source_json="$(extract_ralph_handoff_json "$transcript_file" || true)"
+  fi
+
+  branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  timestamp="$(date -Iseconds)"
+
+  if [ -n "$source_json" ] && printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
+    printf '%s\n' "$source_json" | jq \
+      --argjson iteration "$iteration" \
+      --arg timestamp "$timestamp" \
+      --arg branch "$branch_name" \
+      '
+      .iteration = $iteration
+      | .timestamp = $timestamp
+      | .branch = $branch
+      ' > "$tmp_json"
+  else
+    jq -n \
+      --argjson iteration "$iteration" \
+      --arg timestamp "$timestamp" \
+      --arg branch "$branch_name" \
+      '{
+        iteration: $iteration,
+        timestamp: $timestamp,
+        branch: $branch,
+        status: "no_change",
+        summary: "Iteration completed without a structured handoff block.",
+        errors: [],
+        directionChanges: [],
+        verification: [],
+        filesChanged: [],
+        assumptions: [],
+        nextLoopAdvice: [],
+        completionSignal: false
+      }' > "$tmp_json"
+  fi
+
+  mv "$tmp_json" "$output_file"
+  cp -f "$output_file" "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1 || true
 }
 
 has_complete_token() {
@@ -503,6 +645,8 @@ has_non_transient_worktree_changes() {
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
         if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.iteration-handoff(\-iter-[0-9]+|-latest)?\.json$/) next
         if (path ~ /^scripts\/ralph\/tasks(\/[^/]+)?\/?$/) next
         if (path ~ /^scripts\/ralph\/tasks\/[^/]+\/prd-epic-[^/]+\.md$/) next
         if (path ~ /^\.playwright-cli(\/|$)/) next
@@ -934,6 +1078,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo "═══════════════════════════════════════════════════════"
 
   CODEX_ITER_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-iter-$i.txt"
+  CODEX_ITER_TRANSCRIPT_FILE="$SCRIPT_DIR/.iteration-log-iter-$i.txt"
   ITERATION_START_HEAD="$(git rev-parse HEAD)"
 
   if ! ensure_prd_ready; then
@@ -945,9 +1090,11 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
-  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" || true
+  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE" || true
 
   cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
+  cp -f "$CODEX_ITER_TRANSCRIPT_FILE" "$ITERATION_TRANSCRIPT_LATEST_FILE" >/dev/null 2>&1 || true
+  write_iteration_handoff "$i" "$CODEX_ITER_TRANSCRIPT_FILE" "$CODEX_ITER_LAST_MESSAGE_FILE"
 
   ITERATION_END_HEAD="$(git rev-parse HEAD)"
   if [ "$ITERATION_START_HEAD" != "$ITERATION_END_HEAD" ]; then
