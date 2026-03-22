@@ -10,6 +10,7 @@ ALLOW_EPIC_FALLBACK=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
+COMPLETION_STATE_FILE="$SCRIPT_DIR/.completion-state.json"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 TASKS_DIR="$SCRIPT_DIR/tasks"
@@ -296,7 +297,7 @@ has_archived_run_for_branch() {
 reset_local_run_artifacts() {
   local iter_transcript iter_handoff
 
-  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
+  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE" "$COMPLETION_STATE_FILE"
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"
@@ -474,7 +475,7 @@ extract_ralph_handoff_json() {
 
 handoff_completion_evidence_present() {
   prd_all_passes || return 1
-  progress_has_completion_entry
+  full_verification_recorded
 }
 
 handoff_schema_is_valid() {
@@ -694,6 +695,51 @@ progress_has_completion_entry() {
   grep -Eq '^## .+ - (COMPLETE|Completion)$|^## Completion Note$' "$PROGRESS_FILE"
 }
 
+full_verification_recorded() {
+  [ -f "$PROGRESS_FILE" ] || return 1
+  grep -Eiq '(\./scripts/ralph/ralph-verify\.sh --full|full verification passed)' "$PROGRESS_FILE"
+}
+
+write_completion_state() {
+  local iteration="$1"
+  local branch_name="$2"
+  local timestamp
+  timestamp="$(date -Iseconds)"
+
+  jq -n \
+    --argjson iteration "$iteration" \
+    --arg branch "$branch_name" \
+    --arg timestamp "$timestamp" \
+    '{
+      status: "completed",
+      completionSignal: true,
+      iteration: $iteration,
+      branch: $branch,
+      recordedAt: $timestamp
+    }' > "$COMPLETION_STATE_FILE"
+}
+
+clear_completion_state() {
+  rm -f "$COMPLETION_STATE_FILE"
+}
+
+completion_state_is_valid() {
+  [ -f "$COMPLETION_STATE_FILE" ] || return 1
+  jq -e '
+    (.status == "completed")
+    and (.completionSignal == true)
+    and (.iteration | type == "number")
+    and (.iteration >= 1)
+    and (.branch | type == "string")
+    and (.recordedAt | type == "string")
+  ' "$COMPLETION_STATE_FILE" >/dev/null 2>&1
+}
+
+legacy_completion_evidence_present() {
+  progress_has_completion_entry || return 1
+  full_verification_recorded
+}
+
 latest_handoff_signals_completion() {
   [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] || return 1
   handoff_completion_state_is_valid "$ITERATION_HANDOFF_LATEST_FILE" || return 1
@@ -820,6 +866,7 @@ ensure_explicit_scope_worktree_valid() {
             path = substr($0, 4)
             if (path ~ /^scripts\/ralph\/prd\.json$/) next
             if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+            if (path ~ /^scripts\/ralph\/\.completion-state\.json$/) next
             if (path ~ /^scripts\/ralph\/\.active-prd$/) next
             if (path ~ /^scripts\/ralph\/\.last-branch$/) next
             if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
@@ -861,6 +908,7 @@ has_non_transient_worktree_changes() {
         path = substr($0, 4)
         if (path ~ /^scripts\/ralph\/prd\.json$/) next
         if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.completion-state\.json$/) next
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
@@ -880,7 +928,9 @@ has_non_transient_worktree_changes() {
 completion_is_stable() {
   prd_all_passes || return 1
   has_non_transient_worktree_changes && return 1
-  progress_has_completion_entry || return 1
+  if ! completion_state_is_valid; then
+    legacy_completion_evidence_present || return 1
+  fi
   latest_handoff_signals_completion
 }
 
@@ -1083,11 +1133,11 @@ try_prime_prd() {
 
 ensure_transient_files_not_tracked() {
   local tracked
-  tracked="$(git ls-files -- "$PRD_FILE" "$PROGRESS_FILE" || true)"
+  tracked="$(git ls-files -- "$PRD_FILE" "$PROGRESS_FILE" "$COMPLETION_STATE_FILE" || true)"
   if [ -n "$tracked" ]; then
     echo "Ralph transient files must not be git-tracked:" >&2
     printf '%s\n' "$tracked" >&2
-    echo "Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
+    echo "Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt scripts/ralph/.completion-state.json" >&2
     return 1
   fi
   return 0
@@ -1098,7 +1148,7 @@ ensure_no_transient_commits_in_range() {
   local to_ref="$2"
   local leaked
   leaked="$(
-    git log --name-only --pretty=format: "$from_ref..$to_ref" -- "$PRD_FILE" "$PROGRESS_FILE" 2>/dev/null \
+    git log --name-only --pretty=format: "$from_ref..$to_ref" -- "$PRD_FILE" "$PROGRESS_FILE" "$COMPLETION_STATE_FILE" 2>/dev/null \
       | sed '/^$/d' \
       | sort -u || true
   )"
@@ -1106,7 +1156,7 @@ ensure_no_transient_commits_in_range() {
     echo "Ralph transient files were committed during this iteration (disallowed):" >&2
     printf '%s\n' "$leaked" >&2
     echo "Do not use git add -f/--force for transient files." >&2
-    echo "Repair with: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt" >&2
+    echo "Repair with: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt scripts/ralph/.completion-state.json" >&2
     return 1
   fi
   return 0
@@ -1278,6 +1328,7 @@ if [ ! -f "$PROGRESS_FILE" ]; then
   echo "Started: $(date)" >> "$PROGRESS_FILE"
   echo "---" >> "$PROGRESS_FILE"
 fi
+clear_completion_state
 
 echo "Starting Ralph - Max iterations: $MAX_ITERATIONS"
 echo "Workspace root: $WORKSPACE_ROOT"
@@ -1323,6 +1374,12 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   fi
   if ! ensure_explicit_scope_worktree_valid; then
     exit 1
+  fi
+  if latest_handoff_signals_completion && prd_all_passes && ! has_non_transient_worktree_changes; then
+    branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+    write_completion_state "$i" "$branch_name"
+  else
+    clear_completion_state
   fi
   
   # Check for completion signal

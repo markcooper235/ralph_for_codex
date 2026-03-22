@@ -97,7 +97,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 ## Patterns
 
 - Each iteration spawns a fresh Codex run with clean context
-- Memory persists via git history, `progress.txt`, and `prd.json`
+- Memory persists via git history, `progress.txt`, `prd.json`, and the latest structured handoff/completion state
 - Stories should be small enough to complete in one context window
 - Always update AGENTS.md with discovered patterns for future iterations
 - `ralph-epic.sh` requires an active sprint; use `ralph-sprint.sh use <sprint-name>` first if needed.
@@ -141,4 +141,5 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - When Codex itself exits non-zero, preserve the transcript but record a blocked fallback handoff with the exit status so the failure is explicit instead of looking like a generic missing-handoff iteration.
 - Explicit scope enforcement should validate both committed changes and current worktree changes; otherwise out-of-scope edits that were never committed can silently delay loop completion.
 - Ralph loop completion is now handoff-driven: `.iteration-handoff*.json` is the canonical per-iteration state, `.iteration-log*.txt` remains the full transcript artifact, and completion detection should read the structured handoff rather than a raw last-message sentinel.
+- Ralph now writes `.completion-state.json` itself when completion is stable; treat that file as the canonical loop-complete marker and keep `progress.txt` human-readable rather than machine-critical.
 - When extracting a structured handoff from the transcript, use the last `<ralph_handoff>` block, not the first one, because the prompt itself includes an example wrapper earlier in the transcript.

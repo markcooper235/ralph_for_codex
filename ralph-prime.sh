@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
+COMPLETION_STATE_FILE="$SCRIPT_DIR/.completion-state.json"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
@@ -163,9 +164,9 @@ prd_all_passes() {
 
 ensure_transient_files_not_tracked() {
   local tracked
-  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" || true)"
+  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" "$SCRIPT_DIR/.completion-state.json" || true)"
   if [ -n "$tracked" ]; then
-    fail "Ralph transient files are tracked in git. Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt"
+    fail "Ralph transient files are tracked in git. Run: git rm --cached scripts/ralph/prd.json scripts/ralph/progress.txt scripts/ralph/.completion-state.json"
   fi
 }
 
@@ -268,7 +269,7 @@ validate_generated_prd() {
 reset_local_run_artifacts() {
   local iter_transcript iter_handoff
 
-  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
+  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE" "$COMPLETION_STATE_FILE"
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"

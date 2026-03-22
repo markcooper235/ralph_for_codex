@@ -305,7 +305,7 @@ commit_framework_baseline() {
     cd "$repo_root"
     git add -A
     # Ralph runtime/transient files must remain untracked.
-    git reset -- scripts/ralph/prd.json scripts/ralph/progress.txt >/dev/null 2>&1 || true
+    git reset -- scripts/ralph/prd.json scripts/ralph/progress.txt scripts/ralph/.completion-state.json >/dev/null 2>&1 || true
     if ! git diff --cached --quiet; then
       git commit -m "$commit_msg" >/dev/null
     fi
@@ -702,6 +702,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
         fail "standalone loop should not create legacy .codex-last-message artifacts"
       fi
       jq -e '.completionSignal == true and .status == "completed"' .iteration-handoff-latest.json >/dev/null
+      jq -e '.completionSignal == true and .status == "completed"' .completion-state.json >/dev/null
       jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
       assert_commit_range_small_and_simple "$STANDALONE_REPO" "$standalone_start_head" "$standalone_end_head" "standalone loop" "src/index.ts" "tests/hello.test.mjs"
       if [ "$APP_MODE" = "ui" ]; then
@@ -729,6 +730,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       [ ! -s prd.json ] || fail "standalone post-commit prd.json should be emptied by archive flow"
       git -C "$STANDALONE_REPO" ls-files --error-unmatch scripts/ralph/prd.json >/dev/null 2>&1 && fail "standalone post-commit prd.json must be untracked"
       git -C "$STANDALONE_REPO" ls-files --error-unmatch scripts/ralph/progress.txt >/dev/null 2>&1 && fail "standalone post-commit progress.txt must be untracked"
+      git -C "$STANDALONE_REPO" ls-files --error-unmatch scripts/ralph/.completion-state.json >/dev/null 2>&1 && fail "standalone post-commit .completion-state.json must be untracked"
       ./ralph-sprint.sh status > "$WORK_DIR/status-standalone-postcommit.log" 2>&1 || true
     )
     assert_contains "$WORK_DIR/doctor-standalone.log" "OK: prerequisites present"
@@ -805,6 +807,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
         fail "epic loop should not create legacy .codex-last-message artifacts"
       fi
       jq -e '.completionSignal == true and .status == "completed"' .iteration-handoff-latest.json >/dev/null
+      jq -e '.completionSignal == true and .status == "completed"' .completion-state.json >/dev/null
       jq -e '.branchName | test("^ralph/.+/epic-[0-9]+$") or test("^ralph/epic-[0-9]+$")' prd.json >/dev/null
       jq -e '([.userStories[] | select(.passes == true)] | length) >= 1' prd.json >/dev/null
       assert_commit_range_small_and_simple "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" "epic loop" "src/index.ts" "tests/hello.test.mjs"
@@ -833,6 +836,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       [ ! -s prd.json ] || fail "epic post-commit prd.json should be emptied by archive flow"
       git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/prd.json >/dev/null 2>&1 && fail "epic post-commit prd.json must be untracked"
       git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/progress.txt >/dev/null 2>&1 && fail "epic post-commit progress.txt must be untracked"
+      git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/.completion-state.json >/dev/null 2>&1 && fail "epic post-commit .completion-state.json must be untracked"
       ./ralph-sprint-commit.sh > "$WORK_DIR/sprint-commit-epic.log" 2>&1
     )
     assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"

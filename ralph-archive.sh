@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
+COMPLETION_STATE_FILE="$SCRIPT_DIR/.completion-state.json"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 TASKS_DIR="$SCRIPT_DIR/tasks"
 ARCHIVE_ROOT="$TASKS_DIR/archive"
@@ -32,6 +33,7 @@ has_non_transient_worktree_changes() {
         path = substr($0, 4)
         if (path ~ /^scripts\/ralph\/prd\.json$/) next
         if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.completion-state\.json$/) next
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
@@ -143,7 +145,7 @@ paired_iteration_artifacts_valid() {
 reset_local_run_artifacts() {
   local iter_transcript iter_handoff
 
-  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
+  rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE" "$COMPLETION_STATE_FILE"
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"
@@ -238,6 +240,7 @@ PLAYWRIGHT_SOURCE_PRESENT=0
 
 [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_DIR/"
 [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_DIR/"
+[ -f "$COMPLETION_STATE_FILE" ] && cp "$COMPLETION_STATE_FILE" "$ARCHIVE_DIR/"
 [ -f "$ITERATION_TRANSCRIPT_LATEST_FILE" ] && cp "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ARCHIVE_DIR/"
 [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] && cp "$ITERATION_HANDOFF_LATEST_FILE" "$ARCHIVE_DIR/"
 

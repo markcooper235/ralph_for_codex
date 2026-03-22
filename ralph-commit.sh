@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRD_FILE="$SCRIPT_DIR/prd.json"
+COMPLETION_STATE_FILE="$SCRIPT_DIR/.completion-state.json"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
@@ -132,6 +133,7 @@ has_non_transient_worktree_changes() {
         path = substr($0, 4)
         if (path ~ /^scripts\/ralph\/prd\.json$/) next
         if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.completion-state\.json$/) next
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
@@ -197,7 +199,7 @@ resolve_ralph_conflicts_or_fail() {
 
 enforce_transient_files_untracked() {
   local tracked
-  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" || true)"
+  tracked="$(git ls-files -- "$PRD_FILE" "$SCRIPT_DIR/progress.txt" "$COMPLETION_STATE_FILE" || true)"
   if [ -z "$tracked" ]; then
     return 0
   fi

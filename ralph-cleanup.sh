@@ -48,6 +48,7 @@ fi
 
 rm -f \
   "$SCRIPT_DIR/progress.txt" \
+  "$SCRIPT_DIR/.completion-state.json" \
   "$SCRIPT_DIR/.active-prd" \
   "$SCRIPT_DIR/.active-sprint" \
   "$SCRIPT_DIR/.last-branch" \

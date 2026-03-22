@@ -116,21 +116,21 @@ const input = fs.readFileSync(0, 'utf8');
   if (loopMode === 'missing-handoff-complete') {
     fs.appendFileSync(
       progressPath,
-      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification passed.\\n---\\n'
+      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
     );
   } else if (loopMode === 'invalid-handoff') {
     process.stdout.write('<ralph_handoff>\\n{"status":"completed","completionSignal":true}\\n</ralph_handoff>\\n');
   } else if (loopMode === 'multi-handoff') {
     fs.appendFileSync(
       progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed.\\n---\\n'
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
     );
     process.stdout.write('<ralph_handoff>\\n{"status":"no_change","story":{"id":"US-000","title":"Example"},"summary":"Prompt example.","errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[],"completionSignal":false}\\n</ralph_handoff>\\n');
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   } else {
     fs.appendFileSync(
       progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed.\\n---\\n'
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
     );
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   }
@@ -209,6 +209,7 @@ function initTempRepo() {
       'scripts/ralph/.active-prd',
       'scripts/ralph/prd.json',
       'scripts/ralph/progress.txt',
+      'scripts/ralph/.completion-state.json',
       'scripts/ralph/.iteration-log*.txt',
       'scripts/ralph/.iteration-handoff*.json',
       '.playwright-cli/',
@@ -255,6 +256,7 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
   writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), '# Test PRD\n')
   writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE PROGRESS\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/stale","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
@@ -270,6 +272,7 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
   assert.equal(fs.existsSync(path.join(repoDir, '.playwright-cli')), false)
 
   const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
@@ -308,6 +311,7 @@ test('ralph-archive clears local run artifacts after archiving a completed run',
     )
   )
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/sprint-test/epic-001","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'ITER1 TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
@@ -323,12 +327,14 @@ test('ralph-archive clears local run artifacts after archiving a completed run',
   const archivedDir = path.join(archiveRoot, archivedFolders[0])
   assert.equal(fs.existsSync(path.join(archivedDir, 'prd.json')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, 'progress.txt')), true)
+  assert.equal(fs.existsSync(path.join(archivedDir, '.completion-state.json')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-latest.txt')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-iter-1.txt')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-latest.json')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-iter-1.json')), true)
 
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/progress.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt')), false)
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
@@ -408,6 +414,7 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
     )
   )
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE LOOP PROGRESS\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/sprint-test/epic-000","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
@@ -448,6 +455,7 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
   const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
   assert.match(progress, /# Ralph Progress Log/)
   assert.ok(!progress.includes('STALE LOOP PROGRESS'))
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
   assert.equal(run('git', ['branch', '--list', 'ralph/sprint/sprint-test'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-test')
   const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
   assert.equal(latestHandoff.completionSignal, false)
@@ -919,6 +927,9 @@ test('ralph.sh synthesizes a completed handoff when completion evidence exists b
   const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
   assert.equal(latestHandoff.completionSignal, true)
   assert.equal(latestHandoff.status, 'completed')
+  const completionState = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.completion-state.json'), 'utf8'))
+  assert.equal(completionState.completionSignal, true)
+  assert.equal(completionState.status, 'completed')
 })
 
 test('ralph.sh records a blocked handoff when the codex command fails', () => {
