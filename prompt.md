@@ -16,6 +16,8 @@ You are the coding agent for one Ralph loop iteration.
 - Do not commit broken code.
 - Never use `git add -f` / `git add --force`.
 - Never stage or commit `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`, or `scripts/ralph/.completion-state.json`.
+- Do not paste full file contents, full diffs, or repeated progress-log excerpts into your reply.
+- Do not repeat the same summary, verification list, or handoff content.
 - Epic story work is app code plus tests only; config-only changes do not count as story progress.
 
 ## Iteration Workflow
@@ -46,6 +48,11 @@ Rules for the handoff:
 - Use valid JSON only inside the wrapper.
 - Do not include narrative outside the JSON inside the wrapper.
 - Use `status: "completed"` with `completionSignal: true` only after full verification passes.
+
+Before the handoff, keep any narrative to 2 short paragraphs max:
+- outcome
+- verification
+- Only mention concrete file changes when needed to explain the result.
 
 ## Progress Entry (Append Only)
 ```md

@@ -631,6 +631,8 @@ Compact planning rules:
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
 11. For UI stories, include "Verify in browser using dev-browser skill".
 12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+13. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+14. Do not repeat the same summary twice.
 
 Return a short summary with:
 - PRD markdown path
@@ -669,24 +671,25 @@ Quick clarifier answers (if provided):
 $SINGLE_SLICE_GUIDANCE
 
 Guidance:
-1. Follow the PRD skill workflow. If information is already sufficient, keep clarifying questions minimal.
-2. If critical gaps remain, infer using explicit assumptions instead of blocking.
-3. Fit the PRD into 1-6 executable stories.
-4. Use task classes that naturally fit that range:
+1. If critical gaps remain, infer using explicit assumptions instead of blocking.
+2. Fit the PRD into 1-6 executable stories.
+3. Use task classes that naturally fit that range:
    - micro: 1 story
    - small: 2-3 stories
    - medium: 4-6 stories
-5. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
-6. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
-7. Break work into small, one-iteration user stories ordered by dependency.
-8. Set clear story priorities (1..N in execution order).
-9. Every story acceptance criteria must include:
+4. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
+5. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
+6. Break work into small, one-iteration user stories ordered by dependency.
+7. Set clear story priorities (1..N in execution order).
+8. Every story acceptance criteria must include:
    - "Typecheck passes"
    - "Lint passes"
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-10. For UI stories, include "Verify in browser using dev-browser skill".
-11. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+9. For UI stories, include "Verify in browser using dev-browser skill".
+10. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+11. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+12. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+13. Do not repeat the same summary twice.
 
 Return a short summary with:
 - PRD markdown path
