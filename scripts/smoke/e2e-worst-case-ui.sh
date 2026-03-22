@@ -203,6 +203,25 @@ $(printf '%s\n' "${unexpected[@]}")"
   fi
 }
 
+assert_runtime_ui_contract() {
+  local repo="$1"
+  local headline="$2"
+  local status="$3"
+  local cta="$4"
+  local state="$5"
+  local log_file="$6"
+
+  (
+    cd "$repo"
+    npm run -s build > "$WORK_DIR/build-epic.log" 2>&1
+    npm test > "$WORK_DIR/test-epic.log" 2>&1
+    npm run -s browser:check -- "$headline" "$status" "$cta" "$state" > "$log_file" 2>&1
+    if git ls-files --error-unmatch dist/index.js >/dev/null 2>&1; then
+      git checkout -- dist/index.js
+    fi
+  )
+}
+
 echo "[worst-ui] work dir: $WORK_DIR"
 echo "[worst-ui] codex: $CODEX_BIN_VALUE"
 
@@ -461,17 +480,7 @@ expected_state="ready"
   grep -qF "$expected_status" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected status"
   grep -qF "$expected_cta" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
   grep -qF "$expected_state" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected state"
-  grep -qF 'data-state' "$EPIC_REPO/src/render.ts" || fail "render.ts missing status data-state handling"
-  grep -qF 'title' "$EPIC_REPO/src/render.ts" || fail "render.ts missing CTA title handling"
-  (
-    cd "$EPIC_REPO"
-    npm run -s build > "$WORK_DIR/build-epic.log" 2>&1
-    npm test > "$WORK_DIR/test-epic.log" 2>&1
-    npm run -s browser:check -- "$expected_headline" "$expected_status" "$expected_cta" "$expected_state" > "$WORK_DIR/runtime-epic.log" 2>&1
-    if git ls-files --error-unmatch dist/index.js >/dev/null 2>&1; then
-      git checkout -- dist/index.js
-    fi
-  )
+  assert_runtime_ui_contract "$EPIC_REPO" "$expected_headline" "$expected_status" "$expected_cta" "$expected_state" "$WORK_DIR/runtime-epic.log"
 )
 
 assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"

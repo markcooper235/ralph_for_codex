@@ -15,6 +15,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - `ralph-roadmap.sh` now provides a first-class roadmap planner that decomposes a broad future-state vision into sprint backlogs with dependency-aware epics and bounded sprint effort.
 - `scripts/ralph/roadmap-source.md` is now the durable roadmap input. Refine it over time; `roadmap.json` and sprint backlogs reconcile from that source.
 - Loop prompts now explicitly allow verification of scoped work while keeping source changes inside scope unless the PRD expands it.
+- Worst-case UI smoke now validates the rendered UI contract at runtime instead of relying on exact implementation spelling for state/title handling.
 - Smoke retry handling now clears only provably stale workflow locks in disposable smoke repos; core Ralph lock semantics are unchanged.
 - Sprint backlogs now carry capacity metadata (`capacityTarget` / `capacityCeiling`) and epics carry lightweight effort scores so roadmap planning can roll overflow work into later sprints.
 

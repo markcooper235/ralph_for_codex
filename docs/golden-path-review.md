@@ -62,7 +62,7 @@ Examples:
 
 That is a good tradeoff: it hardens the highest-value scoped-work rule without adding a heavy policy engine. Some correctness still depends on model compliance, but less than before.
 
-### 4. Worst-case smoke is useful, but still contains brittle assertions
+### 4. Worst-case smoke is now stronger because it validates runtime behavior
 
 The worst-case smoke test in `scripts/smoke/e2e-worst-case-ui.sh` has been valuable because it caught real behavior problems:
 
@@ -70,16 +70,13 @@ The worst-case smoke test in `scripts/smoke/e2e-worst-case-ui.sh` has been valua
 - verification catch-22 behavior
 - stale-lock retry behavior
 
-But it also still includes at least one brittle assertion:
+It now also validates the UI contract at runtime instead of depending on exact implementation spelling for state/title handling.
 
-- it checks for the literal string `data-state` in source, even though `status.dataset.state = ...` is functionally equivalent
+That is a better fit for this harness:
 
-So the test is doing two jobs:
-
-- validating correct end-to-end behavior
-- enforcing a very particular implementation spelling
-
-That mismatch can produce false negatives.
+- it still enforces strict file-scope discipline
+- it still verifies the required UI contract
+- it is less likely to false-fail on equivalent implementations
 
 ### 5. Smoke-harness lock handling is now safer, but only in test automation
 
@@ -281,13 +278,13 @@ What should stay prompt-level for now:
 
 This remains the right design rule: validate only low-ambiguity, high-value constraints.
 
-### 5. Relax brittle smoke assertions that enforce spelling, not behavior
+### 5. Keep smoke assertions behavior-led when equivalent implementations are acceptable
 
-In particular, worst-case smoke should prefer behavior checks over exact source spelling where equivalent implementations are acceptable.
+The recent worst-case smoke update is the right pattern:
 
-Good target:
-
-- accept either literal `data-state` attribute handling or equivalent DOM API forms such as `dataset.state`
+- keep strict scope checks
+- keep runtime contract checks
+- avoid asserting exact source spelling unless the spelling itself is part of the requirement
 
 ### 6. Continue monitoring real-world lock behavior separately from smoke behavior
 
@@ -319,9 +316,9 @@ The main gap is not in the first planning layer anymore.
 
 The main remaining issues are lighter-weight and more tactical:
 
-- worst-case smoke still contains at least one brittle implementation-spelling assertion
 - some higher-level behavior rules still intentionally remain prompt-led rather than validator-enforced
 - real-world lock behavior should still be observed separately from smoke-only behavior
+- benchmark scenario prompts still need careful semantic preservation when trimmed
 
 That means Ralph is now strongest as:
 
@@ -330,7 +327,6 @@ That means Ralph is now strongest as:
 
 ## Updated Priority Order
 
-1. Relax brittle worst-case smoke assertions so behavior is tested more than exact implementation spelling.
-2. Keep the new explicit-scope validator narrow and extend it only if repeated real failures show a clear low-ambiguity pattern.
-3. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
-4. Keep benchmark scenario prompts semantically exact while continuing to trim the always-paid loop prompt.
+1. Keep the new explicit-scope validator narrow and extend it only if repeated real failures show a clear low-ambiguity pattern.
+2. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
+3. Keep benchmark scenario prompts semantically exact while continuing to trim the always-paid loop prompt.
