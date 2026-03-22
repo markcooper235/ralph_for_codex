@@ -19,6 +19,9 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Convert roadmap vision into sprint/epic backlogs
 ./ralph-roadmap.sh --vision "Roadmap from baseline to target state"
 
+# Refine an existing roadmap source and reconcile downstream sprint backlogs
+./ralph-roadmap.sh --refine --revision-note "Adjust roadmap after new findings"
+
 # Optional OpenSpec -> Ralph conversion path (outside scripts/ralph runtime)
 ./scripts/openspec/openspec-skill.sh convert --change <change-name>
 
@@ -56,6 +59,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 - `ralph-prd.sh` - Interactive/non-interactive wrapper to create PRDs and convert to `prd.json`
 - `ralph-roadmap.sh` - Roadmap planner that turns a broad future-state vision into sprint backlogs with effort-bounded epics
+- `roadmap-source.md` - Durable roadmap source that can be revised later; roadmap/sprint reconciliation flows from it
 - `ralph.sh` - The bash loop that spawns fresh Codex runs
 - `ralph-prime.sh` - Auto-selects/uses active epic and primes `prd.json` for loop startup
 - `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
@@ -102,6 +106,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph-epic.sh add ...` provides a non-interactive epic creation path; use it for automation.
 - Roadmap planning should keep sprint effort at or under capacity ceiling and use only sprint-safe epic effort scores (`1`, `2`, `3`, `5`); overflow work belongs in later sprints, not the current one.
 - Keep explicit epic dependencies sprint-local; cross-sprint sequencing should be represented by sprint order, not cross-sprint `dependsOn` links.
+- Roadmap refinement should be additive by default: preserve done/active work when possible, update open/future work directly, and prefer follow-up epics or new sprints over reopening closed sprints if churn would be high.
 - `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default; pass `--keep` to retain them.
 - `.active-prd` now includes explicit `baseBranch`; `ralph-commit.sh` should use it before fallback target inference.
 - OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.

@@ -13,6 +13,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 - Archive output now lives under `scripts/ralph/tasks/archive/<active-sprint>/...` for epic runs or `scripts/ralph/tasks/archive/prds/...` for standalone PRDs.
 - Generated standalone and epic PRD markdown specs are now committed when created; `scripts/ralph/prd.json` and `scripts/ralph/progress.txt` remain transient runtime files.
 - `ralph-roadmap.sh` now provides a first-class roadmap planner that decomposes a broad future-state vision into sprint backlogs with dependency-aware epics and bounded sprint effort.
+- `scripts/ralph/roadmap-source.md` is now the durable roadmap input. Refine it over time; `roadmap.json` and sprint backlogs reconcile from that source.
 - Loop prompts now explicitly allow verification of scoped work while keeping source changes inside scope unless the PRD expands it.
 - Smoke retry handling now clears only provably stale workflow locks in disposable smoke repos; core Ralph lock semantics are unchanged.
 - Sprint backlogs now carry capacity metadata (`capacityTarget` / `capacityCeiling`) and epics carry lightweight effort scores so roadmap planning can roll overflow work into later sprints.
@@ -182,6 +183,7 @@ Roadmap planning rules:
 - If a sprint would overflow, roadmap planning rolls lower-priority work into later sprints.
 - If a single epic is too large to be sprint-safe, roadmap planning splits it before backlog creation.
 - Sprint order carries cross-sprint sequencing; explicit `dependsOn` stays sprint-local.
+- Refinement is additive by default: update open/future work directly, preserve completed work when possible, and prefer follow-up epics/sprints over reopening closed sprints if churn would be high.
 
 ### Alternative Planning Path: OpenSpec -> Ralph
 
@@ -267,6 +269,7 @@ Notes:
 |------|---------|
 | `ralph-prd.sh` | Interactive wrapper to create PRDs and convert to `prd.json` via Codex skills |
 | `ralph-roadmap.sh` | Convert a broad future-state roadmap into sprint backlogs with capacity-aware epic planning |
+| `roadmap-source.md` | Durable roadmap input that can be revised later; roadmap and backlog reconciliation flow from this source |
 | `ralph-prime.sh` | Prime `prd.json` from next eligible epic, or fall back to active epic when needed; auto-commits primed epic state in `--auto` mode |
 | `ralph-verify.sh` | Standardized verification wrapper (`--targeted` per iteration, `--full` before completion) |
 | `ralph.sh` | The bash loop that spawns fresh Codex runs |
@@ -387,3 +390,8 @@ Note: `ralph-archive.sh` does not implement `--help`; running it executes an arc
 - [Upstream Ralph (Amp-based)](https://github.com/snarktank/ralph)
 - [Codex CLI](https://github.com/openai/codex)
 - [This repo (Codex port)](https://github.com/aytzey/ralph_for_codex)
+Refine later:
+
+```bash
+./scripts/ralph/ralph-roadmap.sh --refine --revision-note "Adjust roadmap after new product feedback"
+```

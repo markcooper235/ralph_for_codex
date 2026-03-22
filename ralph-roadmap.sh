@@ -7,6 +7,7 @@ WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 ROADMAP_JSON="$SCRIPT_DIR/roadmap.json"
 ROADMAP_MD="$SCRIPT_DIR/roadmap.md"
+ROADMAP_SOURCE="$SCRIPT_DIR/roadmap-source.md"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
 SPRINT_CLI="$SCRIPT_DIR/ralph-sprint.sh"
@@ -22,16 +23,24 @@ CAPACITY_TARGET=8
 CAPACITY_CEILING=10
 QUIET=0
 APPLY_ONLY=0
+REFINE_MODE=0
+REVISION_NOTE=""
+ROADMAP_WORK_DIR=""
+ROADMAP_JSON_WORK=""
+ROADMAP_MD_WORK=""
+ROADMAP_SOURCE_WORK=""
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/ralph/ralph-roadmap.sh [options]
 
-Create a durable roadmap plan and seed sprint/epic backlogs.
+Create or refine a durable roadmap plan and seed sprint/epic backlogs.
 
 Options:
   --vision TEXT             Roadmap vision / future-state description
   --constraints TEXT        Optional planning constraints
+  --refine                  Refine an existing roadmap/source instead of creating the first plan
+  --revision-note TEXT      Why the roadmap changed; recorded in roadmap-source.md
   --sprints N               Number of roadmap sprints to plan (default: 3)
   --capacity-target N       Sprint effort target (default: 8)
   --capacity-ceiling N      Sprint effort ceiling (default: 10)
@@ -42,6 +51,7 @@ Options:
 Notes:
   - Each epic effort must be one of: 1, 2, 3, 5
   - Roadmap planning keeps epics sprint-safe; oversized work should roll into later sprints
+  - Refinement is additive by default: prefer updating open/future work and adding follow-up epics or sprints over churning completed work
 EOF
 }
 
@@ -60,6 +70,17 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+setup_work_paths() {
+  if [ -n "$ROADMAP_WORK_DIR" ] && [ -d "$ROADMAP_WORK_DIR" ]; then
+    return 0
+  fi
+  ROADMAP_WORK_DIR="$(mktemp -d)"
+  ROADMAP_JSON_WORK="$ROADMAP_WORK_DIR/roadmap.json"
+  ROADMAP_MD_WORK="$ROADMAP_WORK_DIR/roadmap.md"
+  ROADMAP_SOURCE_WORK="$ROADMAP_WORK_DIR/roadmap-source.md"
+  trap 'rm -rf "$ROADMAP_WORK_DIR" >/dev/null 2>&1 || true' EXIT
 }
 
 supports_codex_yolo() {
@@ -90,6 +111,10 @@ ensure_clean_worktree() {
 
 collect_editor_intake() {
   local intake_file intake_block
+  local vision_prefill constraints_prefill note_prefill
+  vision_prefill="${VISION:-${CURRENT_SOURCE_VISION:-}}"
+  constraints_prefill="${CONSTRAINTS:-${CURRENT_SOURCE_CONSTRAINTS:-}}"
+  note_prefill="${REVISION_NOTE:-}"
   intake_file="$(mktemp)"
   cat > "$intake_file" <<EOF
 # Ralph Roadmap Intake
@@ -98,8 +123,13 @@ collect_editor_intake() {
 
 <!-- BEGIN INPUT -->
 VISION:
+$vision_prefill
 
 CONSTRAINTS:
+$constraints_prefill
+
+REVISION_NOTE:
+$note_prefill
 
 <!-- END INPUT -->
 EOF
@@ -114,12 +144,91 @@ EOF
   ' | sed '/^[[:space:]]*$/N;/^\n$/D')"
   CONSTRAINTS="$(printf '%s\n' "$intake_block" | awk '
     /^CONSTRAINTS:/ { sub(/^CONSTRAINTS:[[:space:]]*/, ""); in_constraints=1; print; next }
+    /^REVISION_NOTE:/ { in_constraints=0; next }
     in_constraints { print }
   ' | sed '/^[[:space:]]*$/N;/^\n$/D')"
+  REVISION_NOTE="$(printf '%s\n' "$intake_block" | awk '
+    /^REVISION_NOTE:/ { sub(/^REVISION_NOTE:[[:space:]]*/, ""); in_note=1; print; next }
+    in_note { print }
+  ' | sed '/^[[:space:]]*$/N;/^\n$/D')"
+}
+
+read_current_roadmap_source() {
+  CURRENT_SOURCE_VISION=""
+  CURRENT_SOURCE_CONSTRAINTS=""
+  [ -f "$ROADMAP_SOURCE" ] || return 0
+
+  CURRENT_SOURCE_VISION="$(printf '%s\n' "$(
+    extract_marked_block "$ROADMAP_SOURCE" "<!-- BEGIN CURRENT -->" "<!-- END CURRENT -->" \
+      | awk '
+          /^VISION:/ { sub(/^VISION:[[:space:]]*/, ""); in_vision=1; in_constraints=0; in_note=0; print; next }
+          /^CONSTRAINTS:/ { in_constraints=1; in_vision=0; in_note=0; next }
+          /^REVISION_NOTE:/ { in_note=1; in_vision=0; in_constraints=0; next }
+          in_vision { print }
+        '
+  )" | sed '/^[[:space:]]*$/N;/^\n$/D')"
+  CURRENT_SOURCE_CONSTRAINTS="$(printf '%s\n' "$(
+    extract_marked_block "$ROADMAP_SOURCE" "<!-- BEGIN CURRENT -->" "<!-- END CURRENT -->" \
+      | awk '
+          /^CONSTRAINTS:/ { sub(/^CONSTRAINTS:[[:space:]]*/, ""); in_constraints=1; in_vision=0; in_note=0; print; next }
+          /^REVISION_NOTE:/ { in_note=1; in_vision=0; in_constraints=0; next }
+          in_constraints { print }
+        '
+  )" | sed '/^[[:space:]]*$/N;/^\n$/D')"
+}
+
+write_roadmap_source() {
+  local ts history existing_history note
+  ts="$(date -Iseconds)"
+  note="${REVISION_NOTE:-Initial roadmap creation.}"
+  existing_history=""
+  if [ -f "$ROADMAP_SOURCE" ]; then
+    existing_history="$(awk 'found {print} /^## Revision History$/ {found=1; next}' "$ROADMAP_SOURCE")"
+  fi
+
+  {
+    printf '# Ralph Roadmap Source\n\n'
+    printf 'This is the durable roadmap input. Refine it when the target state changes; downstream sprint and epic plans should reconcile from here.\n\n'
+    printf '<!-- BEGIN CURRENT -->\n'
+    printf 'VISION:\n%s\n\n' "$VISION"
+    printf 'CONSTRAINTS:\n%s\n\n' "${CONSTRAINTS:-Not provided.}"
+    printf 'REVISION_NOTE:\n%s\n' "$note"
+    printf '<!-- END CURRENT -->\n\n'
+    printf '## Revision Policy\n\n'
+    printf -- '- Update open and future work directly.\n'
+    printf -- '- Treat closed sprints as stable by default.\n'
+    printf -- '- Only reopen closed sprints for tightly scoped, low-churn additions.\n'
+    printf -- '- Otherwise inject new epics or new sprints for the refinement.\n\n'
+    printf '## Revision History\n'
+    if [ -n "$existing_history" ]; then
+      printf '%s\n' "$existing_history"
+    fi
+    printf -- '- %s | %s\n' "$ts" "$note"
+  } > "$ROADMAP_SOURCE_WORK"
 }
 
 plan_roadmap_json() {
   local prompt codex_args=()
+  local source_hint refine_hint current_plan_hint backlog_hint
+  source_hint="Create the first roadmap plan from the durable source inputs."
+  refine_hint=""
+  current_plan_hint=""
+  backlog_hint=""
+
+  if [ "$REFINE_MODE" -eq 1 ]; then
+    source_hint="This is a roadmap refinement. Update the roadmap while preserving traceability to the current source and backlog."
+    refine_hint=$(
+      cat <<EOF
+- Source file: \`scripts/ralph/roadmap-source.md\`
+- Current roadmap file: \`scripts/ralph/roadmap.json\`
+- Revision note: ${REVISION_NOTE:-none}
+EOF
+    )
+    if [ -f "$ROADMAP_JSON" ]; then
+      current_plan_hint="- Current roadmap JSON already exists at \`scripts/ralph/roadmap.json\`."
+    fi
+    backlog_hint="- Existing sprint backlogs may already contain active or completed epics. Prefer additive updates over churn."
+  fi
 
   mkdir -p "$SCRIPT_DIR"
 
@@ -127,12 +236,16 @@ plan_roadmap_json() {
     cat <<EOF
 Use the \`prd\` skill.
 
-Create a roadmap plan and write valid JSON to \`scripts/ralph/roadmap.json\`.
+Create a roadmap plan and write valid JSON to \`$ROADMAP_JSON_WORK\`.
 
 Inputs:
 - Project: \`$(basename "$WORKSPACE_ROOT")\`
 - Vision: $VISION
 - Constraints: ${CONSTRAINTS:-none}
+- Source policy: $source_hint
+$refine_hint
+$current_plan_hint
+$backlog_hint
 - Sprint count: $SPRINT_COUNT
 - Sprint effort target: $CAPACITY_TARGET
 - Sprint effort ceiling: $CAPACITY_CEILING
@@ -147,7 +260,10 @@ Requirements:
 7. If any epic would be too large for a sprint-safe PRD later, split it now instead of creating an oversized epic.
 8. Use \`dependsOn\` only for dependencies inside the same sprint. Express cross-sprint sequencing by sprint order, not cross-sprint dependency links.
 9. Write execution-oriented \`promptContext\` that is specific enough for later PRD generation.
-10. Do not create runtime files or PRD JSON. This is planning only.
+10. Treat closed/completed sprints as stable by default. Only place new work into a closed sprint when it is tightly scoped and likely lower churn than adding a follow-up epic or sprint.
+11. Prefer additive follow-up epics or new sprints over reopening completed work when the refinement would otherwise cause broad refactor churn.
+12. Preserve stable epic IDs for unchanged work when refining; use new IDs for genuinely new follow-up work.
+13. Do not create runtime files or PRD JSON. This is planning only.
 
 Return only a short summary after writing the file.
 EOF
@@ -158,7 +274,7 @@ EOF
 }
 
 validate_roadmap_json() {
-  [ -f "$ROADMAP_JSON" ] || fail "Roadmap JSON was not created: $ROADMAP_JSON"
+  [ -f "$ROADMAP_JSON_WORK" ] || fail "Roadmap JSON was not created: $ROADMAP_JSON_WORK"
   jq -e \
     --argjson sprintCount "$SPRINT_COUNT" \
     --argjson target "$CAPACITY_TARGET" \
@@ -176,17 +292,17 @@ validate_roadmap_json() {
       (.epics | type == "array") and
       ([.epics[]?.effort] | all(. == 1 or . == 2 or . == 3 or . == 5))
     )
-  ' "$ROADMAP_JSON" >/dev/null 2>&1 || fail "Invalid roadmap JSON structure: $ROADMAP_JSON"
+  ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Invalid roadmap JSON structure: $ROADMAP_JSON_WORK"
 
   jq -e '
     [ .sprints[].epics[].id ] as $ids
     | ($ids | unique | length) == ($ids | length)
-  ' "$ROADMAP_JSON" >/dev/null 2>&1 || fail "Roadmap JSON contains duplicate epic IDs."
+  ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Roadmap JSON contains duplicate epic IDs."
 
   jq -e '
     .sprints
     | all(.[]; ([.epics[]?.effort] | add // 0) <= .capacityCeiling)
-  ' "$ROADMAP_JSON" >/dev/null 2>&1 || fail "Roadmap JSON exceeds sprint capacity ceiling."
+  ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Roadmap JSON exceeds sprint capacity ceiling."
   validate_sprint_local_dependencies
 }
 
@@ -194,7 +310,7 @@ validate_sprint_local_dependencies() {
   local sprint local_ids dep_line epic_id dep_id
   while IFS= read -r sprint; do
     [ -n "$sprint" ] || continue
-    local_ids="$(jq -r --arg sprint "$sprint" '.sprints[] | select(.name == $sprint) | .epics[]?.id' "$ROADMAP_JSON")"
+    local_ids="$(jq -r --arg sprint "$sprint" '.sprints[] | select(.name == $sprint) | .epics[]?.id' "$ROADMAP_JSON_WORK")"
     while IFS=$'\t' read -r epic_id dep_id; do
       [ -n "$epic_id" ] || continue
       [ -n "$dep_id" ] || continue
@@ -208,8 +324,8 @@ validate_sprint_local_dependencies() {
       | .id as $id
       | (.dependsOn // [])[]
       | [$id, .] | @tsv
-    ' "$ROADMAP_JSON")
-  done < <(jq -r '.sprints[].name' "$ROADMAP_JSON")
+    ' "$ROADMAP_JSON_WORK")
+  done < <(jq -r '.sprints[].name' "$ROADMAP_JSON_WORK")
 }
 
 render_roadmap_markdown() {
@@ -217,6 +333,7 @@ render_roadmap_markdown() {
     "# Ralph Roadmap\n\n" +
     "## Vision\n\n" + .visionSummary + "\n\n" +
     "## Constraints\n\n" + (.constraintsSummary // "None provided.") + "\n\n" +
+    "Source of truth: `scripts/ralph/roadmap-source.md`\n\n" +
     "## Capacity Policy\n\n" +
     "- Sprint target effort: \(.capacityTarget)\n" +
     "- Sprint ceiling effort: \(.capacityCeiling)\n" +
@@ -240,7 +357,7 @@ render_roadmap_markdown() {
         )
       | join("\n")
     )
-  ' "$ROADMAP_JSON" > "$ROADMAP_MD"
+  ' "$ROADMAP_JSON_WORK" > "$ROADMAP_MD_WORK"
 }
 
 ensure_empty_sprint_backlog() {
@@ -280,6 +397,25 @@ reset_seed_example_backlog() {
   mv "$tmp_file" "$epics_file"
 }
 
+ensure_sprint_structure_local() {
+  local sprint="$1"
+  local epics_file="$SCRIPT_DIR/sprints/$sprint/epics.json"
+  mkdir -p "$SCRIPT_DIR/sprints/$sprint" "$SCRIPT_DIR/tasks/$sprint" "$SCRIPT_DIR/tasks/archive/$sprint"
+  if [ ! -f "$epics_file" ]; then
+    cat > "$epics_file" <<JSON
+{
+  "version": 1,
+  "project": "$(basename "$WORKSPACE_ROOT")",
+  "sprint": "$sprint",
+  "capacityTarget": $CAPACITY_TARGET,
+  "capacityCeiling": $CAPACITY_CEILING,
+  "activeEpicId": null,
+  "epics": []
+}
+JSON
+  fi
+}
+
 write_sprint_capacity_metadata() {
   local sprint="$1"
   local epics_file="$SCRIPT_DIR/sprints/$sprint/epics.json"
@@ -293,12 +429,87 @@ write_sprint_capacity_metadata() {
   mv "$tmp_file" "$epics_file"
 }
 
-apply_roadmap_to_sprints() {
-  local first_sprint=""
-  local sprint_count sprint_name sprint_goal
+epic_exists_in_backlog() {
+  local epics_file="$1"
+  local epic_id="$2"
+  jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$epics_file" >/dev/null 2>&1
+}
+
+get_epic_status_from_backlog() {
+  local epics_file="$1"
+  local epic_id="$2"
+  jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | (.status // "planned")' "$epics_file"
+}
+
+upsert_epic_metadata() {
+  local epics_file="$1"
+  local epic_json="$2"
+  local epic_id status tmp_file
+  epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
+  status="$(get_epic_status_from_backlog "$epics_file" "$epic_id")"
+
+  case "$status" in
+    done|abandoned|active)
+      return 0
+      ;;
+  esac
+
+  tmp_file="$(mktemp)"
+  jq --argjson epic "$epic_json" '
+    .epics = (
+      .epics
+      | map(
+          if .id == $epic.id then
+            .title = $epic.title
+            | .priority = $epic.priority
+            | .effort = $epic.effort
+            | .dependsOn = ($epic.dependsOn // [])
+            | .goal = $epic.goal
+            | .promptContext = $epic.promptContext
+          else
+            .
+          end
+        )
+    )
+  ' "$epics_file" > "$tmp_file"
+  mv "$tmp_file" "$epics_file"
+}
+
+reconcile_sprint_backlog() {
+  local sprint_name="$1"
+  local epics_file="$SCRIPT_DIR/sprints/$sprint_name/epics.json"
   local epic_json epic_id title priority effort goal prompt_context depends_csv
 
-  sprint_count="$(jq '.sprints | length' "$ROADMAP_JSON")"
+  while IFS= read -r epic_json; do
+    [ -n "$epic_json" ] || continue
+    epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
+    title="$(printf '%s\n' "$epic_json" | jq -r '.title')"
+    priority="$(printf '%s\n' "$epic_json" | jq -r '.priority')"
+    effort="$(printf '%s\n' "$epic_json" | jq -r '.effort')"
+    goal="$(printf '%s\n' "$epic_json" | jq -r '.goal')"
+    prompt_context="$(printf '%s\n' "$epic_json" | jq -r '.promptContext')"
+    depends_csv="$(printf '%s\n' "$epic_json" | jq -r '(.dependsOn // []) | join(",")')"
+
+    if epic_exists_in_backlog "$epics_file" "$epic_id"; then
+      upsert_epic_metadata "$epics_file" "$epic_json"
+    else
+      RALPH_EPICS_FILE="$epics_file" "$EPIC_CLI" add \
+        --id "$epic_id" \
+        --title "$title" \
+        --priority "$priority" \
+        --effort "$effort" \
+        --depends-on "$depends_csv" \
+        --goal "$goal" \
+        --prompt-context "$prompt_context" >/dev/null
+    fi
+  done < <(jq -c --arg sprint "$sprint_name" '.sprints[] | select(.name == $sprint) | .epics[]' "$ROADMAP_JSON_WORK")
+}
+
+apply_roadmap_to_sprints() {
+  local first_sprint=""
+  local sprint_count sprint_name sprint_goal epics_file
+
+  sprint_count="$(jq '.sprints | length' "$ROADMAP_JSON_WORK")"
   [ "$sprint_count" -gt 0 ] || fail "Roadmap has no sprints to apply."
 
   while IFS=$'\t' read -r sprint_name sprint_goal; do
@@ -307,49 +518,50 @@ apply_roadmap_to_sprints() {
       first_sprint="$sprint_name"
     fi
 
-    if [ -d "$SCRIPT_DIR/sprints/$sprint_name" ]; then
-      ensure_empty_sprint_backlog "$sprint_name"
+    if [ -f "$SCRIPT_DIR/sprints/$sprint_name/epics.json" ]; then
+      if [ "$REFINE_MODE" -eq 1 ]; then
+        if is_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/epics.json"; then
+          reset_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/epics.json" "$sprint_name"
+        fi
+      else
+        ensure_empty_sprint_backlog "$sprint_name"
+      fi
     else
-      "$SPRINT_CLI" create "$sprint_name" </dev/null
+      ensure_sprint_structure_local "$sprint_name"
     fi
-    "$SPRINT_CLI" use "$sprint_name" >/dev/null
+    ensure_sprint_structure_local "$sprint_name"
+    "$SPRINT_CLI" branch "$sprint_name" >/dev/null
     write_sprint_capacity_metadata "$sprint_name"
+    epics_file="$SCRIPT_DIR/sprints/$sprint_name/epics.json"
+    reconcile_sprint_backlog "$sprint_name"
+  done < <(jq -r '.sprints[] | [.name, .goal] | @tsv' "$ROADMAP_JSON_WORK")
 
-    while IFS= read -r epic_json; do
-      [ -n "$epic_json" ] || continue
-      epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
-      title="$(printf '%s\n' "$epic_json" | jq -r '.title')"
-      priority="$(printf '%s\n' "$epic_json" | jq -r '.priority')"
-      effort="$(printf '%s\n' "$epic_json" | jq -r '.effort')"
-      goal="$(printf '%s\n' "$epic_json" | jq -r '.goal')"
-      prompt_context="$(printf '%s\n' "$epic_json" | jq -r '.promptContext')"
-      depends_csv="$(printf '%s\n' "$epic_json" | jq -r '(.dependsOn // []) | join(",")')"
+  if [ -n "$first_sprint" ]; then
+    printf '%s\n' "$first_sprint" > "$ACTIVE_SPRINT_FILE"
+  fi
+}
 
-      "$EPIC_CLI" add \
-        --id "$epic_id" \
-        --title "$title" \
-        --priority "$priority" \
-        --effort "$effort" \
-        --depends-on "$depends_csv" \
-        --goal "$goal" \
-        --prompt-context "$prompt_context" >/dev/null
-    done < <(jq -c --arg sprint "$sprint_name" '.sprints[] | select(.name == $sprint) | .epics[]' "$ROADMAP_JSON")
-  done < <(jq -r '.sprints[] | [.name, .goal] | @tsv' "$ROADMAP_JSON")
-
-  [ -n "$first_sprint" ] && "$SPRINT_CLI" use "$first_sprint" >/dev/null
+publish_roadmap_artifacts() {
+  [ -f "$ROADMAP_JSON_WORK" ] && cp "$ROADMAP_JSON_WORK" "$ROADMAP_JSON"
+  [ -f "$ROADMAP_MD_WORK" ] && cp "$ROADMAP_MD_WORK" "$ROADMAP_MD"
+  [ -f "$ROADMAP_SOURCE_WORK" ] && cp "$ROADMAP_SOURCE_WORK" "$ROADMAP_SOURCE"
 }
 
 commit_roadmap_artifacts_if_needed() {
   local status_lines
-  status_lines="$(git status --porcelain -- "$ROADMAP_JSON" "$ROADMAP_MD" "$SCRIPT_DIR/sprints" || true)"
+  status_lines="$(git status --porcelain -- "$ROADMAP_JSON" "$ROADMAP_MD" "$ROADMAP_SOURCE" "$SCRIPT_DIR/sprints" || true)"
   [ -n "$status_lines" ] || return 0
 
-  git add -- "$ROADMAP_JSON" "$ROADMAP_MD" "$SCRIPT_DIR/sprints"
+  git add -- "$ROADMAP_JSON" "$ROADMAP_MD" "$ROADMAP_SOURCE" "$SCRIPT_DIR/sprints"
   if git diff --cached --quiet; then
     return 0
   fi
 
-  git commit -m "chore(ralph): add roadmap plan" >/dev/null
+  if [ "$REFINE_MODE" -eq 1 ]; then
+    git commit -m "chore(ralph): refine roadmap plan" >/dev/null
+  else
+    git commit -m "chore(ralph): add roadmap plan" >/dev/null
+  fi
   log "Committed roadmap plan artifacts."
 }
 
@@ -366,6 +578,14 @@ main() {
         ;;
       --constraints)
         CONSTRAINTS="${2:-}"
+        shift 2
+        ;;
+      --refine)
+        REFINE_MODE=1
+        shift
+        ;;
+      --revision-note)
+        REVISION_NOTE="${2:-}"
         shift 2
         ;;
       --sprints)
@@ -404,6 +624,8 @@ main() {
   [ "$CAPACITY_TARGET" -le "$CAPACITY_CEILING" ] || fail "--capacity-target must be less than or equal to --capacity-ceiling."
 
   ensure_clean_worktree
+  read_current_roadmap_source
+  setup_work_paths
 
   if [ "$APPLY_ONLY" -ne 1 ]; then
     if [ -z "$VISION" ]; then
@@ -411,18 +633,34 @@ main() {
         collect_editor_intake
       fi
     fi
+    if [ -z "$VISION" ] && [ "$REFINE_MODE" -eq 1 ] && [ -n "${CURRENT_SOURCE_VISION:-}" ]; then
+      VISION="$CURRENT_SOURCE_VISION"
+    fi
+    if [ -z "$CONSTRAINTS" ] && [ "$REFINE_MODE" -eq 1 ] && [ -n "${CURRENT_SOURCE_CONSTRAINTS:-}" ]; then
+      CONSTRAINTS="$CURRENT_SOURCE_CONSTRAINTS"
+    fi
     [ -n "$VISION" ] || fail "Vision is required. Pass --vision or use interactive editor intake."
+    if [ "$REFINE_MODE" -eq 1 ]; then
+      [ -f "$ROADMAP_SOURCE" ] || fail "Cannot refine without existing roadmap source: scripts/ralph/roadmap-source.md"
+      [ -f "$ROADMAP_JSON" ] || fail "Cannot refine without existing roadmap plan: scripts/ralph/roadmap.json"
+    fi
+    write_roadmap_source
     plan_roadmap_json
   else
     [ -f "$ROADMAP_JSON" ] || fail "Missing roadmap JSON for --apply-only: $ROADMAP_JSON"
+    cp "$ROADMAP_JSON" "$ROADMAP_JSON_WORK"
+    [ -f "$ROADMAP_MD" ] && cp "$ROADMAP_MD" "$ROADMAP_MD_WORK"
+    [ -f "$ROADMAP_SOURCE" ] && cp "$ROADMAP_SOURCE" "$ROADMAP_SOURCE_WORK"
   fi
 
   validate_roadmap_json
   render_roadmap_markdown
   apply_roadmap_to_sprints
+  publish_roadmap_artifacts
   commit_roadmap_artifacts_if_needed
 
   log "Roadmap plan ready:"
+  log "- Source: scripts/ralph/roadmap-source.md"
   log "- JSON: scripts/ralph/roadmap.json"
   log "- Markdown: scripts/ralph/roadmap.md"
 }

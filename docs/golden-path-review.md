@@ -39,6 +39,7 @@ The framework now has strong support for:
 - assigning sprint-safe epic effort scores
 - enforcing sprint capacity target/ceiling during planning
 - keeping explicit dependencies sprint-local while using sprint order for cross-sprint sequencing
+- preserving a durable roadmap source that can be refined later and reconciled back into sprint backlogs
 
 That closes the largest structural golden-path gap without changing the existing loop primitives.
 
@@ -237,11 +238,22 @@ Per completed sprint:
 The new roadmap layer is the right shape:
 
 - durable roadmap outputs
+- durable roadmap source
 - sprint/epic metadata stored in existing structures
 - no runtime-state coupling
 - no change to loop or closeout primitives
 
 That should remain the design rule for future roadmap-planning iterations.
+
+### 2. Keep roadmap refinement additive by default
+
+Refinement should flow from the durable roadmap source into open and future sprint backlogs.
+
+Recommended default:
+
+- update open and future work in place
+- preserve active and completed work unless a low-churn reopen is clearly safer
+- prefer new follow-up epics or new sprints over reopening closed sprints when the refinement would otherwise create broad churn
 
 ### 2. Keep enforcing durable-spec / transient-runtime separation
 
