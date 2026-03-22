@@ -89,6 +89,38 @@ infer_prd_mode_from_branch() {
   fi
 }
 
+iteration_ids_for_pattern() {
+  local pattern="$1"
+  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' 2>/dev/null \
+    | sed -E 's/.*-iter-([0-9]+)\..*/\1/' \
+    | sort -n
+}
+
+paired_iteration_artifacts_valid() {
+  local transcript_ids handoff_ids latest_transcript latest_handoff
+
+  transcript_ids="$(iteration_ids_for_pattern '.iteration-log-iter-*.txt')"
+  handoff_ids="$(iteration_ids_for_pattern '.iteration-handoff-iter-*.json')"
+
+  if [ "$transcript_ids" != "$handoff_ids" ]; then
+    echo "Archive verification failed: iteration transcript/handoff files are not paired." >&2
+    echo "Transcripts: ${transcript_ids:-<none>}" >&2
+    echo "Handoffs: ${handoff_ids:-<none>}" >&2
+    return 1
+  fi
+
+  latest_transcript=0
+  latest_handoff=0
+  [ -f "$ITERATION_TRANSCRIPT_LATEST_FILE" ] && latest_transcript=1
+  [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] && latest_handoff=1
+  if [ "$latest_transcript" -ne "$latest_handoff" ]; then
+    echo "Archive verification failed: latest transcript/handoff presence mismatch." >&2
+    return 1
+  fi
+
+  return 0
+}
+
 reset_local_run_artifacts() {
   local iter_transcript iter_handoff
 
@@ -116,6 +148,7 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 ensure_clean_worktree
+paired_iteration_artifacts_valid || exit 1
 
 ACTIVE_PRD_MODE="$(get_active_prd_mode || true)"
 INFERRED_PRD_MODE="$(infer_prd_mode_from_branch || true)"

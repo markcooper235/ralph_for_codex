@@ -697,6 +697,11 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       standalone_start_head="$(git -C "$STANDALONE_REPO" rev-parse HEAD)"
       run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-standalone.log" "$STANDALONE_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_STANDALONE_MAX_ITERATIONS"
       standalone_end_head="$(git -C "$STANDALONE_REPO" rev-parse HEAD)"
+      [ ! -e .codex-last-message.txt ] || fail "standalone loop should not leave legacy .codex-last-message.txt"
+      if find . -maxdepth 1 -name '.codex-last-message*' | grep -q .; then
+        fail "standalone loop should not create legacy .codex-last-message artifacts"
+      fi
+      jq -e '.completionSignal == true and .status == "completed"' .iteration-handoff-latest.json >/dev/null
       jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
       assert_commit_range_small_and_simple "$STANDALONE_REPO" "$standalone_start_head" "$standalone_end_head" "standalone loop" "src/index.ts" "tests/hello.test.mjs"
       if [ "$APP_MODE" = "ui" ]; then
@@ -795,6 +800,11 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
       run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_EPIC_MAX_ITERATIONS"
       epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
+      [ ! -e .codex-last-message.txt ] || fail "epic loop should not leave legacy .codex-last-message.txt"
+      if find . -maxdepth 1 -name '.codex-last-message*' | grep -q .; then
+        fail "epic loop should not create legacy .codex-last-message artifacts"
+      fi
+      jq -e '.completionSignal == true and .status == "completed"' .iteration-handoff-latest.json >/dev/null
       jq -e '.branchName | test("^ralph/.+/epic-[0-9]+$") or test("^ralph/epic-[0-9]+$")' prd.json >/dev/null
       jq -e '([.userStories[] | select(.passes == true)] | length) >= 1' prd.json >/dev/null
       assert_commit_range_small_and_simple "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" "epic loop" "src/index.ts" "tests/hello.test.mjs"

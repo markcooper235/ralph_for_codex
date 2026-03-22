@@ -472,13 +472,187 @@ extract_ralph_handoff_json() {
   ' "$source_file"
 }
 
+handoff_completion_evidence_present() {
+  prd_all_passes || return 1
+  progress_has_completion_entry
+}
+
+handoff_schema_is_valid() {
+  local path="$1"
+  [ -f "$path" ] || return 1
+  jq -e '
+    (.status | type == "string")
+    and (.status | IN("progressed", "blocked", "no_change", "completed"))
+    and (.summary | type == "string")
+    and (.summary | length > 0)
+    and (.completionSignal | type == "boolean")
+    and (
+      [.errors, .directionChanges, .verification, .filesChanged, .assumptions, .nextLoopAdvice]
+      | all(.[]; type == "array" and length <= 2 and all(.[]; type == "string"))
+    )
+    and (
+      if .status == "no_change" then
+        true
+      else
+        (.story | type == "object")
+        and (.story.id | type == "string")
+        and (.story.id | length > 0)
+        and (.story.title | type == "string")
+        and (.story.title | length > 0)
+      end
+    )
+    and (
+      (.status == "completed" and .completionSignal == true)
+      or (.status != "completed" and .completionSignal == false)
+    )
+  ' "$path" >/dev/null 2>&1
+}
+
+handoff_completion_state_is_valid() {
+  local path="$1"
+  handoff_schema_is_valid "$path" || return 1
+  if jq -e '.completionSignal == true' "$path" >/dev/null 2>&1; then
+    handoff_completion_evidence_present
+    return $?
+  fi
+  return 0
+}
+
+fallback_story_from_prd() {
+  local target_status="$1"
+  [ -f "$PRD_FILE" ] || return 0
+  jq -r --arg status "$target_status" '
+    if (.userStories | type != "array") or ((.userStories | length) == 0) then
+      ""
+    else
+      (
+        if $status == "completed" then
+          ([.userStories[] | select(.passes == true)] | sort_by(.priority) | first)
+        elif $status == "blocked" then
+          ([.userStories[] | select(.passes != true)] | sort_by(.priority) | first)
+        else
+          ([.userStories[]] | sort_by(.priority) | first)
+        end
+      ) as $story
+      | if $story == null then "" else ($story.id // "") + "\t" + ($story.title // "") end
+    end
+  ' "$PRD_FILE" 2>/dev/null || true
+}
+
+write_fallback_handoff() {
+  local output_path="$1"
+  local iteration="$2"
+  local timestamp="$3"
+  local branch="$4"
+  local status="$5"
+  local summary="$6"
+  local error_message="${7:-}"
+  local next_advice="${8:-}"
+  local completion="${9:-false}"
+  local story_context story_id story_title
+
+  story_context="$(fallback_story_from_prd "$status")"
+  story_id="${story_context%%$'\t'*}"
+  if [ "$story_context" = "$story_id" ]; then
+    story_title=""
+  else
+    story_title="${story_context#*$'\t'}"
+  fi
+
+  jq -n \
+    --argjson iteration "$iteration" \
+    --arg timestamp "$timestamp" \
+    --arg branch "$branch" \
+    --arg status "$status" \
+    --arg summary "$summary" \
+    --arg error_message "$error_message" \
+    --arg next_advice "$next_advice" \
+    --arg story_id "$story_id" \
+    --arg story_title "$story_title" \
+    --argjson completion "$completion" \
+    '{
+      iteration: $iteration,
+      timestamp: $timestamp,
+      branch: $branch,
+      status: $status,
+      story: (
+        if $status == "no_change" or (($story_id | length) == 0 and ($story_title | length) == 0) then
+          {}
+        else
+          {
+            id: $story_id,
+            title: $story_title
+          }
+        end
+      ),
+      summary: $summary,
+      errors: (if ($error_message | length) > 0 then [$error_message] else [] end),
+      directionChanges: [],
+      verification: [],
+      filesChanged: [],
+      assumptions: [],
+      nextLoopAdvice: (if ($next_advice | length) > 0 then [$next_advice] else [] end),
+      completionSignal: $completion
+    }' > "$output_path"
+}
+
+finalize_handoff_json() {
+  local output_path="$1"
+  local iteration="$2"
+  local timestamp="$3"
+  local branch="$4"
+  local source_json="$5"
+  local tmp_json
+
+  tmp_json="$(mktemp)"
+
+  if [ -n "$source_json" ] && ! printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
+    if handoff_completion_evidence_present; then
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "completed" "Completion inferred from Ralph state despite invalid handoff JSON." "" "" true
+    else
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration emitted invalid structured handoff JSON." "Invalid handoff JSON emitted; review latest transcript." "Emit valid JSON inside the <ralph_handoff> wrapper." false
+    fi
+  elif [ -n "$source_json" ]; then
+    printf '%s\n' "$source_json" | jq \
+      --argjson iteration "$iteration" \
+      --arg timestamp "$timestamp" \
+      --arg branch "$branch" \
+      '
+      .iteration = $iteration
+      | .timestamp = $timestamp
+      | .branch = $branch
+      ' > "$tmp_json"
+
+    if handoff_completion_evidence_present; then
+      jq '.status = "completed" | .completionSignal = true' "$tmp_json" > "${tmp_json}.completed"
+      mv "${tmp_json}.completed" "$tmp_json"
+    fi
+
+    if ! handoff_schema_is_valid "$tmp_json"; then
+      if handoff_completion_evidence_present; then
+        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "completed" "Completion inferred from Ralph state despite invalid handoff schema." "" "" true
+      else
+        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration emitted an invalid structured handoff." "Invalid handoff schema emitted; review latest transcript." "Emit a valid handoff schema with consistent status and completion fields." false
+      fi
+    elif ! handoff_completion_state_is_valid "$tmp_json"; then
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration claimed completion without matching Ralph state." "Completion handoff disagreed with PRD/progress state." "Only mark completion after stories pass and a completion entry is recorded." false
+    fi
+  else
+    if handoff_completion_evidence_present; then
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "completed" "Completion inferred from Ralph state." "" "" true
+    else
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "no_change" "Iteration completed without a structured handoff block." "" "" false
+    fi
+  fi
+
+  mv "$tmp_json" "$output_path"
+}
+
 write_iteration_handoff() {
   local iteration="$1"
   local transcript_file="$2"
   local output_file="$SCRIPT_DIR/.iteration-handoff-iter-$iteration.json"
-  local tmp_json source_json branch_name timestamp completion_signal status_value
-
-  tmp_json="$(mktemp)"
+  local source_json branch_name timestamp
   source_json=""
 
   if [ -f "$transcript_file" ]; then
@@ -487,59 +661,19 @@ write_iteration_handoff() {
 
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
   timestamp="$(date -Iseconds)"
-  completion_signal=false
-  status_value="no_change"
-
-  if [ -n "$source_json" ] && printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
-    printf '%s\n' "$source_json" | jq \
-      --argjson iteration "$iteration" \
-      --arg timestamp "$timestamp" \
-      --arg branch "$branch_name" \
-      '
-      .iteration = $iteration
-      | .timestamp = $timestamp
-      | .branch = $branch
-      ' > "$tmp_json"
-  else
-    if grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE" 2>/dev/null; then
-      completion_signal=true
-      status_value="completed"
-    fi
-    jq -n \
-      --argjson iteration "$iteration" \
-      --arg timestamp "$timestamp" \
-      --arg branch "$branch_name" \
-      --arg status "$status_value" \
-      --arg summary "Iteration completed without a structured handoff block." \
-      --argjson completion "$completion_signal" \
-      '{
-        iteration: $iteration,
-        timestamp: $timestamp,
-        branch: $branch,
-        status: $status,
-        summary: $summary,
-        errors: [],
-        directionChanges: [],
-        verification: [],
-        filesChanged: [],
-        assumptions: [],
-        nextLoopAdvice: [],
-        completionSignal: $completion
-      }' > "$tmp_json"
-  fi
-
-  mv "$tmp_json" "$output_file"
+  finalize_handoff_json "$output_file" "$iteration" "$timestamp" "$branch_name" "$source_json"
   cp -f "$output_file" "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1 || true
 }
 
 progress_has_completion_entry() {
   [ -f "$PROGRESS_FILE" ] || return 1
-  grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE"
+  grep -Eq '^## .+ - (COMPLETE|Completion)$|^## Completion Note$' "$PROGRESS_FILE"
 }
 
 latest_handoff_signals_completion() {
   [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] || return 1
-  jq -e '.completionSignal == true or (.status == "completed")' "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1
+  handoff_completion_state_is_valid "$ITERATION_HANDOFF_LATEST_FILE" || return 1
+  jq -e '.completionSignal == true and (.status == "completed")' "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1
 }
 
 get_active_prd_source_path() {
@@ -670,10 +804,8 @@ has_non_transient_worktree_changes() {
 completion_is_stable() {
   prd_all_passes || return 1
   has_non_transient_worktree_changes && return 1
-  if latest_handoff_signals_completion; then
-    return 0
-  fi
-  progress_has_completion_entry
+  progress_has_completion_entry || return 1
+  latest_handoff_signals_completion
 }
 
 prd_has_unfinished_stories() {

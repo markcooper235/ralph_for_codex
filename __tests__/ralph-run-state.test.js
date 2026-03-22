@@ -24,14 +24,14 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents)
 }
 
-function buildLoopHandoff({ status = 'completed', completionSignal = true } = {}) {
+function buildLoopHandoff({ status = 'completed', completionSignal = true, storyId = 'US-001', storyTitle = 'Stub story' } = {}) {
   return [
     '<ralph_handoff>',
     JSON.stringify({
       status,
       story: {
-        id: 'US-001',
-        title: 'Stub story',
+        id: storyId,
+        title: storyTitle,
       },
       summary: 'Stub loop completed.',
       errors: [],
@@ -96,7 +96,7 @@ const input = fs.readFileSync(0, 'utf8');
     require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped invalid change'], { cwd, stdio: 'pipe' });
   }
 
-  if (fs.existsSync(prdPath)) {
+  if (fs.existsSync(prdPath) && loopMode !== 'invalid-handoff') {
     const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
     if (Array.isArray(prd.userStories) && prd.userStories[0]) {
       prd.userStories[0].passes = true;
@@ -107,7 +107,27 @@ const input = fs.readFileSync(0, 'utf8');
     progressPath,
     '\\n## 2026-03-22 17:30:00 EDT - US-001\\n- Implemented: Stub loop change\\n---\\n'
   );
-  process.stdout.write(${JSON.stringify(buildLoopHandoff())});
+  if (loopMode === 'missing-handoff-complete') {
+    fs.appendFileSync(
+      progressPath,
+      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification passed.\\n---\\n'
+    );
+  } else if (loopMode === 'invalid-handoff') {
+    process.stdout.write('<ralph_handoff>\\n{"status":"completed","completionSignal":true}\\n</ralph_handoff>\\n');
+  } else if (loopMode === 'multi-handoff') {
+    fs.appendFileSync(
+      progressPath,
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed.\\n---\\n'
+    );
+    process.stdout.write('<ralph_handoff>\\n{"status":"no_change","story":{"id":"US-000","title":"Example"},"summary":"Prompt example.","errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[],"completionSignal":false}\\n</ralph_handoff>\\n');
+    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
+  } else {
+    fs.appendFileSync(
+      progressPath,
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed.\\n---\\n'
+    );
+    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
+  }
 }
 if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
   const destination = (input.match(/Destination: \`([^\\\`]+)\`/) || [null, 'scripts/ralph/prd.json'])[1];
@@ -186,6 +206,7 @@ function initTempRepo() {
       'scripts/ralph/.iteration-log*.txt',
       'scripts/ralph/.iteration-handoff*.json',
       '.playwright-cli/',
+      'bin/',
     ].join('\n') + '\n'
   )
 
@@ -649,7 +670,7 @@ test('ralph.sh explicit-scope validator allows verification-only test expansion'
     PATH: installCodexStub(repoDir),
     RALPH_TEST_LOOP_MODE: 'scope-valid',
   }
-  run('git', ['add', 'bin/codex'], { cwd: repoDir })
+  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
   run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
 
   writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
@@ -713,7 +734,7 @@ test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () =>
     PATH: installCodexStub(repoDir),
     RALPH_TEST_LOOP_MODE: 'scope-invalid',
   }
-  run('git', ['add', 'bin/codex'], { cwd: repoDir })
+  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
   run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
 
   writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
@@ -774,4 +795,184 @@ test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () =>
   assert.equal(runError.status, 1)
   assert.match(runError.stdout + runError.stderr, /outside explicit scoped implementation paths/)
   assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
+})
+
+test('ralph.sh synthesizes a completed handoff when completion evidence exists but no handoff is emitted', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'missing-handoff-complete',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Completion synthesis test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Synthesized completion story',
+            description: 'Synthesized completion story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.completionSignal, true)
+  assert.equal(latestHandoff.status, 'completed')
+})
+
+test('ralph.sh falls back to a blocked handoff when the emitted handoff is invalid', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'invalid-handoff',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Invalid handoff test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Invalid handoff story',
+            description: 'Invalid handoff story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.status, 'blocked')
+  assert.equal(latestHandoff.completionSignal, false)
+  assert.match(latestHandoff.errors[0], /Invalid handoff schema emitted/)
+})
+
+test('ralph.sh extracts the last handoff block from the transcript', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'multi-handoff',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Last handoff wins test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Last handoff story',
+            description: 'Last handoff story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.story.id, 'US-001')
+  assert.equal(latestHandoff.status, 'completed')
+  assert.equal(latestHandoff.completionSignal, true)
+})
+
+test('ralph-archive rejects unpaired transcript and handoff artifacts', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-2.json'), '{"status":"no_change","summary":"mismatch","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+
+  let archiveError = null
+  try {
+    run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
+  } catch (error) {
+    archiveError = error
+  }
+
+  assert.ok(archiveError)
+  assert.match(archiveError.stderr, /iteration transcript\/handoff files are not paired/)
 })
