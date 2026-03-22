@@ -115,6 +115,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph.sh` should skip the loop entirely when completion is already stable: all stories pass, completion evidence exists, and only transient Ralph artifacts remain dirty.
 - Keep `prompt.md` terse because every Ralph iteration pays for it again; compress wording before adding new always-on instructions.
 - For tiny file-scoped UI tasks, the loop prompt should prefer rebuilding local assets for browser verification over editing helper scripts like `scripts/browser-check.mjs`; keep the change inside the requested app/test files unless the PRD explicitly expands scope.
+- For bounded-scope UI stories, keep source changes inside scope; verification of that scoped work is always allowed, but only to verify the scoped work.
 - Keep loop-context reads tight: prefer `## Codebase Patterns`, the latest single progress entry, and the nearest relevant `AGENTS.md` before expanding outward.
 - PRDs should decompose into 1-6 executable stories. Use task classes that fit that range (`micro` 1, `small` 2-3, `medium` 4-6); if honest decomposition needs more than 6, create a follow-up PRD instead of overstuffing one plan.
 - Smoke telemetry should report both token totals and loop iteration counts/completion iteration so efficiency regressions can be traced to either planning cost or extra loop churn.

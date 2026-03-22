@@ -443,7 +443,7 @@ expected_state="ready"
   ./ralph-epic.sh add \
     --title "Worst Case UI Multi-Story Epic" \
     --status planned \
-    --prompt-context "Implement a worst-case UI change in bounded scope. Update src/messages.ts so the headline becomes Hello Sprint Ralph, the status becomes Ready for review, the CTA label becomes View release notes, and the state becomes ready. Update src/render.ts so #status gets data-state from the new state value and #cta gets a title attribute mirroring the CTA label. Update tests/messages.test.mjs and tests/render.test.mjs to cover the new copy and render contract. Verify browser output for #app, #status, and #cta, including the status data-state and CTA title. Keep implementation changes limited to src/messages.ts, src/render.ts, tests/messages.test.mjs, and tests/render.test.mjs only. Do not edit browser helper scripts, build scripts, configs, fixtures, or package.json. Break the work into at least 3 small dependency-ordered stories if the verification evidence naturally warrants it." \
+    --prompt-context "Implement a bounded worst-case UI change. Update src/messages.ts so the headline is Hello Sprint Ralph, the status text is Ready for review, the CTA label is View release notes, and the state is ready. Update src/render.ts so #status renders the status text while exposing the state value, and #cta gets a matching title. Update tests/messages.test.mjs and tests/render.test.mjs for the new copy and render contract. Verify #app, #status, and #cta in the browser, including status text, status state, and CTA title. Keep source changes limited to src/messages.ts, src/render.ts, tests/messages.test.mjs, and tests/render.test.mjs. Verification of that scoped work is allowed only to verify that scoped work. Do not edit browser helpers, build scripts, configs, fixtures, or package.json. Use at least 3 small dependency-ordered stories if verification naturally warrants it." \
     > "$WORK_DIR/epic-add-epic.log" 2>&1
   ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
   ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
@@ -456,7 +456,7 @@ expected_state="ready"
   epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
   jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
   assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
-    "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs"
+    "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "tests/browser.test.mjs"
   grep -qF "$expected_headline" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
   grep -qF "$expected_status" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected status"
   grep -qF "$expected_cta" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
