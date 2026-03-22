@@ -84,12 +84,18 @@ const input = fs.readFileSync(0, 'utf8');
   if (input.includes('You are the coding agent for one Ralph loop iteration.') && loopMode) {
   const prdPath = path.join(cwd, 'scripts/ralph/prd.json');
   const progressPath = path.join(cwd, 'scripts/ralph/progress.txt');
+  if (loopMode === 'codex-fail') {
+    process.stderr.write('codex stub failure\\n');
+    process.exit(17);
+  }
   if (loopMode === 'scope-valid') {
     fs.writeFileSync(path.join(cwd, 'src/allowed.ts'), 'export const allowed = "updated";\\n');
     fs.mkdirSync(path.join(cwd, 'tests'), { recursive: true });
     fs.writeFileSync(path.join(cwd, 'tests/browser.test.mjs'), 'console.log("browser ok");\\n');
     require('child_process').execFileSync('git', ['add', 'src/allowed.ts', 'tests/browser.test.mjs'], { cwd, stdio: 'pipe' });
     require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped valid change'], { cwd, stdio: 'pipe' });
+  } else if (loopMode === 'scope-uncommitted') {
+    fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
   } else if (loopMode === 'scope-invalid') {
     fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
     require('child_process').execFileSync('git', ['add', 'src/disallowed.ts'], { cwd, stdio: 'pipe' });
@@ -302,7 +308,7 @@ test('ralph-archive clears local run artifacts after archiving a completed run',
     )
   )
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'LATEST TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'ITER1 TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
@@ -797,6 +803,73 @@ test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () =>
   assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
 })
 
+test('ralph.sh explicit-scope validator blocks uncommitted out-of-scope edits', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'scope-uncommitted',
+  }
+
+  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
+  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
+    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
+  )
+  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Keep source changes limited to src/allowed.ts.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Scoped uncommitted invalid story',
+            description: 'Scoped uncommitted invalid story',
+            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+  assert.match(runError.stdout + runError.stderr, /uncommitted files outside explicit scoped implementation paths/)
+  assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
+})
+
 test('ralph.sh synthesizes a completed handoff when completion evidence exists but no handoff is emitted', () => {
   const repoDir = initTempRepo()
   const env = {
@@ -846,6 +919,65 @@ test('ralph.sh synthesizes a completed handoff when completion evidence exists b
   const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
   assert.equal(latestHandoff.completionSignal, true)
   assert.equal(latestHandoff.status, 'completed')
+})
+
+test('ralph.sh records a blocked handoff when the codex command fails', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'codex-fail',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Codex failure test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Codex failure story',
+            description: 'Codex failure story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.status, 'blocked')
+  assert.equal(latestHandoff.completionSignal, false)
+  assert.match(latestHandoff.errors[0], /Codex exited with status 17/)
 })
 
 test('ralph.sh falls back to a blocked handoff when the emitted handoff is invalid', () => {
@@ -975,4 +1107,27 @@ test('ralph-archive rejects unpaired transcript and handoff artifacts', () => {
 
   assert.ok(archiveError)
   assert.match(archiveError.stderr, /iteration transcript\/handoff files are not paired/)
+})
+
+test('ralph-archive rejects stale latest artifact pointers', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-2.txt'), 'ITER2 TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'ITER1 TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"iter1","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-2.json'), '{"status":"no_change","summary":"iter2","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"iter1","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+
+  let archiveError = null
+  try {
+    run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
+  } catch (error) {
+    archiveError = error
+  }
+
+  assert.ok(archiveError)
+  assert.match(archiveError.stderr, /latest transcript file does not match the highest iteration transcript|latest handoff file does not match the highest iteration handoff/)
 })

@@ -596,6 +596,25 @@ write_fallback_handoff() {
     }' > "$output_path"
 }
 
+write_codex_failure_handoff() {
+  local output_path="$1"
+  local iteration="$2"
+  local timestamp="$3"
+  local branch="$4"
+  local exit_code="$5"
+
+  write_fallback_handoff \
+    "$output_path" \
+    "$iteration" \
+    "$timestamp" \
+    "$branch" \
+    "blocked" \
+    "Codex command failed before Ralph could validate iteration output." \
+    "Codex exited with status $exit_code." \
+    "Review the latest transcript and retry the iteration after fixing the Codex/runtime failure." \
+    false
+}
+
 finalize_handoff_json() {
   local output_path="$1"
   local iteration="$2"
@@ -651,17 +670,22 @@ finalize_handoff_json() {
 write_iteration_handoff() {
   local iteration="$1"
   local transcript_file="$2"
+  local codex_exit_code="${3:-0}"
   local output_file="$SCRIPT_DIR/.iteration-handoff-iter-$iteration.json"
   local source_json branch_name timestamp
   source_json=""
 
-  if [ -f "$transcript_file" ]; then
+  if [ -f "$transcript_file" ] && [ "$codex_exit_code" -eq 0 ]; then
     source_json="$(extract_ralph_handoff_json "$transcript_file" || true)"
   fi
 
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
   timestamp="$(date -Iseconds)"
-  finalize_handoff_json "$output_file" "$iteration" "$timestamp" "$branch_name" "$source_json"
+  if [ "$codex_exit_code" -ne 0 ]; then
+    write_codex_failure_handoff "$output_file" "$iteration" "$timestamp" "$branch_name" "$codex_exit_code"
+  else
+    finalize_handoff_json "$output_file" "$iteration" "$timestamp" "$branch_name" "$source_json"
+  fi
   cp -f "$output_file" "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1 || true
 }
 
@@ -726,15 +750,39 @@ collect_scope_hint_text() {
   fi
 }
 
+explicit_scope_allowed_paths() {
+  local scope_text="$1"
+  scope_signal_present "$scope_text" || return 1
+
+  local allowed_paths
+  allowed_paths="$(extract_explicit_scope_paths "$scope_text")"
+  [ -n "$allowed_paths" ] || return 1
+  printf '%s\n' "$allowed_paths"
+}
+
+changed_paths_outside_scope() {
+  local allowed_paths="$1"
+  local changed_paths="$2"
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
+      continue
+    fi
+    if is_verification_only_path "$path"; then
+      continue
+    fi
+    printf '%s\n' "$path"
+  done <<< "$changed_paths"
+}
+
 ensure_explicit_scope_changes_valid() {
   local from_ref="$1"
   local to_ref="$2"
   local scope_text allowed_paths changed_files bad_changes
 
   scope_text="$(collect_scope_hint_text)"
-  scope_signal_present "$scope_text" || return 0
-
-  allowed_paths="$(extract_explicit_scope_paths "$scope_text")"
+  allowed_paths="$(explicit_scope_allowed_paths "$scope_text" || true)"
   [ -n "$allowed_paths" ] || return 0
 
   changed_files="$(
@@ -744,18 +792,7 @@ ensure_explicit_scope_changes_valid() {
   )"
   [ -n "$changed_files" ] || return 0
 
-  bad_changes="$(
-    while IFS= read -r path; do
-      [ -n "$path" ] || continue
-      if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
-        continue
-      fi
-      if is_verification_only_path "$path"; then
-        continue
-      fi
-      printf '%s\n' "$path"
-    done <<< "$changed_files"
-  )"
+  bad_changes="$(changed_paths_outside_scope "$allowed_paths" "$changed_files")"
 
   if [ -n "$bad_changes" ]; then
     echo "Ralph iteration changed files outside explicit scoped implementation paths:" >&2
@@ -767,6 +804,45 @@ ensure_explicit_scope_changes_valid() {
   fi
 
   return 0
+}
+
+ensure_explicit_scope_worktree_valid() {
+  local scope_text allowed_paths changed_files bad_changes
+
+  scope_text="$(collect_scope_hint_text)"
+  allowed_paths="$(explicit_scope_allowed_paths "$scope_text" || true)"
+  [ -n "$allowed_paths" ] || return 0
+
+  changed_files="$(
+    git status --porcelain --untracked-files=all 2>/dev/null \
+      | awk '
+          {
+            path = substr($0, 4)
+            if (path ~ /^scripts\/ralph\/prd\.json$/) next
+            if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+            if (path ~ /^scripts\/ralph\/\.active-prd$/) next
+            if (path ~ /^scripts\/ralph\/\.last-branch$/) next
+            if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
+            if (path ~ /^scripts\/ralph\/\.iteration-handoff(\-iter-[0-9]+|-latest)?\.json$/) next
+            if (path ~ /^\.playwright-cli(\/|$)/) next
+            if (path ~ /^scripts\/ralph\/\.playwright-cli(\/|$)/) next
+            print path
+          }
+        ' \
+      | sed '/^$/d' \
+      | sort -u
+  )"
+  [ -n "$changed_files" ] || return 0
+
+  bad_changes="$(changed_paths_outside_scope "$allowed_paths" "$changed_files")"
+  [ -z "$bad_changes" ] && return 0
+
+  echo "Ralph iteration has uncommitted files outside explicit scoped implementation paths:" >&2
+  printf '%s\n' "$bad_changes" >&2
+  echo "Allowed implementation paths:" >&2
+  printf '%s\n' "$allowed_paths" >&2
+  echo "Only verification/test files may expand beyond explicit source scope." >&2
+  return 1
 }
 
 prd_all_passes() {
@@ -1224,10 +1300,13 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
 
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
-  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE" || true
+  set +e
+  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE"
+  CODEX_EXIT_CODE="${PIPESTATUS[1]:-1}"
+  set -e
 
   cp -f "$CODEX_ITER_TRANSCRIPT_FILE" "$ITERATION_TRANSCRIPT_LATEST_FILE" >/dev/null 2>&1 || true
-  write_iteration_handoff "$i" "$CODEX_ITER_TRANSCRIPT_FILE"
+  write_iteration_handoff "$i" "$CODEX_ITER_TRANSCRIPT_FILE" "$CODEX_EXIT_CODE"
 
   ITERATION_END_HEAD="$(git rev-parse HEAD)"
   if [ "$ITERATION_START_HEAD" != "$ITERATION_END_HEAD" ]; then
@@ -1240,6 +1319,9 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   fi
 
   if ! ensure_transient_files_not_tracked; then
+    exit 1
+  fi
+  if ! ensure_explicit_scope_worktree_valid; then
     exit 1
   fi
   

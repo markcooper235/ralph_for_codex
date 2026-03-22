@@ -98,6 +98,7 @@ iteration_ids_for_pattern() {
 
 paired_iteration_artifacts_valid() {
   local transcript_ids handoff_ids latest_transcript latest_handoff
+  local last_transcript_id last_handoff_id
 
   transcript_ids="$(iteration_ids_for_pattern '.iteration-log-iter-*.txt')"
   handoff_ids="$(iteration_ids_for_pattern '.iteration-handoff-iter-*.json')"
@@ -116,6 +117,24 @@ paired_iteration_artifacts_valid() {
   if [ "$latest_transcript" -ne "$latest_handoff" ]; then
     echo "Archive verification failed: latest transcript/handoff presence mismatch." >&2
     return 1
+  fi
+
+  last_transcript_id="$(printf '%s\n' "$transcript_ids" | tail -n 1)"
+  last_handoff_id="$(printf '%s\n' "$handoff_ids" | tail -n 1)"
+  if [ -n "$last_transcript_id" ] && [ "$last_transcript_id" != "$last_handoff_id" ]; then
+    echo "Archive verification failed: latest iteration ids do not match." >&2
+    return 1
+  fi
+
+  if [ "$latest_transcript" -eq 1 ] && [ -n "$last_transcript_id" ]; then
+    if ! cmp -s "$ITERATION_TRANSCRIPT_LATEST_FILE" "$SCRIPT_DIR/.iteration-log-iter-$last_transcript_id.txt"; then
+      echo "Archive verification failed: latest transcript file does not match the highest iteration transcript." >&2
+      return 1
+    fi
+    if ! cmp -s "$ITERATION_HANDOFF_LATEST_FILE" "$SCRIPT_DIR/.iteration-handoff-iter-$last_handoff_id.json"; then
+      echo "Archive verification failed: latest handoff file does not match the highest iteration handoff." >&2
+      return 1
+    fi
   fi
 
   return 0
@@ -141,6 +160,7 @@ require_cmd jq
 require_cmd git
 require_cmd sed
 require_cmd tr
+require_cmd cmp
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "ralph-archive must be run inside a git repository." >&2
