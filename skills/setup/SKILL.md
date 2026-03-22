@@ -104,4 +104,4 @@ After sprint completion:
 ## Notes
 
 - Add project-specific lint/test/typecheck commands to `scripts/ralph/prompt.md`.
-- Keep `scripts/ralph/.codex-last-message*.txt` ignored (installer updates `.gitignore`).
+- Keep `scripts/ralph/.iteration-log*.txt` and `scripts/ralph/.iteration-handoff*.json` ignored (installer updates `.gitignore`).

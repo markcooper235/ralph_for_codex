@@ -34,7 +34,6 @@ has_non_transient_worktree_changes() {
         if (path ~ /^scripts\/ralph\/progress\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
-        if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-handoff(\-iter-[0-9]+|-latest)?\.json$/) next
         if (path ~ /^scripts\/ralph\/tasks(\/[^/]+)?\/?$/) next
@@ -91,14 +90,9 @@ infer_prd_mode_from_branch() {
 }
 
 reset_local_run_artifacts() {
-  local iter_log iter_transcript iter_handoff
+  local iter_transcript iter_handoff
 
-  rm -f "$SCRIPT_DIR/.codex-last-message.txt"
   rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
-  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-    [ -f "$iter_log" ] || continue
-    rm -f "$iter_log"
-  done
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"
@@ -174,12 +168,6 @@ fi
 mkdir -p "$ARCHIVE_DIR"
 MANIFEST_FILE="$ARCHIVE_DIR/archive-manifest.txt"
 
-ITER_SOURCE_COUNT=0
-for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-  [ -f "$iter_log" ] || continue
-  ITER_SOURCE_COUNT=$((ITER_SOURCE_COUNT + 1))
-done
-
 TRANSCRIPT_SOURCE_COUNT=0
 for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
   [ -f "$iter_transcript" ] || continue
@@ -197,14 +185,9 @@ PLAYWRIGHT_SOURCE_PRESENT=0
 
 [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_DIR/"
 [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_DIR/"
-[ -f "$SCRIPT_DIR/.codex-last-message.txt" ] && cp "$SCRIPT_DIR/.codex-last-message.txt" "$ARCHIVE_DIR/"
 [ -f "$ITERATION_TRANSCRIPT_LATEST_FILE" ] && cp "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ARCHIVE_DIR/"
 [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] && cp "$ITERATION_HANDOFF_LATEST_FILE" "$ARCHIVE_DIR/"
 
-for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-  [ -f "$iter_log" ] || continue
-  cp "$iter_log" "$ARCHIVE_DIR/"
-done
 for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
   [ -f "$iter_transcript" ] || continue
   cp "$iter_transcript" "$ARCHIVE_DIR/"
@@ -215,7 +198,6 @@ for iter_handoff in "$SCRIPT_DIR"/.iteration-handoff-iter-*.json; do
 done
 [ -d "$PLAYWRIGHT_CLI_DIR" ] && cp -a "$PLAYWRIGHT_CLI_DIR" "$ARCHIVE_DIR/"
 
-ITER_ARCHIVE_COUNT=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '.codex-last-message-iter-*.txt' | wc -l | tr -d '[:space:]')
 TRANSCRIPT_ARCHIVE_COUNT=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '.iteration-log-iter-*.txt' | wc -l | tr -d '[:space:]')
 HANDOFF_ARCHIVE_COUNT=$(find "$ARCHIVE_DIR" -maxdepth 1 -type f -name '.iteration-handoff-iter-*.json' | wc -l | tr -d '[:space:]')
 PLAYWRIGHT_ARCHIVE_PRESENT=0
@@ -224,8 +206,6 @@ PLAYWRIGHT_ARCHIVE_PRESENT=0
 {
   echo "archive_time=$(date -Iseconds)"
   echo "source_branch=$BRANCH_NAME"
-  echo "source_iter_logs=$ITER_SOURCE_COUNT"
-  echo "archived_iter_logs=$ITER_ARCHIVE_COUNT"
   echo "source_iteration_transcripts=$TRANSCRIPT_SOURCE_COUNT"
   echo "archived_iteration_transcripts=$TRANSCRIPT_ARCHIVE_COUNT"
   echo "source_iteration_handoffs=$HANDOFF_SOURCE_COUNT"
@@ -233,12 +213,6 @@ PLAYWRIGHT_ARCHIVE_PRESENT=0
   echo "source_playwright_cli_present=$PLAYWRIGHT_SOURCE_PRESENT"
   echo "archived_playwright_cli_present=$PLAYWRIGHT_ARCHIVE_PRESENT"
 } > "$MANIFEST_FILE"
-
-if [ "$ITER_ARCHIVE_COUNT" -ne "$ITER_SOURCE_COUNT" ]; then
-  echo "Archive verification failed: iteration log count mismatch (source=$ITER_SOURCE_COUNT archived=$ITER_ARCHIVE_COUNT)." >&2
-  echo "Logs were NOT deleted. See: $MANIFEST_FILE" >&2
-  exit 1
-fi
 
 if [ "$TRANSCRIPT_ARCHIVE_COUNT" -ne "$TRANSCRIPT_SOURCE_COUNT" ]; then
   echo "Archive verification failed: iteration transcript count mismatch (source=$TRANSCRIPT_SOURCE_COUNT archived=$TRANSCRIPT_ARCHIVE_COUNT)." >&2

@@ -22,8 +22,6 @@ SPRINT_BRANCH_PREFIX="ralph/sprint"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PLAYWRIGHT_CLI_DIR="$WORKSPACE_ROOT/.playwright-cli"
 CODEX_BIN="${CODEX_BIN:-codex}"
-CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
-CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
 ITERATION_TRANSCRIPT_LATEST_FILE="$SCRIPT_DIR/.iteration-log-latest.txt"
 ITERATION_HANDOFF_LATEST_FILE="$SCRIPT_DIR/.iteration-handoff-latest.json"
 PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
@@ -296,14 +294,9 @@ has_archived_run_for_branch() {
 }
 
 reset_local_run_artifacts() {
-  local iter_log iter_transcript iter_handoff
+  local iter_transcript iter_handoff
 
-  rm -f "$CODEX_LAST_MESSAGE_LATEST_FILE"
   rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
-  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-    [ -f "$iter_log" ] || continue
-    rm -f "$iter_log"
-  done
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"
@@ -322,10 +315,7 @@ reset_local_run_artifacts() {
 }
 
 has_live_run_artifacts() {
-  local iter_log iter_transcript iter_handoff
-  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-    [ -f "$iter_log" ] && return 0
-  done
+  local iter_transcript iter_handoff
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] && return 0
   done
@@ -461,31 +451,44 @@ render_prompt() {
 extract_ralph_handoff_json() {
   local source_file="$1"
   awk '
-    /<ralph_handoff>/ { in_block=1; next }
-    /<\/ralph_handoff>/ { in_block=0; exit }
-    in_block { print }
+    /<ralph_handoff>/ {
+      in_block = 1
+      block = ""
+      next
+    }
+    /<\/ralph_handoff>/ {
+      if (in_block) {
+        latest = block
+      }
+      in_block = 0
+      next
+    }
+    in_block {
+      block = block $0 ORS
+    }
+    END {
+      printf "%s", latest
+    }
   ' "$source_file"
 }
 
 write_iteration_handoff() {
   local iteration="$1"
   local transcript_file="$2"
-  local last_message_file="$3"
   local output_file="$SCRIPT_DIR/.iteration-handoff-iter-$iteration.json"
-  local tmp_json source_json branch_name timestamp
+  local tmp_json source_json branch_name timestamp completion_signal status_value
 
   tmp_json="$(mktemp)"
   source_json=""
 
-  if [ -f "$last_message_file" ]; then
-    source_json="$(extract_ralph_handoff_json "$last_message_file" || true)"
-  fi
-  if [ -z "$source_json" ] && [ -f "$transcript_file" ]; then
+  if [ -f "$transcript_file" ]; then
     source_json="$(extract_ralph_handoff_json "$transcript_file" || true)"
   fi
 
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
   timestamp="$(date -Iseconds)"
+  completion_signal=false
+  status_value="no_change"
 
   if [ -n "$source_json" ] && printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
     printf '%s\n' "$source_json" | jq \
@@ -498,23 +501,30 @@ write_iteration_handoff() {
       | .branch = $branch
       ' > "$tmp_json"
   else
+    if grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE" 2>/dev/null; then
+      completion_signal=true
+      status_value="completed"
+    fi
     jq -n \
       --argjson iteration "$iteration" \
       --arg timestamp "$timestamp" \
       --arg branch "$branch_name" \
+      --arg status "$status_value" \
+      --arg summary "Iteration completed without a structured handoff block." \
+      --argjson completion "$completion_signal" \
       '{
         iteration: $iteration,
         timestamp: $timestamp,
         branch: $branch,
-        status: "no_change",
-        summary: "Iteration completed without a structured handoff block.",
+        status: $status,
+        summary: $summary,
         errors: [],
         directionChanges: [],
         verification: [],
         filesChanged: [],
         assumptions: [],
         nextLoopAdvice: [],
-        completionSignal: false
+        completionSignal: $completion
       }' > "$tmp_json"
   fi
 
@@ -522,15 +532,14 @@ write_iteration_handoff() {
   cp -f "$output_file" "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1 || true
 }
 
-has_complete_token() {
-  local path="$1"
-  [ -f "$path" ] || return 1
-  grep -q "<promise>COMPLETE</promise>" "$path"
-}
-
 progress_has_completion_entry() {
   [ -f "$PROGRESS_FILE" ] || return 1
   grep -Eq '^## \[[^]]+\] - COMPLETE$' "$PROGRESS_FILE"
+}
+
+latest_handoff_signals_completion() {
+  [ -f "$ITERATION_HANDOFF_LATEST_FILE" ] || return 1
+  jq -e '.completionSignal == true or (.status == "completed")' "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1
 }
 
 get_active_prd_source_path() {
@@ -644,7 +653,6 @@ has_non_transient_worktree_changes() {
         if (path ~ /^scripts\/ralph\/progress\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.active-prd$/) next
         if (path ~ /^scripts\/ralph\/\.last-branch$/) next
-        if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
         if (path ~ /^scripts\/ralph\/\.iteration-handoff(\-iter-[0-9]+|-latest)?\.json$/) next
         if (path ~ /^scripts\/ralph\/tasks(\/[^/]+)?\/?$/) next
@@ -662,7 +670,7 @@ has_non_transient_worktree_changes() {
 completion_is_stable() {
   prd_all_passes || return 1
   has_non_transient_worktree_changes && return 1
-  if has_complete_token "$CODEX_LAST_MESSAGE_LATEST_FILE"; then
+  if latest_handoff_signals_completion; then
     return 0
   fi
   progress_has_completion_entry
@@ -758,17 +766,12 @@ sync_active_prd_mode_with_current_prd() {
 }
 
 build_codex_exec_args() {
-  local output_last_message_file="${1:-}"
-  local -n out_args_ref="$2"
+  local -n out_args_ref="$1"
 
   if supports_codex_yolo; then
     out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
   else
     out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
-  fi
-
-  if [ -n "$output_last_message_file" ]; then
-    out_args_ref+=("--output-last-message" "$output_last_message_file")
   fi
 }
 
@@ -788,7 +791,7 @@ EOF
   )
 
   echo "PRD is missing/empty. Bootstrapping via Codex (prd + ralph skills)..."
-  build_codex_exec_args "$CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE" codex_args
+  build_codex_exec_args codex_args
   bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${codex_args[@]}" 2>&1) || true
 
   if echo "$bootstrap_output" | grep -qi "error"; then
@@ -1077,7 +1080,6 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   echo "  Ralph Iteration $i of $MAX_ITERATIONS"
   echo "═══════════════════════════════════════════════════════"
 
-  CODEX_ITER_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-iter-$i.txt"
   CODEX_ITER_TRANSCRIPT_FILE="$SCRIPT_DIR/.iteration-log-iter-$i.txt"
   ITERATION_START_HEAD="$(git rev-parse HEAD)"
 
@@ -1086,15 +1088,14 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     exit 1
   fi
 
-  build_codex_exec_args "$CODEX_ITER_LAST_MESSAGE_FILE" CODEX_ARGS
+  build_codex_exec_args CODEX_ARGS
 
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
   render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE" || true
 
-  cp -f "$CODEX_ITER_LAST_MESSAGE_FILE" "$CODEX_LAST_MESSAGE_LATEST_FILE" >/dev/null 2>&1 || true
   cp -f "$CODEX_ITER_TRANSCRIPT_FILE" "$ITERATION_TRANSCRIPT_LATEST_FILE" >/dev/null 2>&1 || true
-  write_iteration_handoff "$i" "$CODEX_ITER_TRANSCRIPT_FILE" "$CODEX_ITER_LAST_MESSAGE_FILE"
+  write_iteration_handoff "$i" "$CODEX_ITER_TRANSCRIPT_FILE"
 
   ITERATION_END_HEAD="$(git rev-parse HEAD)"
   if [ "$ITERATION_START_HEAD" != "$ITERATION_END_HEAD" ]; then

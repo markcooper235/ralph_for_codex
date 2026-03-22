@@ -346,7 +346,7 @@ Frontend stories must include a verifiable UI check in acceptance criteria. Pref
 
 ### Stop Condition
 
-When all stories have `passes: true`, Ralph outputs `<promise>COMPLETE</promise>` and the loop exits.
+When all stories have `passes: true`, Ralph marks the iteration handoff as completed and the loop exits.
 
 ## Debugging
 

@@ -13,7 +13,6 @@ EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
 ACTIVE_SPRINT=""
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
-CODEX_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 ITERATION_TRANSCRIPT_LATEST_FILE="$SCRIPT_DIR/.iteration-log-latest.txt"
 ITERATION_HANDOFF_LATEST_FILE="$SCRIPT_DIR/.iteration-handoff-latest.json"
 WORKSPACE_ROOT_PLAYWRIGHT_DIR="$WORKSPACE_ROOT/.playwright-cli"
@@ -267,14 +266,9 @@ validate_generated_prd() {
 }
 
 reset_local_run_artifacts() {
-  local iter_log iter_transcript iter_handoff
+  local iter_transcript iter_handoff
 
-  rm -f "$CODEX_LAST_MESSAGE_FILE"
   rm -f "$ITERATION_TRANSCRIPT_LATEST_FILE" "$ITERATION_HANDOFF_LATEST_FILE"
-  for iter_log in "$SCRIPT_DIR"/.codex-last-message-iter-*.txt; do
-    [ -f "$iter_log" ] || continue
-    rm -f "$iter_log"
-  done
   for iter_transcript in "$SCRIPT_DIR"/.iteration-log-iter-*.txt; do
     [ -f "$iter_transcript" ] || continue
     rm -f "$iter_transcript"

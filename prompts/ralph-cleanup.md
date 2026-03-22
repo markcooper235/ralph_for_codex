@@ -12,8 +12,10 @@ Clean active Ralph run-state files without archiving.
 3. Report removed files (when present), for example:
    - `scripts/ralph/progress.txt`
    - `scripts/ralph/.last-branch`
-   - `scripts/ralph/.codex-last-message.txt`
-   - `scripts/ralph/.codex-last-message-iter-*.txt`
+   - `scripts/ralph/.iteration-log-latest.txt`
+   - `scripts/ralph/.iteration-log-iter-*.txt`
+   - `scripts/ralph/.iteration-handoff-latest.json`
+   - `scripts/ralph/.iteration-handoff-iter-*.json`
 
 ## Guardrails
 - Do not create archives.

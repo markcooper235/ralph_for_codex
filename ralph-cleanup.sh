@@ -51,8 +51,10 @@ rm -f \
   "$SCRIPT_DIR/.active-prd" \
   "$SCRIPT_DIR/.active-sprint" \
   "$SCRIPT_DIR/.last-branch" \
-  "$SCRIPT_DIR/.codex-last-message.txt" \
-  "$SCRIPT_DIR/.codex-last-message-iter-"*.txt
+  "$SCRIPT_DIR/.iteration-log-latest.txt" \
+  "$SCRIPT_DIR/.iteration-log-iter-"*.txt \
+  "$SCRIPT_DIR/.iteration-handoff-latest.json" \
+  "$SCRIPT_DIR/.iteration-handoff-iter-"*.json
 rm -rf "$PLAYWRIGHT_CLI_DIR"
 
 echo "Ralph cleanup complete (no archive created, prd.json reset, active markers cleared, .playwright-cli cleared)."

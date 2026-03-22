@@ -32,7 +32,7 @@ You are the coding agent for one Ralph loop iteration.
 6. If checks pass, commit with `feat: [Story ID] - [Story Title]`.
 7. Set story `passes: true` in `{{PRD_FILE}}`.
 8. Append progress entry to `{{PROGRESS_FILE}}`.
-9. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full`. If it passes, append a completion note and reply exactly `<promise>COMPLETE</promise>`.
+9. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full`. If it passes, append a completion note and set the handoff to `status: "completed"` with `completionSignal: true`.
 10. End your reply with a compact Ralph handoff block for the next iteration using this exact wrapper:
 
 ```text
@@ -50,7 +50,7 @@ Rules for the handoff:
 ## Progress Entry (Append Only)
 ```md
 ## [Date/Time] - [Story ID]
-Codex output: {{RALPH_DIR}}/.codex-last-message-iter-*.txt (latest)
+Codex transcript: {{RALPH_DIR}}/.iteration-log-iter-*.txt (latest)
 - Implemented: [1-3 bullets]
 - Files changed: [compact list]
 - Learnings (reusable only): [0-3 bullets]

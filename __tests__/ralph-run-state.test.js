@@ -24,6 +24,29 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents)
 }
 
+function buildLoopHandoff({ status = 'completed', completionSignal = true } = {}) {
+  return [
+    '<ralph_handoff>',
+    JSON.stringify({
+      status,
+      story: {
+        id: 'US-001',
+        title: 'Stub story',
+      },
+      summary: 'Stub loop completed.',
+      errors: [],
+      directionChanges: [],
+      verification: ['Stub verification passed.'],
+      filesChanged: ['src/allowed.ts'],
+      assumptions: [],
+      nextLoopAdvice: [],
+      completionSignal,
+    }),
+    '</ralph_handoff>',
+    '',
+  ].join('\n')
+}
+
 function chmodScripts(rootDir) {
   const stack = [rootDir]
   while (stack.length > 0) {
@@ -55,14 +78,8 @@ if (args.includes('--help')) {
   process.stdout.write('Run Codex non-interactively\\n');
   process.exit(0);
 }
-const outputIndex = args.indexOf('--output-last-message');
 const cwd = process.cwd();
 const loopMode = process.env.RALPH_TEST_LOOP_MODE || '';
-if (outputIndex !== -1) {
-  const outPath = args[outputIndex + 1];
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, '<promise>COMPLETE</promise>\\n');
-}
 const input = fs.readFileSync(0, 'utf8');
   if (input.includes('You are the coding agent for one Ralph loop iteration.') && loopMode) {
   const prdPath = path.join(cwd, 'scripts/ralph/prd.json');
@@ -90,6 +107,7 @@ const input = fs.readFileSync(0, 'utf8');
     progressPath,
     '\\n## 2026-03-22 17:30:00 EDT - US-001\\n- Implemented: Stub loop change\\n---\\n'
   );
+  process.stdout.write(${JSON.stringify(buildLoopHandoff())});
 }
 if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
   const destination = (input.match(/Destination: \`([^\\\`]+)\`/) || [null, 'scripts/ralph/prd.json'])[1];
@@ -165,8 +183,8 @@ function initTempRepo() {
       'scripts/ralph/.active-prd',
       'scripts/ralph/prd.json',
       'scripts/ralph/progress.txt',
-      'scripts/ralph/.codex-last-message.txt',
-      'scripts/ralph/.codex-last-message-iter-*.txt',
+      'scripts/ralph/.iteration-log*.txt',
+      'scripts/ralph/.iteration-handoff*.json',
       '.playwright-cli/',
     ].join('\n') + '\n'
   )
@@ -210,8 +228,10 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
   writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), '# Test PRD\n')
   writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE PROGRESS\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt'), 'STALE LAST MESSAGE\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message-iter-1.txt'), 'STALE ITER\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
   fs.mkdirSync(path.join(repoDir, '.playwright-cli'), { recursive: true })
 
   run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
@@ -219,8 +239,10 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
   const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
   assert.match(progress, /# Ralph Progress Log/)
   assert.ok(!progress.includes('STALE PROGRESS'))
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.codex-last-message-iter-1.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json')), false)
   assert.equal(fs.existsSync(path.join(repoDir, '.playwright-cli')), false)
 
   const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
@@ -259,8 +281,10 @@ test('ralph-archive clears local run artifacts after archiving a completed run',
     )
   )
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt'), 'LATEST\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message-iter-1.txt'), 'ITER1\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'LATEST TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-001\n')
   fs.mkdirSync(path.join(repoDir, '.playwright-cli'), { recursive: true })
 
@@ -272,12 +296,16 @@ test('ralph-archive clears local run artifacts after archiving a completed run',
   const archivedDir = path.join(archiveRoot, archivedFolders[0])
   assert.equal(fs.existsSync(path.join(archivedDir, 'prd.json')), true)
   assert.equal(fs.existsSync(path.join(archivedDir, 'progress.txt')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.codex-last-message.txt')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.codex-last-message-iter-1.txt')), true)
+  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-latest.txt')), true)
+  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-iter-1.txt')), true)
+  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-latest.json')), true)
+  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-iter-1.json')), true)
 
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/progress.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.codex-last-message-iter-1.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json')), false)
   assert.equal(fs.existsSync(path.join(repoDir, '.playwright-cli')), false)
   assert.equal(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'), '')
 })
@@ -353,8 +381,10 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
     )
   )
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE LOOP PROGRESS\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt'), 'STALE LAST\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.codex-last-message-iter-1.txt'), 'STALE ITER\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-000\n')
 
   const archivedDir = path.join(
@@ -366,8 +396,10 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
     [
       'archive_time=2026-03-19T00:00:00-04:00',
       'source_branch=ralph/sprint-test/epic-000',
-      'source_iter_logs=1',
-      'archived_iter_logs=1',
+      'source_iteration_transcripts=1',
+      'archived_iteration_transcripts=1',
+      'source_iteration_handoffs=1',
+      'archived_iteration_handoffs=1',
       'source_playwright_cli_present=0',
       'archived_playwright_cli_present=0',
     ].join('\n') + '\n'
@@ -390,7 +422,9 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
   assert.match(progress, /# Ralph Progress Log/)
   assert.ok(!progress.includes('STALE LOOP PROGRESS'))
   assert.equal(run('git', ['branch', '--list', 'ralph/sprint/sprint-test'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-test')
-  assert.match(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.codex-last-message.txt'), 'utf8'), /<promise>COMPLETE<\/promise>/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.completionSignal, false)
+  assert.equal(latestHandoff.status, 'no_change')
 })
 
 test('ralph.sh cold-start primes the next epic before requiring a populated prd.json', () => {
