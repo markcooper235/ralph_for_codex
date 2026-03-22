@@ -26,6 +26,7 @@ CODEX_LAST_MESSAGE_LATEST_FILE="$SCRIPT_DIR/.codex-last-message.txt"
 CODEX_PRD_BOOTSTRAP_LAST_MESSAGE_FILE="$SCRIPT_DIR/.codex-last-message-prd-bootstrap.txt"
 PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
 LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
+EXPLICIT_SCOPE_SIGNAL_PATTERN='keep (source )?changes limited to|only change|change(s)? limited to|scoped work'
 
 for arg in "$@"; do
   case "$arg" in
@@ -408,7 +409,7 @@ is_verification_only_path() {
 scope_signal_present() {
   local text="$1"
   printf '%s\n' "$text" | tr '[:upper:]' '[:lower:]' | grep -Eq \
-    'keep (source )?changes limited to|only change|change(s)? limited to|scoped work'
+    "$EXPLICIT_SCOPE_SIGNAL_PATTERN"
 }
 
 extract_explicit_scope_paths() {
@@ -416,14 +417,14 @@ extract_explicit_scope_paths() {
   printf '%s\n' "$text" \
     | awk '
         BEGIN { IGNORECASE=1 }
-        /keep (source )?changes limited to|only change|change(s)? limited to|scoped work/ { print }
+        /'"$EXPLICIT_SCOPE_SIGNAL_PATTERN"'/ { print }
       ' \
     | grep -Eo '([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.[A-Za-z0-9]+' \
     | sort -u
 }
 
 collect_scope_hint_text() {
-  local source_path text
+  local source_path
   source_path="$(get_active_prd_source_path || true)"
 
   if [ -n "$source_path" ] && [ -f "$WORKSPACE_ROOT/$source_path" ]; then
