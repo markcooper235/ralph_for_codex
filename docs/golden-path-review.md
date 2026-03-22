@@ -326,6 +326,27 @@ That means Ralph is now strongest as:
 - a roadmap-to-sprint planning and PRD-to-execution framework
 - with its main remaining risks in test-harness sharp edges and selective prompt-led policy areas, not core workflow shape
 
+## Status Summary
+
+### Resolved
+
+- Artifact policy now matches the intended model: durable specs are committed, runtime state stays transient, and runtime evidence is archived.
+- Roadmap-to-sprint planning now has a first-class implementation in [`ralph-roadmap.sh`](../ralph-roadmap.sh).
+- Explicit file-scoped execution rules now have light runtime enforcement in [`ralph.sh`](../ralph.sh), with regression coverage for both allowed and blocked cases.
+- Worst-case smoke now validates runtime UI behavior instead of relying on brittle implementation spelling.
+- Smoke retry handling now safely clears only provably stale locks in disposable smoke repos.
+
+### Monitor
+
+- Real-world stale-lock behavior outside smoke repos should still be observed before changing core lock semantics.
+- Benchmark scenario prompts should still be watched carefully during prompt trimming so semantic drift does not invalidate measurements.
+
+### Intentional Prompt-Led Areas
+
+- Broad story decomposition quality remains prompt-led.
+- Nuanced planning judgment and non-explicit scope interpretation remain prompt-led.
+- These areas are intentionally not validator-enforced unless repeated low-ambiguity failures justify a narrow guardrail.
+
 ## Updated Priority Order
 
 1. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
