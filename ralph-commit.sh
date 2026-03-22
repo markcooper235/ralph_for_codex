@@ -125,8 +125,28 @@ infer_epic_id_from_feature_branch() {
   return 1
 }
 
+has_non_transient_worktree_changes() {
+  git status --porcelain --untracked-files=all \
+    | awk '
+      {
+        path = substr($0, 4)
+        if (path ~ /^scripts\/ralph\/prd\.json$/) next
+        if (path ~ /^scripts\/ralph\/progress\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.active-prd$/) next
+        if (path ~ /^scripts\/ralph\/\.last-branch$/) next
+        if (path ~ /^scripts\/ralph\/\.codex-last-message(\-iter-[0-9]+|-prd-bootstrap)?\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.iteration-log(\-iter-[0-9]+|-latest)?\.txt$/) next
+        if (path ~ /^scripts\/ralph\/\.iteration-handoff(\-iter-[0-9]+|-latest)?\.json$/) next
+        if (path ~ /^scripts\/ralph\/tasks(\/[^/]+)?\/?$/) next
+        if (path ~ /^scripts\/ralph\/tasks\/[^/]+\/prd-epic-[^/]+\.md$/) next
+        if (path ~ /^\.playwright-cli(\/|$)/) next
+        print
+      }
+    '
+}
+
 ensure_clean_worktree() {
-  if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+  if [ -n "$(has_non_transient_worktree_changes)" ]; then
     echo "Working tree is not clean. Commit or stash all changes before running ralph-commit." >&2
     echo "Hint: run 'git status --short' to review pending changes." >&2
     exit 1
@@ -200,7 +220,7 @@ reset_local_run_state() {
 }
 
 validate_archive_before_merge() {
-  local archive_dir manifest_file source_playwright archived_playwright source_iter archived_iter
+  local archive_dir manifest_file source_playwright archived_playwright source_iter archived_iter source_transcripts archived_transcripts source_handoffs archived_handoffs
   archive_dir="$1"
   manifest_file="$archive_dir/archive-manifest.txt"
 
@@ -213,9 +233,23 @@ validate_archive_before_merge() {
   archived_playwright="$(awk -F= '/^archived_playwright_cli_present=/{print $2}' "$manifest_file" | tail -n 1)"
   source_iter="$(awk -F= '/^source_iter_logs=/{print $2}' "$manifest_file" | tail -n 1)"
   archived_iter="$(awk -F= '/^archived_iter_logs=/{print $2}' "$manifest_file" | tail -n 1)"
+  source_transcripts="$(awk -F= '/^source_iteration_transcripts=/{print $2}' "$manifest_file" | tail -n 1)"
+  archived_transcripts="$(awk -F= '/^archived_iteration_transcripts=/{print $2}' "$manifest_file" | tail -n 1)"
+  source_handoffs="$(awk -F= '/^source_iteration_handoffs=/{print $2}' "$manifest_file" | tail -n 1)"
+  archived_handoffs="$(awk -F= '/^archived_iteration_handoffs=/{print $2}' "$manifest_file" | tail -n 1)"
 
   if [ "$source_iter" != "$archived_iter" ]; then
     echo "Archive validation failed: iteration log count mismatch (source=$source_iter archived=$archived_iter)." >&2
+    exit 1
+  fi
+
+  if [ "$source_transcripts" != "$archived_transcripts" ]; then
+    echo "Archive validation failed: iteration transcript count mismatch (source=$source_transcripts archived=$archived_transcripts)." >&2
+    exit 1
+  fi
+
+  if [ "$source_handoffs" != "$archived_handoffs" ]; then
+    echo "Archive validation failed: iteration handoff count mismatch (source=$source_handoffs archived=$archived_handoffs)." >&2
     exit 1
   fi
 
