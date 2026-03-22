@@ -49,10 +49,13 @@ Rules for the handoff:
 - Do not include narrative outside the JSON inside the wrapper.
 - Use `status: "completed"` with `completionSignal: true` only after full verification passes.
 
-Before the handoff, keep any narrative to 2 short paragraphs max:
-- outcome
-- verification
-- Only mention concrete file changes when needed to explain the result.
+Before the handoff, use at most 4 short lines total:
+- `Outcome:` one sentence
+- `Verification:` one sentence
+- Optional `Blocker:` one sentence only if blocked
+- No other narrative
+
+Only mention concrete file changes when needed to explain the result.
 
 ## Progress Entry (Append Only)
 ```md
@@ -68,13 +71,6 @@ Codex transcript: {{RALPH_DIR}}/.iteration-log-iter-*.txt (latest)
 - Add reusable patterns to `## Codebase Patterns` in `{{PROGRESS_FILE}}` (create if needed).
 - Update nearby `AGENTS.md` only with reusable guidance.
 - Do not add story-specific debug notes or duplicate progress content.
-
-## No-Op Pass Policy
-Allow no-op pass only when risk is effectively zero and all are true:
-- `./scripts/ralph/ralph-verify.sh --targeted` passes.
-- Existing tests explicitly covering criteria are cited.
-- Browser validation completed for UI criteria.
-If any criterion lacks explicit evidence, implement/fix instead of no-op pass.
 
 ## Regression Risk Classification
 - Type X: auth/session, shared schema/types, migrations/persistence, runtime state/event pipeline, global providers/config, routing shells.

@@ -633,11 +633,12 @@ Compact planning rules:
 12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
 13. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
 14. Do not repeat the same summary twice.
+15. Final output must be 3 lines only:
+   - \`PRD markdown path: ...\`
+   - \`prd.json path: ...\`
+   - \`Number of user stories created: ...\`
 
-Return a short summary with:
-- PRD markdown path
-- prd.json path
-- Number of user stories created
+Return only those 3 lines.
 PROMPT_EOF
 )
 else
@@ -690,11 +691,12 @@ Guidance:
 11. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
 12. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
 13. Do not repeat the same summary twice.
+14. Final output must be 3 lines only:
+   - \`PRD markdown path: ...\`
+   - \`prd.json path: ...\`
+   - \`Number of user stories created: ...\`
 
-Return a short summary with:
-- PRD markdown path
-- prd.json path
-- Number of user stories created
+Return only those 3 lines.
 PROMPT_EOF
 )
 fi
