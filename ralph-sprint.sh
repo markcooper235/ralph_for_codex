@@ -529,6 +529,7 @@ append_epic_from_editor() {
     --argjson priority "$priority" \
     --argjson effort "$effort" \
     --arg status "$status" \
+    --arg planningSource "local" \
     --arg goal "$goal" \
     --argjson dependsOn "$deps_json" \
     --argjson prdPaths "$prd_json_paths" \
@@ -540,6 +541,7 @@ append_epic_from_editor() {
         priority: $priority,
         effort: $effort,
         status: $status,
+        planningSource: $planningSource,
         dependsOn: $dependsOn,
         prdPaths: $prdPaths,
         goal: $goal,

@@ -40,6 +40,7 @@ The framework now has strong support for:
 - enforcing sprint capacity target/ceiling during planning
 - keeping explicit dependencies sprint-local while using sprint order for cross-sprint sequencing
 - preserving a durable roadmap source that can be refined later and reconciled back into sprint backlogs
+- distinguishing roadmap-managed epics from local ad hoc refinements so roadmap updates do not trample local backlog work
 
 That closes the largest structural golden-path gap without changing the existing loop primitives.
 

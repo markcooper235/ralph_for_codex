@@ -57,6 +57,8 @@ Add options:
   --priority N              Priority integer (default: next available)
   --effort N                Sprint planning effort: 1, 2, 3, or 5 (default: 3)
   --status STATUS           planned|ready|blocked|active|done|abandoned (default: planned)
+  --planning-source SRC     local|roadmap (default: local)
+  --source-ref TEXT         Optional source/revision marker for planning provenance
   --depends-on CSV          Comma-separated epic IDs (default: none)
   --prd-path PATH           PRD markdown path (default generated under active sprint tasks)
   --goal TEXT               Epic goal text (default: title)
@@ -128,11 +130,12 @@ list_epics() {
   jq -r '
     .epics
     | sort_by(.priority, .id)
-    | (["ID","P","EFF","STATUS","DEPENDS","TITLE","PRDS"] | @tsv),
+    | (["ID","P","EFF","SRC","STATUS","DEPENDS","TITLE","PRDS"] | @tsv),
       (.[] | [
         .id,
         (.priority | tostring),
         ((.effort // 0) | tostring),
+        (.planningSource // "legacy"),
         .status,
         ((.dependsOn // []) | join(",")),
         .title,
@@ -332,6 +335,8 @@ add_epic() {
   local priority=""
   local effort="3"
   local status="planned"
+  local planning_source="local"
+  local source_ref=""
   local depends_csv=""
   local prd_path=""
   local goal=""
@@ -358,6 +363,14 @@ add_epic() {
         ;;
       --status)
         status="${2:-}"
+        shift 2
+        ;;
+      --planning-source)
+        planning_source="${2:-}"
+        shift 2
+        ;;
+      --source-ref)
+        source_ref="${2:-}"
         shift 2
         ;;
       --depends-on)
@@ -387,6 +400,10 @@ add_epic() {
   case "$status" in
     planned|ready|blocked|active|done|abandoned) ;;
     *) fail "Invalid status '$status'. Use: planned|ready|blocked|active|done|abandoned" ;;
+  esac
+  case "$planning_source" in
+    local|roadmap) ;;
+    *) fail "Invalid planning source '$planning_source'. Use: local|roadmap" ;;
   esac
 
   if [ -z "$epic_id" ]; then
@@ -441,6 +458,8 @@ add_epic() {
      --argjson priority "$priority" \
      --argjson effort "$effort" \
      --arg status "$status" \
+     --arg planningSource "$planning_source" \
+     --arg sourceRef "$source_ref" \
      --arg prd "$prd_path" \
      --arg goal "$goal" \
      --arg prompt "$prompt_context" \
@@ -451,6 +470,8 @@ add_epic() {
       priority: $priority,
       effort: $effort,
       status: $status,
+      planningSource: $planningSource,
+      sourceRef: (if ($sourceRef | length) > 0 then $sourceRef else null end),
       dependsOn: $depends,
       prdPaths: [$prd],
       goal: $goal,

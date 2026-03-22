@@ -11,6 +11,7 @@
       "title": "Foundation Epic",
       "priority": 1,
       "effort": 3,
+      "planningSource": "roadmap",
       "status": "ready",
       "dependsOn": [],
       "prdPaths": [
@@ -25,6 +26,7 @@
       "title": "Follow-on Epic",
       "priority": 2,
       "effort": 2,
+      "planningSource": "roadmap",
       "status": "planned",
       "dependsOn": [
         "EPIC-001"

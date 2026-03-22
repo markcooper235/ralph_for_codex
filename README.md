@@ -184,6 +184,7 @@ Roadmap planning rules:
 - If a single epic is too large to be sprint-safe, roadmap planning splits it before backlog creation.
 - Sprint order carries cross-sprint sequencing; explicit `dependsOn` stays sprint-local.
 - Refinement is additive by default: update open/future work directly, preserve completed work when possible, and prefer follow-up epics/sprints over reopening closed sprints if churn would be high.
+- Epics now track planning provenance (`roadmap` vs `local`). Roadmap refinement only manages roadmap-owned epics; local ad hoc refinements are preserved unless dependency validation shows they are broken.
 
 ### Alternative Planning Path: OpenSpec -> Ralph
 
@@ -285,7 +286,7 @@ Notes:
 | `known-test-baseline-failures.txt` | Known unrelated full-suite baseline failures to ignore during final regression gate |
 | `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
-| `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority, effort, dependencies, activeEpicId, and sprint capacity metadata |
+| `sprints/<sprint>/epics.json` | Sprint-scoped epic backlog with priority, effort, dependencies, planning provenance, activeEpicId, and sprint capacity metadata |
 | `epics.json.example` | Example epic backlog template |
 | `lib/editor-intake.sh` | Shared editor launcher/parsing helpers used by sprint/PRD intake flows |
 | `templates/epic-intake.md` | Editor template for epic metadata and prompt context capture |

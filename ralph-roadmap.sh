@@ -29,6 +29,7 @@ ROADMAP_WORK_DIR=""
 ROADMAP_JSON_WORK=""
 ROADMAP_MD_WORK=""
 ROADMAP_SOURCE_WORK=""
+ROADMAP_REVISION_ID=""
 
 usage() {
   cat <<'EOF'
@@ -70,6 +71,12 @@ require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "Missing required command: $1"
   fi
+}
+
+get_epic_planning_source_from_backlog() {
+  local epics_file="$1"
+  local epic_id="$2"
+  jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | (.planningSource // "legacy")' "$epics_file"
 }
 
 setup_work_paths() {
@@ -179,7 +186,7 @@ read_current_roadmap_source() {
 
 write_roadmap_source() {
   local ts history existing_history note
-  ts="$(date -Iseconds)"
+  ts="$ROADMAP_REVISION_ID"
   note="${REVISION_NOTE:-Initial roadmap creation.}"
   existing_history=""
   if [ -f "$ROADMAP_SOURCE" ]; then
@@ -444,18 +451,22 @@ get_epic_status_from_backlog() {
 upsert_epic_metadata() {
   local epics_file="$1"
   local epic_json="$2"
-  local epic_id status tmp_file
+  local epic_id status planning_source tmp_file
   epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
   status="$(get_epic_status_from_backlog "$epics_file" "$epic_id")"
+  planning_source="$(get_epic_planning_source_from_backlog "$epics_file" "$epic_id")"
 
   case "$status" in
     done|abandoned|active)
       return 0
       ;;
   esac
+  if [ "$planning_source" = "local" ]; then
+    return 0
+  fi
 
   tmp_file="$(mktemp)"
-  jq --argjson epic "$epic_json" '
+  jq --argjson epic "$epic_json" --arg sourceRef "$ROADMAP_REVISION_ID" '
     .epics = (
       .epics
       | map(
@@ -463,6 +474,8 @@ upsert_epic_metadata() {
             .title = $epic.title
             | .priority = $epic.priority
             | .effort = $epic.effort
+            | .planningSource = "roadmap"
+            | .sourceRef = $sourceRef
             | .dependsOn = ($epic.dependsOn // [])
             | .goal = $epic.goal
             | .promptContext = $epic.promptContext
@@ -498,6 +511,8 @@ reconcile_sprint_backlog() {
         --title "$title" \
         --priority "$priority" \
         --effort "$effort" \
+        --planning-source roadmap \
+        --source-ref "$ROADMAP_REVISION_ID" \
         --depends-on "$depends_csv" \
         --goal "$goal" \
         --prompt-context "$prompt_context" >/dev/null
@@ -622,6 +637,7 @@ main() {
   [[ "$CAPACITY_TARGET" =~ ^[1-9][0-9]*$ ]] || fail "--capacity-target must be a positive integer."
   [[ "$CAPACITY_CEILING" =~ ^[1-9][0-9]*$ ]] || fail "--capacity-ceiling must be a positive integer."
   [ "$CAPACITY_TARGET" -le "$CAPACITY_CEILING" ] || fail "--capacity-target must be less than or equal to --capacity-ceiling."
+  ROADMAP_REVISION_ID="$(date -Iseconds)"
 
   ensure_clean_worktree
   read_current_roadmap_source
