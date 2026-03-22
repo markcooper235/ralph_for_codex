@@ -218,7 +218,8 @@ append_benchmark_row() {
 run_with_retries_logged() {
   local retries="$1"
   local log_file="$2"
-  shift 2
+  local repo_root="$3"
+  shift 3
 
   local attempt=0
   : >"$log_file"
@@ -237,9 +238,26 @@ run_with_retries_logged() {
       return 1
     fi
 
+    clear_stale_workflow_lock_if_safe "$repo_root" "$log_file"
     attempt=$((attempt + 1))
     echo "[smoke] retrying..." >>"$log_file"
   done
+}
+
+clear_stale_workflow_lock_if_safe() {
+  local repo_root="$1"
+  local log_file="$2"
+  local lock_dir="$repo_root/scripts/ralph/.workflow-lock"
+
+  [ -d "$lock_dir" ] || return 0
+
+  if ps -eo args= | grep -F -- "$repo_root" | grep -v grep >/dev/null 2>&1; then
+    echo "[smoke] workflow lock still has active repo-scoped processes; leaving lock in place" >>"$log_file"
+    return 0
+  fi
+
+  rm -rf "$lock_dir"
+  echo "[smoke] removed stale workflow lock: $lock_dir" >>"$log_file"
 }
 
 assert_commit_range_small_and_simple() {
@@ -677,7 +695,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       ./ralph-prime.sh --auto > "$WORK_DIR/prime-standalone.log" 2>&1 || true
       commit_framework_baseline "$STANDALONE_REPO" "chore(smoke): pre-loop planning state (standalone)"
       standalone_start_head="$(git -C "$STANDALONE_REPO" rev-parse HEAD)"
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-standalone.log" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_STANDALONE_MAX_ITERATIONS"
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-standalone.log" "$STANDALONE_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_STANDALONE_MAX_ITERATIONS"
       standalone_end_head="$(git -C "$STANDALONE_REPO" rev-parse HEAD)"
       jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
       assert_commit_range_small_and_simple "$STANDALONE_REPO" "$standalone_start_head" "$standalone_end_head" "standalone loop" "src/index.ts" "tests/hello.test.mjs"
@@ -763,7 +781,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
       ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
       : > prd.json
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" timeout 300 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-prime.sh --auto
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" "$EPIC_REPO" timeout 300 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-prime.sh --auto
       jq --arg title "$epic_story_title" --arg desc "$epic_story_desc" --argjson ac "$epic_story_ac" '.branchName = "ralph/epic-001" | .userStories = [(.userStories[0] | .id="US-001" | .title=$title | .description=$desc | .acceptanceCriteria=$ac | .priority=1 | .passes=false | .notes="")]' prd.json > /tmp/smoke-prd.json
       mv /tmp/smoke-prd.json prd.json
       ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
@@ -775,7 +793,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
         git -C "$EPIC_REPO" commit -m "chore(smoke): sync active epic backlog before loop" >/dev/null
       fi
       epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_EPIC_MAX_ITERATIONS"
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_EPIC_MAX_ITERATIONS"
       epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
       jq -e '.branchName | test("^ralph/.+/epic-[0-9]+$") or test("^ralph/epic-[0-9]+$")' prd.json >/dev/null
       jq -e '([.userStories[] | select(.passes == true)] | length) >= 1' prd.json >/dev/null

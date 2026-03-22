@@ -138,7 +138,8 @@ commit_framework_baseline() {
 run_with_retries_logged() {
   local retries="$1"
   local log_file="$2"
-  shift 2
+  local repo_root="$3"
+  shift 3
   local attempt
   : > "$log_file"
   for attempt in $(seq 0 "$retries"); do
@@ -151,8 +152,25 @@ run_with_retries_logged() {
       echo "[worst-ui] command failed after $((attempt + 1)) attempt(s)" >>"$log_file"
       return 1
     fi
+    clear_stale_workflow_lock_if_safe "$repo_root" "$log_file"
     echo "[worst-ui] retrying..." >>"$log_file"
   done
+}
+
+clear_stale_workflow_lock_if_safe() {
+  local repo_root="$1"
+  local log_file="$2"
+  local lock_dir="$repo_root/scripts/ralph/.workflow-lock"
+
+  [ -d "$lock_dir" ] || return 0
+
+  if ps -eo args= | grep -F -- "$repo_root" | grep -v grep >/dev/null 2>&1; then
+    echo "[worst-ui] workflow lock still has active repo-scoped processes; leaving lock in place" >>"$log_file"
+    return 0
+  fi
+
+  rm -rf "$lock_dir"
+  echo "[worst-ui] removed stale workflow lock: $lock_dir" >>"$log_file"
 }
 
 assert_only_allowed_files_changed() {
@@ -430,11 +448,11 @@ expected_state="ready"
   ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
   ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
   : > prd.json
-  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" timeout 300 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-prime.sh --auto
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" "$EPIC_REPO" timeout 300 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-prime.sh --auto
   jq -e '(.userStories | length) >= 3' prd.json >/dev/null || fail "worst-case epic should plan at least 3 stories"
   ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
   epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph.sh "$MAX_ITERATIONS"
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph.sh "$MAX_ITERATIONS"
   epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
   jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
   assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
