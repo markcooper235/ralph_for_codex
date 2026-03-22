@@ -52,12 +52,13 @@ The system now behaves correctly in the happy path:
 - runtime state is transient
 - archived runtime evidence is preserved separately
 
-The largest scoped-execution gap is now partially closed in [`ralph.sh`](../ralph.sh).
+The largest scoped-execution gap is now partially closed in [`ralph.sh`](../ralph.sh), and the core behavior is now backed by direct regression coverage.
 
 Examples:
 
 - when PRD/source text clearly says source changes are limited to named files, `ralph.sh` now validates that iteration commits stay inside that explicit source scope
 - verification/test-file expansion is allowed outside that scope, but only for verification-oriented paths
+- regression coverage now proves both the allowed verification-expansion path and the blocked out-of-scope source-edit path
 - story decomposition quality is mostly prompt-level, not schema-enforced beyond basic structure checks
 
 That is a good tradeoff: it hardens the highest-value scoped-work rule without adding a heavy policy engine. Some correctness still depends on model compliance, but less than before.
@@ -327,6 +328,6 @@ That means Ralph is now strongest as:
 
 ## Updated Priority Order
 
-1. Keep the new explicit-scope validator narrow and extend it only if repeated real failures show a clear low-ambiguity pattern.
-2. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
-3. Keep benchmark scenario prompts semantically exact while continuing to trim the always-paid loop prompt.
+1. Continue monitoring real-world stale-lock behavior before changing core lock semantics.
+2. Keep benchmark scenario prompts semantically exact while continuing to trim the always-paid loop prompt.
+3. Keep the explicit-scope validator narrow and extend it only if repeated real failures show a clear low-ambiguity pattern.

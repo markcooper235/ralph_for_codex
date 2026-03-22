@@ -56,12 +56,41 @@ if (args.includes('--help')) {
   process.exit(0);
 }
 const outputIndex = args.indexOf('--output-last-message');
+const cwd = process.cwd();
+const loopMode = process.env.RALPH_TEST_LOOP_MODE || '';
 if (outputIndex !== -1) {
   const outPath = args[outputIndex + 1];
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, '<promise>COMPLETE</promise>\\n');
 }
 const input = fs.readFileSync(0, 'utf8');
+  if (input.includes('You are the coding agent for one Ralph loop iteration.') && loopMode) {
+  const prdPath = path.join(cwd, 'scripts/ralph/prd.json');
+  const progressPath = path.join(cwd, 'scripts/ralph/progress.txt');
+  if (loopMode === 'scope-valid') {
+    fs.writeFileSync(path.join(cwd, 'src/allowed.ts'), 'export const allowed = "updated";\\n');
+    fs.mkdirSync(path.join(cwd, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'tests/browser.test.mjs'), 'console.log("browser ok");\\n');
+    require('child_process').execFileSync('git', ['add', 'src/allowed.ts', 'tests/browser.test.mjs'], { cwd, stdio: 'pipe' });
+    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped valid change'], { cwd, stdio: 'pipe' });
+  } else if (loopMode === 'scope-invalid') {
+    fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
+    require('child_process').execFileSync('git', ['add', 'src/disallowed.ts'], { cwd, stdio: 'pipe' });
+    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped invalid change'], { cwd, stdio: 'pipe' });
+  }
+
+  if (fs.existsSync(prdPath)) {
+    const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
+    if (Array.isArray(prd.userStories) && prd.userStories[0]) {
+      prd.userStories[0].passes = true;
+    }
+    fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+  }
+  fs.appendFileSync(
+    progressPath,
+    '\\n## 2026-03-22 17:30:00 EDT - US-001\\n- Implemented: Stub loop change\\n---\\n'
+  );
+}
 if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
   const destination = (input.match(/Destination: \`([^\\\`]+)\`/) || [null, 'scripts/ralph/prd.json'])[1];
   const branchName = (input.match(/Set \`branchName\` to: \`([^\\\`]+)\`/) || [null, 'ralph/test/epic-001'])[1];
@@ -578,4 +607,137 @@ test('ralph-prd persists generated standalone markdown while keeping prd.json tr
     trackedPrdJson = false
   }
   assert.equal(trackedPrdJson, false)
+})
+
+test('ralph.sh explicit-scope validator allows verification-only test expansion', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'scope-valid',
+  }
+  run('git', ['add', 'bin/codex'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
+
+  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
+  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
+    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
+  )
+  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Keep source changes limited to src/allowed.ts.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Scoped valid story',
+            description: 'Scoped valid story',
+            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  const lastCommitStat = run('git', ['show', '--stat', '--oneline', '-1'], { cwd: repoDir })
+  assert.match(output, /Ralph completed all tasks!/)
+  assert.match(lastCommitStat, /src\/allowed\.ts/)
+  assert.match(lastCommitStat, /tests\/browser\.test\.mjs/)
+  assert.equal(fs.existsSync(path.join(repoDir, 'tests/browser.test.mjs')), true)
+})
+
+test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'scope-invalid',
+  }
+  run('git', ['add', 'bin/codex'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
+
+  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
+  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
+    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
+  )
+  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Keep source changes limited to src/allowed.ts.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Scoped invalid story',
+            description: 'Scoped invalid story',
+            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+  assert.match(runError.stdout + runError.stderr, /outside explicit scoped implementation paths/)
+  assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
 })
