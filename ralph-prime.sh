@@ -317,6 +317,8 @@ Requirements:
 3. Set \`branchName\` to: \`ralph/$sprint_slug/$epic_slug\`.
 4. Keep user stories small, ordered by dependency, and execution-ready.
 5. Include acceptance criteria with typecheck/lint/tests requirements.
+6. Add \`scopePaths\` arrays with exact repo-relative file paths when a story is tightly scoped; otherwise use empty arrays.
+7. Do not include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless they are explicitly required by the PRD.
 
 Return only a short summary after writing the file.
 EOF

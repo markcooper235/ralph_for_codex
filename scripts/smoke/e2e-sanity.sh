@@ -789,7 +789,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
       : > prd.json
       run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" "$EPIC_REPO" timeout 300 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-prime.sh --auto
-      jq --arg title "$epic_story_title" --arg desc "$epic_story_desc" --argjson ac "$epic_story_ac" '.branchName = "ralph/epic-001" | .userStories = [(.userStories[0] | .id="US-001" | .title=$title | .description=$desc | .acceptanceCriteria=$ac | .priority=1 | .passes=false | .notes="")]' prd.json > /tmp/smoke-prd.json
+      jq --arg title "$epic_story_title" --arg desc "$epic_story_desc" --argjson ac "$epic_story_ac" --argjson scope '["src/index.ts","tests/hello.test.mjs"]' '.branchName = "ralph/epic-001" | .scopePaths = $scope | .userStories = [(.userStories[0] | .id="US-001" | .title=$title | .description=$desc | .scopePaths=$scope | .acceptanceCriteria=$ac | .priority=1 | .passes=false | .notes="")]' prd.json > /tmp/smoke-prd.json
       mv /tmp/smoke-prd.json prd.json
       ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
       commit_framework_baseline "$EPIC_REPO" "chore(smoke): pre-loop planning state (epic)"

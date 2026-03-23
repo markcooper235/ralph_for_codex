@@ -19,6 +19,7 @@ You are the coding agent for one Ralph loop iteration.
 - Do not paste full file contents, full diffs, or repeated progress-log excerpts into your reply.
 - Do not repeat the same summary, verification list, or handoff content.
 - Epic story work is app code plus tests only; config-only changes do not count as story progress.
+- Helper scripts, build scripts, configs, fixtures, and package metadata are out of scope unless the PRD explicitly names those exact files.
 
 ## Iteration Workflow
 1. Select highest-priority failing story.

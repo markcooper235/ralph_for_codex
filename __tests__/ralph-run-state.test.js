@@ -94,6 +94,11 @@ const input = fs.readFileSync(0, 'utf8');
     fs.writeFileSync(path.join(cwd, 'tests/browser.test.mjs'), 'console.log("browser ok");\\n');
     require('child_process').execFileSync('git', ['add', 'src/allowed.ts', 'tests/browser.test.mjs'], { cwd, stdio: 'pipe' });
     require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped valid change'], { cwd, stdio: 'pipe' });
+  } else if (loopMode === 'scope-helper-invalid') {
+    fs.mkdirSync(path.join(cwd, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(cwd, 'scripts/browser-check.mjs'), 'console.log("helper tweak");\\n');
+    require('child_process').execFileSync('git', ['add', 'scripts/browser-check.mjs'], { cwd, stdio: 'pipe' });
+    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Helper edit'], { cwd, stdio: 'pipe' });
   } else if (loopMode === 'scope-uncommitted') {
     fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
   } else if (loopMode === 'scope-invalid') {
@@ -450,7 +455,7 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
 
   assert.ok(runError)
   assert.equal(runError.status, 1)
-  assert.match(runError.stdout, /Ralph reached max iterations \(1\) without completing all tasks\./)
+  assert.match(runError.stdout + runError.stderr, /Ralph reached max iterations \(1\) without completing all tasks\./)
 
   const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
   assert.match(progress, /# Ralph Progress Log/)
@@ -717,11 +722,13 @@ test('ralph.sh explicit-scope validator allows verification-only test expansion'
         project: 'tmp-ralph-test',
         branchName: 'ralph/test/standalone',
         description: 'Keep source changes limited to src/allowed.ts.',
+        scopePaths: ['src/allowed.ts'],
         userStories: [
           {
             id: 'US-001',
             title: 'Scoped valid story',
             description: 'Scoped valid story',
+            scopePaths: ['src/allowed.ts'],
             acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
             priority: 1,
             passes: false,
@@ -781,11 +788,13 @@ test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () =>
         project: 'tmp-ralph-test',
         branchName: 'ralph/test/standalone',
         description: 'Keep source changes limited to src/allowed.ts.',
+        scopePaths: ['src/allowed.ts'],
         userStories: [
           {
             id: 'US-001',
             title: 'Scoped invalid story',
             description: 'Scoped invalid story',
+            scopePaths: ['src/allowed.ts'],
             acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
             priority: 1,
             passes: false,
@@ -848,11 +857,13 @@ test('ralph.sh explicit-scope validator blocks uncommitted out-of-scope edits', 
         project: 'tmp-ralph-test',
         branchName: 'ralph/test/standalone',
         description: 'Keep source changes limited to src/allowed.ts.',
+        scopePaths: ['src/allowed.ts'],
         userStories: [
           {
             id: 'US-001',
             title: 'Scoped uncommitted invalid story',
             description: 'Scoped uncommitted invalid story',
+            scopePaths: ['src/allowed.ts'],
             acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
             priority: 1,
             passes: false,
@@ -876,6 +887,142 @@ test('ralph.sh explicit-scope validator blocks uncommitted out-of-scope edits', 
   assert.equal(runError.status, 1)
   assert.match(runError.stdout + runError.stderr, /uncommitted files outside explicit scoped implementation paths/)
   assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
+})
+
+test('ralph.sh structured scopePaths validator works without text scope hints', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'scope-valid',
+  }
+  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
+
+  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
+  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add structured scope fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-structured-scope.md'),
+    '# Scope PRD\n\nUpdate the greeting implementation and matching test.\n'
+  )
+  run('git', ['add', 'scripts/ralph/tasks/prds/prd-structured-scope.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add structured scope prd fixture'], { cwd: repoDir })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/tasks/prds/prd-structured-scope.md',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Structured scope paths only.',
+        scopePaths: ['src/allowed.ts'],
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Structured scope story',
+            description: 'Structured scope story',
+            scopePaths: ['src/allowed.ts'],
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const lastCommitStat = run('git', ['show', '--stat', '--oneline', '-1'], { cwd: repoDir })
+  assert.match(lastCommitStat, /src\/allowed\.ts/)
+  assert.match(lastCommitStat, /tests\/browser\.test\.mjs/)
+})
+
+test('ralph.sh blocks helper-script edits unless explicitly scoped', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'scope-helper-invalid',
+  }
+  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
+
+  writeFile(path.join(repoDir, 'scripts/browser-check.mjs'), 'console.log("baseline");\n')
+  run('git', ['add', 'scripts/browser-check.mjs'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add helper fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-helper-scope.md'),
+    '# Scope PRD\n\nUpdate UI greeting and matching test only.\n'
+  )
+  run('git', ['add', 'scripts/ralph/tasks/prds/prd-helper-scope.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add helper scope prd fixture'], { cwd: repoDir })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/tasks/prds/prd-helper-scope.md',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Do not touch helper scripts.',
+        scopePaths: ['src/allowed.ts', 'tests/browser.test.mjs'],
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Helper scope block story',
+            description: 'Helper scope block story',
+            scopePaths: ['src/allowed.ts', 'tests/browser.test.mjs'],
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+  assert.match(runError.stdout + runError.stderr, /helper\/config\/build files without explicit scope approval/)
+  assert.match(runError.stdout + runError.stderr, /scripts\/browser-check\.mjs/)
 })
 
 test('ralph.sh synthesizes a completed handoff when completion evidence exists but no handoff is emitted', () => {

@@ -631,9 +631,14 @@ Compact planning rules:
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
 11. For UI stories, include "Verify in browser using dev-browser skill".
 12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-13. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-14. Do not repeat the same summary twice.
-15. Final output must be 3 lines only:
+13. Add optional structured scope metadata:
+   - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
+   - per-story \`scopePaths\`: exact repo-relative file paths for tightly scoped stories
+   - use empty arrays when exact file scope is not known
+14. Never include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless the feature explicitly requires changing them.
+15. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+16. Do not repeat the same summary twice.
+17. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`
@@ -689,9 +694,14 @@ Guidance:
 9. For UI stories, include "Verify in browser using dev-browser skill".
 10. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
 11. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-12. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-13. Do not repeat the same summary twice.
-14. Final output must be 3 lines only:
+12. Add optional structured scope metadata:
+   - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
+   - per-story \`scopePaths\`: exact repo-relative file paths for tightly scoped stories
+   - use empty arrays when exact file scope is not known
+13. Never include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless the feature explicitly requires changing them.
+14. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+15. Do not repeat the same summary twice.
+16. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`
@@ -733,6 +743,17 @@ fi
 
 if ! jq -e '.project and .branchName and .description and (.userStories | length > 0)' "$PRD_JSON" >/dev/null 2>&1; then
   fail "prd.json missing required fields or userStories"
+fi
+
+if ! jq -e '
+  ((.scopePaths // []) | type == "array")
+  and all((.scopePaths // [])[]; type == "string")
+  and all(.userStories[];
+    ((.scopePaths // []) | type == "array")
+    and all((.scopePaths // [])[]; type == "string")
+  )
+' "$PRD_JSON" >/dev/null 2>&1; then
+  fail "prd.json scopePaths fields must be arrays of strings when present"
 fi
 
 if ! jq -e '

@@ -28,6 +28,7 @@ ITERATION_HANDOFF_LATEST_FILE="$SCRIPT_DIR/.iteration-handoff-latest.json"
 PRIME_CMD="$SCRIPT_DIR/ralph-prime.sh"
 LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
 EXPLICIT_SCOPE_SIGNAL_PATTERN='keep (source )?changes limited to|only change|change(s)? limited to|scoped work'
+EXPLICIT_HELPER_PATH_PATTERN='^(scripts/[^/]+$|config/|configs/|vite\.config\.|webpack\.config\.|rollup\.config\.|playwright\.config\.|cypress\.config\.|package\.json$|package-lock\.json$|pnpm-lock\.yaml$|yarn\.lock$|tsconfig.*\.json$|eslint\.config\.|\.eslintrc|prettier\.config\.|\.prettierrc)'
 
 for arg in "$@"; do
   case "$arg" in
@@ -806,6 +807,34 @@ explicit_scope_allowed_paths() {
   printf '%s\n' "$allowed_paths"
 }
 
+structured_scope_allowed_paths() {
+  [ -f "$PRD_FILE" ] || return 1
+
+  jq -r '
+    [
+      (.scopePaths // []),
+      (.userStories[]?.scopePaths // [])
+    ]
+    | flatten
+    | map(select(type == "string" and length > 0))
+    | unique
+    | .[]
+  ' "$PRD_FILE" 2>/dev/null
+}
+
+all_allowed_scope_paths() {
+  local scope_text="$1"
+  {
+    structured_scope_allowed_paths || true
+    explicit_scope_allowed_paths "$scope_text" || true
+  } | sed '/^$/d' | sort -u
+}
+
+is_helper_or_config_path() {
+  local path="$1"
+  printf '%s\n' "$path" | grep -Eq "$EXPLICIT_HELPER_PATH_PATTERN"
+}
+
 changed_paths_outside_scope() {
   local allowed_paths="$1"
   local changed_paths="$2"
@@ -822,14 +851,29 @@ changed_paths_outside_scope() {
   done <<< "$changed_paths"
 }
 
+changed_helper_paths_without_explicit_scope() {
+  local allowed_paths="$1"
+  local changed_paths="$2"
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if ! is_helper_or_config_path "$path"; then
+      continue
+    fi
+    if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
+      continue
+    fi
+    printf '%s\n' "$path"
+  done <<< "$changed_paths"
+}
+
 ensure_explicit_scope_changes_valid() {
   local from_ref="$1"
   local to_ref="$2"
-  local scope_text allowed_paths changed_files bad_changes
+  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes
 
   scope_text="$(collect_scope_hint_text)"
-  allowed_paths="$(explicit_scope_allowed_paths "$scope_text" || true)"
-  [ -n "$allowed_paths" ] || return 0
+  allowed_paths="$(all_allowed_scope_paths "$scope_text" || true)"
 
   changed_files="$(
     git log --name-only --pretty=format: "$from_ref..$to_ref" 2>/dev/null \
@@ -837,6 +881,16 @@ ensure_explicit_scope_changes_valid() {
       | sort -u
   )"
   [ -n "$changed_files" ] || return 0
+
+  disallowed_helper_changes="$(changed_helper_paths_without_explicit_scope "$allowed_paths" "$changed_files")"
+  if [ -n "$disallowed_helper_changes" ]; then
+    echo "Ralph iteration changed helper/config/build files without explicit scope approval:" >&2
+    printf '%s\n' "$disallowed_helper_changes" >&2
+    echo "Add those exact paths to prd.json scopePaths (or story scopePaths) only when they are truly in scope." >&2
+    return 1
+  fi
+
+  [ -n "$allowed_paths" ] || return 0
 
   bad_changes="$(changed_paths_outside_scope "$allowed_paths" "$changed_files")"
 
@@ -853,11 +907,10 @@ ensure_explicit_scope_changes_valid() {
 }
 
 ensure_explicit_scope_worktree_valid() {
-  local scope_text allowed_paths changed_files bad_changes
+  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes
 
   scope_text="$(collect_scope_hint_text)"
-  allowed_paths="$(explicit_scope_allowed_paths "$scope_text" || true)"
-  [ -n "$allowed_paths" ] || return 0
+  allowed_paths="$(all_allowed_scope_paths "$scope_text" || true)"
 
   changed_files="$(
     git status --porcelain --untracked-files=all 2>/dev/null \
@@ -880,6 +933,16 @@ ensure_explicit_scope_worktree_valid() {
       | sort -u
   )"
   [ -n "$changed_files" ] || return 0
+
+  disallowed_helper_changes="$(changed_helper_paths_without_explicit_scope "$allowed_paths" "$changed_files")"
+  if [ -n "$disallowed_helper_changes" ]; then
+    echo "Ralph iteration has helper/config/build files outside explicit scope approval:" >&2
+    printf '%s\n' "$disallowed_helper_changes" >&2
+    echo "Add those exact paths to prd.json scopePaths (or story scopePaths) only when they are truly in scope." >&2
+    return 1
+  fi
+
+  [ -n "$allowed_paths" ] || return 0
 
   bad_changes="$(changed_paths_outside_scope "$allowed_paths" "$changed_files")"
   [ -z "$bad_changes" ] && return 0

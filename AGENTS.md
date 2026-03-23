@@ -129,6 +129,8 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - Keep `prompt.md` terse because every Ralph iteration pays for it again; compress wording before adding new always-on instructions.
 - For tiny file-scoped UI tasks, the loop prompt should prefer rebuilding local assets for browser verification over editing helper scripts like `scripts/browser-check.mjs`; keep source changes inside the requested files unless the PRD explicitly expands scope, and allow verification-only expansion only to verify that scoped work.
 - `ralph.sh` now performs a light explicit-scope validator: when the PRD/source text clearly says a change is limited to named files, iteration commits may expand only into verification/test files outside that source scope.
+- `prd.json` may now include optional top-level and per-story `scopePaths` arrays; `ralph.sh` should prefer that structured scope metadata over text inference when present.
+- Helper scripts, build scripts, configs, fixtures, and package metadata should stay out of `scopePaths` unless the task explicitly requires changing them; otherwise `ralph.sh` will block those edits.
 - Keep loop-context reads tight: prefer `## Codebase Patterns`, the latest single progress entry, and the nearest relevant `AGENTS.md` before expanding outward.
 - PRDs should decompose into 1-6 executable stories. Use task classes that fit that range (`micro` 1, `small` 2-3, `medium` 4-6); if honest decomposition needs more than 6, create a follow-up PRD instead of overstuffing one plan.
 - Smoke telemetry should report both token totals and loop iteration counts/completion iteration so efficiency regressions can be traced to either planning cost or extra loop churn.
