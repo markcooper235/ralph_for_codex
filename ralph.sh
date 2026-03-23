@@ -476,6 +476,7 @@ extract_ralph_handoff_json() {
 
 handoff_completion_evidence_present() {
   prd_all_passes || return 1
+  has_non_transient_worktree_changes && return 1
   full_verification_recorded
 }
 
@@ -720,6 +721,21 @@ write_completion_state() {
     }' > "$COMPLETION_STATE_FILE"
 }
 
+append_wrapper_completion_entry() {
+  local iteration="$1"
+  progress_has_completion_entry && return 0
+  [ -f "$PROGRESS_FILE" ] || return 1
+
+  cat >> "$PROGRESS_FILE" <<EOF
+## [$(date '+%Y-%m-%d %H:%M:%S %Z')] - Completion
+Codex transcript: $SCRIPT_DIR/.iteration-log-iter-*.txt (latest)
+- Implemented: Ralph finalized completion after strict validation of passing stories, a clean non-transient worktree, and recorded full verification evidence
+- Files changed: scripts/ralph/progress.txt, scripts/ralph/.completion-state.json, scripts/ralph/.iteration-handoff-iter-$iteration.json, scripts/ralph/.iteration-handoff-latest.json
+- Learnings (reusable only): wrapper-owned completion finalization is authoritative once stories pass and full verification is recorded
+---
+EOF
+}
+
 clear_completion_state() {
   rm -f "$COMPLETION_STATE_FILE"
 }
@@ -739,6 +755,44 @@ completion_state_is_valid() {
 legacy_completion_evidence_present() {
   progress_has_completion_entry || return 1
   full_verification_recorded
+}
+
+strict_completion_ready() {
+  prd_all_passes || return 1
+  has_non_transient_worktree_changes && return 1
+  full_verification_recorded
+}
+
+write_wrapper_completed_handoff() {
+  local output_path="$1"
+  local iteration="$2"
+  local branch_name="$3"
+  local timestamp
+  timestamp="$(date -Iseconds)"
+
+  write_fallback_handoff \
+    "$output_path" \
+    "$iteration" \
+    "$timestamp" \
+    "$branch_name" \
+    "completed" \
+    "Completion finalized by Ralph after strict validation of passing stories and full verification evidence." \
+    "" \
+    "Proceed to Ralph completion handling; no further model iteration is required." \
+    true
+}
+
+finalize_wrapper_completion() {
+  local iteration="$1"
+  local branch_name="$2"
+  local handoff_file="$SCRIPT_DIR/.iteration-handoff-iter-$iteration.json"
+
+  strict_completion_ready || return 1
+  append_wrapper_completion_entry "$iteration" || true
+  write_completion_state "$iteration" "$branch_name"
+  write_wrapper_completed_handoff "$handoff_file" "$iteration" "$branch_name"
+  cp -f "$handoff_file" "$ITERATION_HANDOFF_LATEST_FILE" >/dev/null 2>&1 || true
+  return 0
 }
 
 latest_handoff_signals_completion() {
@@ -991,9 +1045,10 @@ has_non_transient_worktree_changes() {
 completion_is_stable() {
   prd_all_passes || return 1
   has_non_transient_worktree_changes && return 1
-  if ! completion_state_is_valid; then
-    legacy_completion_evidence_present || return 1
+  if completion_state_is_valid; then
+    return 0
   fi
+  legacy_completion_evidence_present || return 1
   latest_handoff_signals_completion
 }
 
@@ -1438,8 +1493,10 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   if ! ensure_explicit_scope_worktree_valid; then
     exit 1
   fi
-  if latest_handoff_signals_completion && prd_all_passes && ! has_non_transient_worktree_changes; then
-    branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
+  if strict_completion_ready; then
+    finalize_wrapper_completion "$i" "$branch_name"
+  elif latest_handoff_signals_completion && prd_all_passes && ! has_non_transient_worktree_changes; then
     write_completion_state "$i" "$branch_name"
   else
     clear_completion_state

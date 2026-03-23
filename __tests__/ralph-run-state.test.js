@@ -123,6 +123,12 @@ const input = fs.readFileSync(0, 'utf8');
       progressPath,
       '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
     );
+  } else if (loopMode === 'strict-complete-no-note') {
+    fs.appendFileSync(
+      progressPath,
+      '- Verification: Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n'
+    );
+    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   } else if (loopMode === 'invalid-handoff') {
     process.stdout.write('<ralph_handoff>\\n{"status":"completed","completionSignal":true}\\n</ralph_handoff>\\n');
   } else if (loopMode === 'multi-handoff') {
@@ -1074,6 +1080,64 @@ test('ralph.sh synthesizes a completed handoff when completion evidence exists b
   const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
   assert.equal(latestHandoff.completionSignal, true)
   assert.equal(latestHandoff.status, 'completed')
+  const completionState = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.completion-state.json'), 'utf8'))
+  assert.equal(completionState.completionSignal, true)
+  assert.equal(completionState.status, 'completed')
+})
+
+test('ralph.sh finalizes completion without a model-written completion note when strict evidence is present', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'strict-complete-no-note',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Wrapper-owned completion finalization test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Strict completion story',
+            description: 'Strict completion story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
+  assert.match(progress, /## \[.*\] - Completion/)
+  assert.match(progress, /Ralph finalized completion after strict validation/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.completionSignal, true)
+  assert.equal(latestHandoff.status, 'completed')
+  assert.match(latestHandoff.summary, /Completion finalized by Ralph/)
   const completionState = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.completion-state.json'), 'utf8'))
   assert.equal(completionState.completionSignal, true)
   assert.equal(completionState.status, 'completed')

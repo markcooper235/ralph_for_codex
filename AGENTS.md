@@ -131,6 +131,7 @@ Flowchart assets/source were removed because they are no longer valid for this r
 - `ralph.sh` now performs a light explicit-scope validator: when the PRD/source text clearly says a change is limited to named files, iteration commits may expand only into verification/test files outside that source scope.
 - `prd.json` may now include optional top-level and per-story `scopePaths` arrays; `ralph.sh` should prefer that structured scope metadata over text inference when present.
 - Helper scripts, build scripts, configs, fixtures, and package metadata should stay out of `scopePaths` unless the task explicitly requires changing them; otherwise `ralph.sh` will block those edits.
+- Ralph should finalize completion from wrapper-observable facts, not extra model bookkeeping: once all stories pass, full verification is recorded, and only transient files remain dirty, `ralph.sh` should write completion state itself and stop immediately.
 - Keep loop-context reads tight: prefer `## Codebase Patterns`, the latest single progress entry, and the nearest relevant `AGENTS.md` before expanding outward.
 - PRDs should decompose into 1-6 executable stories. Use task classes that fit that range (`micro` 1, `small` 2-3, `medium` 4-6); if honest decomposition needs more than 6, create a follow-up PRD instead of overstuffing one plan.
 - Smoke telemetry should report both token totals and loop iteration counts/completion iteration so efficiency regressions can be traced to either planning cost or extra loop churn.

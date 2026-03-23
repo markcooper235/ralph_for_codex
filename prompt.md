@@ -35,6 +35,7 @@ You are the coding agent for one Ralph loop iteration.
 6. Set story `passes: true` in `{{PRD_FILE}}`.
 7. Append progress entry to `{{PROGRESS_FILE}}`.
 8. If all stories pass, run `./scripts/ralph/ralph-verify.sh --full` and record the result in `{{PROGRESS_FILE}}`.
+   Ralph will finalize completion state itself once stories pass, full verification is recorded, and the non-transient worktree is clean.
 9. End your reply with a compact Ralph handoff block using this exact wrapper:
 
 ```text
@@ -49,6 +50,7 @@ Rules for the handoff:
 - Use valid JSON only inside the wrapper.
 - Do not include narrative outside the JSON inside the wrapper.
 - Use `status: "completed"` with `completionSignal: true` only after full verification passes.
+- Do not spend an extra iteration only to add completion bookkeeping; Ralph owns final completion state.
 
 Before the handoff, use at most 4 short lines total:
 - `Outcome:` one sentence
