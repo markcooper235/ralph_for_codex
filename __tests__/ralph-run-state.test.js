@@ -121,12 +121,12 @@ const input = fs.readFileSync(0, 'utf8');
   if (loopMode === 'missing-handoff-complete') {
     fs.appendFileSync(
       progressPath,
-      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
+      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
     );
   } else if (loopMode === 'strict-complete-no-note') {
     fs.appendFileSync(
       progressPath,
-      '- Verification: Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n'
+      '- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n'
     );
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   } else if (loopMode === 'invalid-handoff') {
@@ -134,14 +134,14 @@ const input = fs.readFileSync(0, 'utf8');
   } else if (loopMode === 'multi-handoff') {
     fs.appendFileSync(
       progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
     );
     process.stdout.write('<ralph_handoff>\\n{"status":"no_change","story":{"id":"US-000","title":"Example"},"summary":"Prompt example.","errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[],"completionSignal":false}\\n</ralph_handoff>\\n');
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   } else {
     fs.appendFileSync(
       progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification passed with ./scripts/ralph/ralph-verify.sh --full.\\n---\\n'
+      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
     );
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
   }

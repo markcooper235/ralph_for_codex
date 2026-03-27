@@ -563,6 +563,35 @@ fallback_story_from_prd() {
   ' "$PRD_FILE" 2>/dev/null || true
 }
 
+latest_completed_story_context() {
+  [ -f "$PROGRESS_FILE" ] || return 0
+  awk '
+    /^## / {
+      if (match($0, /^## .* - (US-[0-9]+)/, parts)) {
+        latest = parts[1]
+      }
+    }
+    END {
+      if (latest != "") print latest
+    }
+  ' "$PROGRESS_FILE" 2>/dev/null || true
+}
+
+story_context_from_story_id() {
+  local story_id="$1"
+  [ -n "$story_id" ] || return 0
+  [ -f "$PRD_FILE" ] || return 0
+
+  jq -r --arg story_id "$story_id" '
+    ([.userStories[] | select(.id == $story_id)] | first) as $story
+    | if $story == null then
+        ""
+      else
+        ($story.id // "") + "\t" + ($story.title // "")
+      end
+  ' "$PRD_FILE" 2>/dev/null || true
+}
+
 write_fallback_handoff() {
   local output_path="$1"
   local iteration="$2"
@@ -573,9 +602,15 @@ write_fallback_handoff() {
   local error_message="${7:-}"
   local next_advice="${8:-}"
   local completion="${9:-false}"
-  local story_context story_id story_title
+  local story_context="" story_id story_title latest_completed_story_id
 
-  story_context="$(fallback_story_from_prd "$status")"
+  if [ "$status" = "completed" ] && [ "$completion" = "true" ]; then
+    latest_completed_story_id="$(latest_completed_story_context)"
+    story_context="$(story_context_from_story_id "$latest_completed_story_id")"
+  fi
+  if [ -z "$story_context" ]; then
+    story_context="$(fallback_story_from_prd "$status")"
+  fi
   story_id="${story_context%%$'\t'*}"
   if [ "$story_context" = "$story_id" ]; then
     story_title=""
@@ -720,7 +755,7 @@ progress_has_completion_entry() {
 
 full_verification_recorded() {
   [ -f "$PROGRESS_FILE" ] || return 1
-  grep -Eiq '(\./scripts/ralph/ralph-verify\.sh --full|full verification passed)' "$PROGRESS_FILE"
+  grep -Fxq -- '- Full verification: ./scripts/ralph/ralph-verify.sh --full passed' "$PROGRESS_FILE"
 }
 
 write_completion_state() {
@@ -759,6 +794,34 @@ EOF
 
 clear_completion_state() {
   rm -f "$COMPLETION_STATE_FILE"
+}
+
+iteration_ids_for_pattern() {
+  local pattern="$1"
+  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' 2>/dev/null \
+    | sed -E 's/.*-iter-([0-9]+)\..*/\1/' \
+    | sort -n
+}
+
+next_iteration_number() {
+  local transcript_ids handoff_ids max_id
+  local transcript_max handoff_max
+
+  transcript_ids="$(iteration_ids_for_pattern '.iteration-log-iter-*.txt')"
+  handoff_ids="$(iteration_ids_for_pattern '.iteration-handoff-iter-*.json')"
+
+  transcript_max="$(printf '%s\n' "$transcript_ids" | tail -n 1)"
+  handoff_max="$(printf '%s\n' "$handoff_ids" | tail -n 1)"
+  max_id=0
+
+  if [ -n "$transcript_max" ] && [ "$transcript_max" -gt "$max_id" ]; then
+    max_id="$transcript_max"
+  fi
+  if [ -n "$handoff_max" ] && [ "$handoff_max" -gt "$max_id" ]; then
+    max_id="$handoff_max"
+  fi
+
+  printf '%s\n' "$((max_id + 1))"
 }
 
 completion_state_is_valid() {
@@ -827,6 +890,19 @@ get_active_prd_source_path() {
   jq -r '.sourcePath // empty' "$ACTIVE_PRD_FILE" 2>/dev/null
 }
 
+get_story_id_from_handoff() {
+  local handoff_path="$1"
+  [ -f "$handoff_path" ] || return 1
+
+  jq -r '
+    if (.story | type == "object") and ((.story.id // "") | length > 0) then
+      .story.id
+    else
+      empty
+    end
+  ' "$handoff_path" 2>/dev/null
+}
+
 is_verification_only_path() {
   local path="$1"
   case "$path" in
@@ -883,12 +959,19 @@ explicit_scope_allowed_paths() {
 }
 
 structured_scope_allowed_paths() {
+  local story_id="${1:-}"
   [ -f "$PRD_FILE" ] || return 1
 
-  jq -r '
+  jq -r --arg story_id "$story_id" '
     [
       (.scopePaths // []),
-      (.userStories[]?.scopePaths // [])
+      (
+        if ($story_id | length) > 0 then
+          [(.userStories[]? | select(.id == $story_id) | (.scopePaths // []))]
+        else
+          []
+        end
+      )
     ]
     | flatten
     | map(select(type == "string" and length > 0))
@@ -899,8 +982,9 @@ structured_scope_allowed_paths() {
 
 all_allowed_scope_paths() {
   local scope_text="$1"
+  local story_id="${2:-}"
   {
-    structured_scope_allowed_paths || true
+    structured_scope_allowed_paths "$story_id" || true
     explicit_scope_allowed_paths "$scope_text" || true
   } | sed '/^$/d' | sort -u
 }
@@ -945,10 +1029,12 @@ changed_helper_paths_without_explicit_scope() {
 ensure_explicit_scope_changes_valid() {
   local from_ref="$1"
   local to_ref="$2"
-  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes
+  local handoff_path="${3:-$ITERATION_HANDOFF_LATEST_FILE}"
+  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes story_id
 
   scope_text="$(collect_scope_hint_text)"
-  allowed_paths="$(all_allowed_scope_paths "$scope_text" || true)"
+  story_id="$(get_story_id_from_handoff "$handoff_path" || true)"
+  allowed_paths="$(all_allowed_scope_paths "$scope_text" "$story_id" || true)"
 
   changed_files="$(
     git log --name-only --pretty=format: "$from_ref..$to_ref" 2>/dev/null \
@@ -982,10 +1068,12 @@ ensure_explicit_scope_changes_valid() {
 }
 
 ensure_explicit_scope_worktree_valid() {
-  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes
+  local handoff_path="${1:-$ITERATION_HANDOFF_LATEST_FILE}"
+  local scope_text allowed_paths changed_files bad_changes disallowed_helper_changes story_id
 
   scope_text="$(collect_scope_hint_text)"
-  allowed_paths="$(all_allowed_scope_paths "$scope_text" || true)"
+  story_id="$(get_story_id_from_handoff "$handoff_path" || true)"
+  allowed_paths="$(all_allowed_scope_paths "$scope_text" "$story_id" || true)"
 
   changed_files="$(
     git status --porcelain --untracked-files=all 2>/dev/null \
@@ -1472,13 +1560,18 @@ clear_completion_state
 echo "Starting Ralph - Max iterations: $MAX_ITERATIONS"
 echo "Workspace root: $WORKSPACE_ROOT"
 
-for ((i=1; i<=MAX_ITERATIONS; i++)); do
+START_ITERATION="$(next_iteration_number)"
+END_ITERATION=$((START_ITERATION + MAX_ITERATIONS - 1))
+
+for ((i=START_ITERATION; i<=END_ITERATION; i++)); do
+  RUN_STEP=$((i - START_ITERATION + 1))
   echo ""
   echo "═══════════════════════════════════════════════════════"
-  echo "  Ralph Iteration $i of $MAX_ITERATIONS"
+  echo "  Ralph Iteration $i (run step $RUN_STEP of $MAX_ITERATIONS)"
   echo "═══════════════════════════════════════════════════════"
 
   CODEX_ITER_TRANSCRIPT_FILE="$SCRIPT_DIR/.iteration-log-iter-$i.txt"
+  CODEX_ITER_HANDOFF_FILE="$SCRIPT_DIR/.iteration-handoff-iter-$i.json"
   ITERATION_START_HEAD="$(git rev-parse HEAD)"
 
   if ! ensure_prd_ready; then
@@ -1503,7 +1596,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
     if ! ensure_no_transient_commits_in_range "$ITERATION_START_HEAD" "$ITERATION_END_HEAD"; then
       exit 1
     fi
-    if ! ensure_explicit_scope_changes_valid "$ITERATION_START_HEAD" "$ITERATION_END_HEAD"; then
+    if ! ensure_explicit_scope_changes_valid "$ITERATION_START_HEAD" "$ITERATION_END_HEAD" "$CODEX_ITER_HANDOFF_FILE"; then
       exit 1
     fi
   fi
@@ -1511,7 +1604,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   if ! ensure_transient_files_not_tracked; then
     exit 1
   fi
-  if ! ensure_explicit_scope_worktree_valid; then
+  if ! ensure_explicit_scope_worktree_valid "$CODEX_ITER_HANDOFF_FILE"; then
     exit 1
   fi
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
@@ -1527,7 +1620,7 @@ for ((i=1; i<=MAX_ITERATIONS; i++)); do
   if completion_is_stable; then
     echo ""
     echo "Ralph completed all tasks!"
-    echo "Completed at iteration $i of $MAX_ITERATIONS"
+    echo "Completed at iteration $i (run step $RUN_STEP of $MAX_ITERATIONS)"
     exit 0
   fi
   

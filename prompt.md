@@ -20,6 +20,7 @@ You are the coding agent for one Ralph loop iteration.
 
 ## Workflow
 1. Implement only the selected story.
+   If implementation requires newly discovered shared app-code files outside the current story's listed `scopePaths`, update the active story `scopePaths` in `{{PRD_FILE}}` before finalizing so Ralph's wrapper validation reflects the real implementation scope.
 2. Run `./scripts/ralph/ralph-verify.sh --targeted` unless stricter coverage is clearly required.
 3. For UI criteria, verify in browser.
    Prefer Playwright; fallback: Cypress.
@@ -69,6 +70,7 @@ Codex transcript: {{RALPH_DIR}}/.iteration-log-iter-*.txt (latest)
 ## Reusable Patterns
 - Add reusable patterns to `## Codebase Patterns` in `{{PROGRESS_FILE}}` when useful.
 - Update nearby `AGENTS.md` only with reusable guidance.
+- Treat shared libraries, contracts, and runtime seams as explicit implementation scope when they are the natural source of truth for the selected story; do not leave those paths implicit if you discover them during implementation.
 
 ## Higher-Risk Changes
 - Type X: auth/session, shared schema/types, migrations/persistence, runtime state/event pipeline, global providers/config, routing shells.
