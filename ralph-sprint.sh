@@ -681,7 +681,7 @@ readiness_status() {
   elif [ -n "$active_epic_id" ] && [ "$active_epic_status" = "active" ]; then
     echo "Next action: run ./scripts/ralph/ralph.sh to continue the active epic."
   else
-    echo "Next action: run ./scripts/ralph/ralph-prime.sh to activate the next epic."
+    echo "Next action: run ./scripts/ralph/ralph.sh to auto-prime and start the next eligible epic."
   fi
 }
 

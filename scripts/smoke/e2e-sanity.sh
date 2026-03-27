@@ -170,6 +170,58 @@ extract_tokens_from_log() {
   ' "$log_file"
 }
 
+extract_preloop_tokens_from_log() {
+  local log_file="$1"
+  [ -f "$log_file" ] || {
+    echo 0
+    return 0
+  }
+
+  awk '
+    function add_tokens_from_line(raw, lower_line,    m) {
+      if (match(lower_line, /tokens used[[:space:]]*([0-9]+)/, m)) {
+        sum += m[1]
+        return 1
+      }
+      if (match(lower_line, /"total_tokens"[[:space:]]*:[[:space:]]*([0-9]+)/, m)) {
+        sum += m[1]
+        return 1
+      }
+      if (match(lower_line, /total tokens[[:space:]]*[:=]?[[:space:]]*([0-9]+)/, m)) {
+        sum += m[1]
+        return 1
+      }
+      return 0
+    }
+    /Ralph Iteration [0-9]+ of [0-9]+/ { exit }
+    {
+      line = $0
+      lower = tolower(line)
+      gsub(/,/, "", line)
+      gsub(/,/, "", lower)
+
+      if (pending_tokens_used == 1) {
+        if (match(line, /([0-9]+)/, m)) {
+          sum += m[1]
+        }
+        pending_tokens_used = 0
+        next
+      }
+
+      if (add_tokens_from_line(line, lower)) {
+        next
+      }
+      if (lower ~ /tokens used/) {
+        pending_tokens_used = 1
+        next
+      }
+    }
+    END {
+      print sum + 0
+    }
+  ' "$log_file"
+}
+
 extract_iteration_count_from_log() {
   local log_file="$1"
   [ -f "$log_file" ] || {
@@ -692,7 +744,6 @@ if [ "$WITH_LOOP" -eq 1 ]; then
         --feature "$standalone_feature_text" \
         --constraints "$standalone_constraints_text" \
         --no-questions > "$WORK_DIR/ralph-prd-standalone.log" 2>&1
-      ./ralph-prime.sh --auto > "$WORK_DIR/prime-standalone.log" 2>&1 || true
       commit_framework_baseline "$STANDALONE_REPO" "chore(smoke): pre-loop planning state (standalone)"
       standalone_start_head="$(git -C "$STANDALONE_REPO" rev-parse HEAD)"
       run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-standalone.log" "$STANDALONE_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_STANDALONE_MAX_ITERATIONS"
@@ -735,13 +786,15 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     )
     assert_contains "$WORK_DIR/doctor-standalone.log" "OK: prerequisites present"
     assert_not_contains "$WORK_DIR/ralph-prd-standalone.log" "No PRD markdown file"
-    assert_prime_log_ok "$WORK_DIR/prime-standalone.log"
     assert_contains "$WORK_DIR/loop-standalone.log" "Iteration"
     assert_not_contains "$WORK_DIR/loop-standalone.log" "node: bad option: --runInBand"
     if [ "$APP_MODE" = "console" ]; then
-      assert_contains "$WORK_DIR/ralph-prd-standalone.log" "Create a compact Ralph planning package for a tightly scoped change\."
+      if ! grep -Eq "Create a compact Ralph planning package for a tightly scoped change\.|Using compact planning mode for a tightly scoped request\." "$WORK_DIR/ralph-prd-standalone.log"; then
+        fail "Expected compact planning evidence in $WORK_DIR/ralph-prd-standalone.log"
+      fi
     else
       assert_not_contains "$WORK_DIR/ralph-prd-standalone.log" "Create a compact Ralph planning package for a tightly scoped change\."
+      assert_not_contains "$WORK_DIR/ralph-prd-standalone.log" "Using compact planning mode for a tightly scoped request\."
     fi
     if [ "$APP_MODE" = "ui" ]; then
       assert_contains "$WORK_DIR/runtime-standalone.log" "browser ok: $standalone_expected_msg"
@@ -749,7 +802,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       assert_contains "$WORK_DIR/runtime-standalone.log" "^$standalone_expected_msg$"
     fi
     assert_contains "$WORK_DIR/test-standalone.log" "test ok"
-    standalone_planning_tokens=$(( $(extract_tokens_from_log "$WORK_DIR/ralph-prd-standalone.log") + $(extract_tokens_from_log "$WORK_DIR/prime-standalone.log") ))
+    standalone_planning_tokens="$(extract_tokens_from_log "$WORK_DIR/ralph-prd-standalone.log")"
     assert_contains "$WORK_DIR/commit-plan-standalone-default.log" "target branch:  $standalone_expected_target"
     assert_contains "$WORK_DIR/commit-plan-standalone-target.log" "target branch:  $standalone_expected_target"
     assert_contains "$WORK_DIR/commit-plan-standalone-default.log" "prd mode:       standalone"
@@ -780,25 +833,31 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
       ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
       RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
+      cat > tasks/sprint-1/prd-epic-001.md <<EOF
+# Change Hello Message: Hello Sprint Ralph
+
+## Summary
+
+Update the app output to say exactly Hello Sprint Ralph and update the matching regression test.
+
+## User Stories
+
+### US-001 - Update greeting output
+- Update src/index.ts to print exactly Hello Sprint Ralph.
+- Update tests/hello.test.mjs to verify Hello Sprint Ralph.
+- Unit tests pass.
+- Typecheck passes.
+- Lint passes.
+EOF
       ./ralph-epic.sh add \
         --title "Change Hello Message: Hello Sprint Ralph" \
         --status planned \
-        --prompt-context "$epic_prompt_context" \
+        --prd-path "scripts/ralph/tasks/sprint-1/prd-epic-001.md" \
         > "$WORK_DIR/epic-add-epic.log" 2>&1
       ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
-      ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
       : > prd.json
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" "$EPIC_REPO" timeout 300 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-prime.sh --auto
-      jq --arg title "$epic_story_title" --arg desc "$epic_story_desc" --argjson ac "$epic_story_ac" --argjson scope '["src/index.ts","tests/hello.test.mjs"]' '.branchName = "ralph/epic-001" | .scopePaths = $scope | .userStories = [(.userStories[0] | .id="US-001" | .title=$title | .description=$desc | .scopePaths=$scope | .acceptanceCriteria=$ac | .priority=1 | .passes=false | .notes="")]' prd.json > /tmp/smoke-prd.json
-      mv /tmp/smoke-prd.json prd.json
       ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
       commit_framework_baseline "$EPIC_REPO" "chore(smoke): pre-loop planning state (epic)"
-      active_sprint_id="$(cat .active-sprint 2>/dev/null || echo sprint-1)"
-      active_epics_rel="scripts/ralph/sprints/$active_sprint_id/epics.json"
-      if git -C "$EPIC_REPO" ls-files --error-unmatch "$active_epics_rel" >/dev/null 2>&1 && ! git -C "$EPIC_REPO" diff --quiet -- "$active_epics_rel"; then
-        git -C "$EPIC_REPO" add "$active_epics_rel"
-        git -C "$EPIC_REPO" commit -m "chore(smoke): sync active epic backlog before loop" >/dev/null
-      fi
       epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
       run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_EPIC_MAX_ITERATIONS"
       epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
@@ -810,7 +869,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       jq -e '.completionSignal == true and .status == "completed"' .completion-state.json >/dev/null
       jq -e '.branchName | test("^ralph/.+/epic-[0-9]+$") or test("^ralph/epic-[0-9]+$")' prd.json >/dev/null
       jq -e '([.userStories[] | select(.passes == true)] | length) >= 1' prd.json >/dev/null
-      assert_commit_range_small_and_simple "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" "epic loop" "src/index.ts" "tests/hello.test.mjs"
+      assert_commit_range_small_and_simple "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" "epic loop" "scripts/ralph/sprints/sprint-1/epics.json" "src/index.ts" "tests/hello.test.mjs"
       if [ "$APP_MODE" = "ui" ]; then
         grep -qF "const greeting = \"$epic_expected_msg\";" "$EPIC_REPO/src/index.ts" || fail "epic src/index.ts does not contain expected UI greeting assignment: $epic_expected_msg"
       else
@@ -842,8 +901,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"
     assert_contains "$WORK_DIR/sprint-create-epic.log" "Created sprint: sprint-1"
     assert_contains "$WORK_DIR/epic-add-epic.log" "Added epic: EPIC-001"
-    assert_contains "$WORK_DIR/epic-start-loop.log" "Active epic: EPIC-001"
-    assert_prime_log_primed "$WORK_DIR/prime-epic.log"
+    assert_contains "$WORK_DIR/status-epic-preloop.log" "Next action: run ./scripts/ralph/ralph.sh to auto-prime and start the next eligible epic."
     assert_contains "$WORK_DIR/loop-epic.log" "Iteration"
     assert_not_contains "$WORK_DIR/loop-epic.log" "node: bad option: --runInBand"
     if [ "$APP_MODE" = "ui" ]; then
@@ -852,14 +910,14 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       assert_contains "$WORK_DIR/runtime-epic.log" "^$epic_expected_msg$"
     fi
     assert_contains "$WORK_DIR/test-epic.log" "test ok"
-    epic_planning_tokens="$(extract_tokens_from_log "$WORK_DIR/prime-epic.log")"
+    epic_planning_tokens="$(extract_preloop_tokens_from_log "$WORK_DIR/loop-epic.log")"
     assert_contains "$WORK_DIR/commit-plan-epic-default.log" "target branch:  $epic_expected_target"
     assert_contains "$WORK_DIR/commit-plan-epic-target.log" "target branch:  $epic_expected_target"
     assert_contains "$WORK_DIR/commit-plan-epic-default.log" "prd mode:       epic"
     assert_contains "$WORK_DIR/commit-plan-epic-default.log" "prd base:       $epic_expected_target"
     assert_contains "$WORK_DIR/commit-epic.log" "Deleted source branch:"
     epic_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-epic.log")"
-    epic_tokens=$((epic_tokens + epic_planning_tokens))
+    epic_tokens=$((epic_tokens + 0))
     epic_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-epic.log")"
     epic_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-epic.log")"
   fi

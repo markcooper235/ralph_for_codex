@@ -90,6 +90,50 @@ extract_tokens_from_log() {
   ' "$log_file"
 }
 
+extract_preloop_tokens_from_log() {
+  local log_file="$1"
+  [ -f "$log_file" ] || {
+    echo 0
+    return 0
+  }
+
+  awk '
+    function add_tokens_from_line(raw, lower_line,    m) {
+      if (match(lower_line, /tokens used[[:space:]]*([0-9]+)/, m)) {
+        sum += m[1]
+        return 1
+      }
+      return 0
+    }
+    /Ralph Iteration [0-9]+ of [0-9]+/ { exit }
+    {
+      line = $0
+      lower = tolower(line)
+      gsub(/,/, "", line)
+      gsub(/,/, "", lower)
+
+      if (pending_tokens_used == 1) {
+        if (match(line, /([0-9]+)/, m)) {
+          sum += m[1]
+        }
+        pending_tokens_used = 0
+        next
+      }
+
+      if (add_tokens_from_line(line, lower)) {
+        next
+      }
+      if (lower ~ /tokens used/) {
+        pending_tokens_used = 1
+        next
+      }
+    }
+    END {
+      print sum + 0
+    }
+  ' "$log_file"
+}
+
 extract_iteration_count_from_log() {
   local log_file="$1"
   [ -f "$log_file" ] || {
@@ -454,28 +498,70 @@ expected_status="Ready for review"
 expected_cta="View release notes"
 expected_state="ready"
 
-(
-  cd "$EPIC_REPO/scripts/ralph"
-  CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
-  ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
-  RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
-  ./ralph-epic.sh add \
-    --title "Worst Case UI Multi-Story Epic" \
-    --status planned \
-    --prompt-context "Implement a bounded worst-case UI change. Update src/messages.ts so the headline is Hello Sprint Ralph, the status text is Ready for review, the CTA label is View release notes, and the state is ready. Update src/render.ts so #status renders the status text while exposing the state value, and #cta gets a matching title. Update tests/messages.test.mjs and tests/render.test.mjs for the new copy and render contract. Verify #app, #status, and #cta in the browser, including status text, status state, and CTA title. Keep source changes limited to src/messages.ts, src/render.ts, tests/messages.test.mjs, and tests/render.test.mjs. Verification of that scoped work is allowed only to verify that scoped work. Do not edit browser helpers, build scripts, configs, fixtures, or package.json. Use at least 3 small dependency-ordered stories if verification naturally warrants it." \
-    > "$WORK_DIR/epic-add-epic.log" 2>&1
-  ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
-  ./ralph-epic.sh start-next > "$WORK_DIR/epic-start-loop.log" 2>&1
-  : > prd.json
-  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/prime-epic.log" "$EPIC_REPO" timeout 300 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-prime.sh --auto
-  jq -e '(.userStories | length) >= 3' prd.json >/dev/null || fail "worst-case epic should plan at least 3 stories"
-  ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
-  epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph.sh "$MAX_ITERATIONS"
-  epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-  jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
-  assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
-    "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "tests/browser.test.mjs"
+  (
+    cd "$EPIC_REPO/scripts/ralph"
+    CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
+    ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
+    RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
+    cat > tasks/sprint-1/prd-epic-001.md <<'EOF'
+# Worst Case UI Multi-Story Epic
+
+## Summary
+
+Implement a bounded UI change for the existing page.
+
+## User Stories
+
+### US-001 - Update UI copy source
+As a user, I want the page copy updated so the new release message appears.
+
+Acceptance Criteria:
+- Update src/messages.ts so headline is Hello Sprint Ralph.
+- Update src/messages.ts so status text is Ready for review.
+- Update src/messages.ts so CTA label is View release notes.
+- Update src/messages.ts so state is ready.
+- Update tests/messages.test.mjs for the new copy.
+- Unit tests pass.
+- Typecheck passes.
+- Lint passes.
+
+### US-002 - Update DOM rendering contract
+As a user, I want the rendered UI to expose the updated copy and state.
+
+Acceptance Criteria:
+- Update src/render.ts so #status renders the status text and exposes the state value.
+- Update src/render.ts so #cta gets a matching title.
+- Update tests/render.test.mjs for the render contract.
+- Unit tests pass.
+- Typecheck passes.
+- Lint passes.
+
+### US-003 - Update regression coverage and browser verification
+As a developer, I want the tests and browser check updated so the bounded UI change is verified.
+
+Acceptance Criteria:
+- Update tests/browser.test.mjs so the browser contract verifies the new copy and state.
+- Verify #app, #status, and #cta in the browser, including status text, status state, and CTA title.
+- Keep source changes limited to src/messages.ts, src/render.ts, tests/messages.test.mjs, tests/render.test.mjs, and tests/browser.test.mjs.
+- Unit tests pass.
+- Typecheck passes.
+- Lint passes.
+EOF
+    ./ralph-epic.sh add \
+      --title "Worst Case UI Multi-Story Epic" \
+      --status planned \
+      --prd-path "scripts/ralph/tasks/sprint-1/prd-epic-001.md" \
+      > "$WORK_DIR/epic-add-epic.log" 2>&1
+    ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
+    : > prd.json
+    ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
+    commit_framework_baseline "$EPIC_REPO" "chore(worst-ui): pre-loop planning state"
+    epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
+    run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph.sh "$MAX_ITERATIONS"
+    epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
+    jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
+    assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
+      "scripts/ralph/sprints/sprint-1/epics.json" "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "tests/browser.test.mjs"
   grep -qF "$expected_headline" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
   grep -qF "$expected_status" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected status"
   grep -qF "$expected_cta" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
@@ -486,13 +572,14 @@ expected_state="ready"
 assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"
 assert_contains "$WORK_DIR/sprint-create-epic.log" "Created sprint: sprint-1"
 assert_contains "$WORK_DIR/epic-add-epic.log" "Added epic: EPIC-001"
-assert_contains "$WORK_DIR/epic-start-loop.log" "Active epic: EPIC-001"
+assert_contains "$WORK_DIR/status-epic-preloop.log" "Next action: run ./scripts/ralph/ralph.sh to auto-prime and start the next eligible epic."
 assert_contains "$WORK_DIR/loop-epic.log" "Iteration"
 assert_contains "$WORK_DIR/test-epic.log" "test ok"
 assert_contains "$WORK_DIR/runtime-epic.log" "browser ok: $expected_headline \| $expected_status \| $expected_cta \| $expected_state"
 
-planning_tokens="$(extract_tokens_from_log "$WORK_DIR/prime-epic.log")"
+planning_tokens="$(extract_preloop_tokens_from_log "$WORK_DIR/loop-epic.log")"
 loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-epic.log")"
+loop_tokens=$((loop_tokens - planning_tokens))
 iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-epic.log")"
 completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-epic.log")"
 total_tokens=$((planning_tokens + loop_tokens))

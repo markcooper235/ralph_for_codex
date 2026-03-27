@@ -16,7 +16,7 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 # Generate and convert PRD into scripts/ralph/prd.json
 ./ralph-prd.sh
 
-# Convert roadmap vision into sprint/epic backlogs
+# Plan a series of sprint backlogs over a broader scope
 ./ralph-roadmap.sh --vision "Roadmap from baseline to target state"
 
 # Refine an existing roadmap source and reconcile downstream sprint backlogs
@@ -30,12 +30,12 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 ./ralph-sprint.sh create sprint-2
 ./ralph-sprint.sh use sprint-1
 
-# Epic backlog sequencing helpers
+# Epic backlog sequencing helpers (manual/advanced)
 ./ralph-epic.sh list
 ./ralph-epic.sh start-next
 ./ralph-epic.sh add --title "My Epic" --effort 3 --depends-on EPIC-001 --prompt-context "Epic planning context"
 
-# Prime prd.json for active/next eligible epic
+# Prime prd.json for active/next eligible epic (normally called by ralph.sh)
 ./ralph-prime.sh
 
 # Run Ralph loop (from your project that has prd.json)
@@ -58,10 +58,10 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 ## Key Files
 
 - `ralph-prd.sh` - Interactive/non-interactive wrapper to create PRDs and convert to `prd.json`
-- `ralph-roadmap.sh` - Roadmap planner that turns a broad future-state vision into sprint backlogs with effort-bounded epics
+- `ralph-roadmap.sh` - Multi-sprint planner that turns a broad future-state vision into an organized series of sprint backlogs with effort-bounded epics
 - `roadmap-source.md` - Durable roadmap source that can be revised later; roadmap/sprint reconciliation flows from it
 - `ralph.sh` - The bash loop that spawns fresh Codex runs
-- `ralph-prime.sh` - Auto-selects/uses active epic and primes `prd.json` for loop startup
+- `ralph-prime.sh` - Internal/advanced helper that auto-selects/uses active epic and primes `prd.json` for loop startup; normal sprint runs use it through `ralph.sh`
 - `ralph-sprint.sh` - Sprint container and active sprint management (`create/use/status/add-epics`)
 - `ralph-epic.sh` - CLI to list/select/update epic order and status
 - `ralph-archive.sh` - Archive run artifacts into sprint/standalone task archives and reset `prd.json`
@@ -78,19 +78,35 @@ Ralph is an autonomous AI agent loop that runs Codex (`codex --yolo exec`) repea
 
 ## Recommended Flow
 
+Operator-facing modes:
+
+1. `standalone`
+2. `sprint`
+
+Roadmap planning is an extension of sprint mode. It plans an organized series of sprints, then normal sprint commands take over.
+
+Standalone:
+
 1. Run `./doctor.sh`
-2. If you changed local skills, run `./install.sh --install-skills` before PRD/prime runs
-3. Create the roadmap/sprint plan via `./ralph-roadmap.sh --vision "..."`
-4. Confirm active sprint via `./ralph-sprint.sh status` (or set one with `use/create`)
-5. Select next epic via `./ralph-epic.sh start-next`
-6. Prime loop input via `./ralph-prime.sh`
-7. Run loop via `./ralph.sh [max_iterations]`
-8. Run `./ralph-commit.sh` to archive + merge using mode-aware defaults (epic -> sprint branch, standalone -> base branch); epic runs auto-mark matching epic `done`
-9. Run `./ralph-sprint-commit.sh` when sprint epics are all done/abandoned
+2. If you changed local skills, run `./install.sh --install-skills` before planning
+3. Create the standalone PRD via `./ralph-prd.sh`
+4. Run the loop via `./ralph.sh [max_iterations]`
+5. Run `./ralph-commit.sh` to archive + merge the completed run
+
+Sprint:
+
+1. Run `./doctor.sh`
+2. If you changed local skills, run `./install.sh --install-skills` before planning
+3. Plan the sprint backlog via `./ralph-roadmap.sh --vision "..."` and confirm it with `./ralph-sprint.sh status`
+4. Run the loop via `./ralph.sh [max_iterations]`
+5. Run `./ralph-commit.sh` after each completed epic to archive + merge it
+6. Repeat loop + merge until sprint epics are all done/abandoned
+7. Run `./ralph-sprint-commit.sh` to close the sprint
 
 Epic lifecycle helpers:
 - `./ralph-epic.sh abandon EPIC-XXX "reason"` keeps epic for reference but excludes it from next/start-next
 - `./ralph-epic.sh remove EPIC-XXX` permanently removes an already-abandoned epic
+- Manual `start-next` or `ralph-prime.sh` runs are for recovery or advanced control; normal sprint flow should start with `./ralph.sh`
 
 Flowchart assets/source were removed because they are no longer valid for this repository. A new repo-specific flowchart may be added in the future.
 

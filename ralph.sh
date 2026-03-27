@@ -407,20 +407,41 @@ require_previous_run_archived() {
 }
 
 render_prompt() {
-  local ralph_dir prd_file progress_file local_prompt_file rendered_prompt_file
+  local ralph_dir prd_file progress_file local_prompt_file rendered_prompt_file prompt_template_file
+  local prompt_mode mode_overlay_file
   local handoff_prompt=""
   ralph_dir="$(escape_sed_replacement "$SCRIPT_DIR")"
   prd_file="$(escape_sed_replacement "$PRD_FILE")"
   progress_file="$(escape_sed_replacement "$PROGRESS_FILE")"
   local_prompt_file="$SCRIPT_DIR/prompt.local.md"
   rendered_prompt_file="$(mktemp)"
+  prompt_template_file="$(mktemp)"
   handoff_prompt="$(read_latest_iteration_handoff_prompt || true)"
+  prompt_mode="$(get_active_prd_mode || true)"
+
+  cat "$SCRIPT_DIR/prompt.md" >"$prompt_template_file"
+  case "$prompt_mode" in
+    epic)
+      mode_overlay_file="$SCRIPT_DIR/prompt.sprint.md"
+      ;;
+    standalone)
+      mode_overlay_file="$SCRIPT_DIR/prompt.standalone.md"
+      ;;
+    *)
+      mode_overlay_file=""
+      ;;
+  esac
+  if [ -n "$mode_overlay_file" ] && [ -f "$mode_overlay_file" ]; then
+    printf '\n\n' >>"$prompt_template_file"
+    cat "$mode_overlay_file" >>"$prompt_template_file"
+  fi
 
   sed \
     -e "s|{{RALPH_DIR}}|$ralph_dir|g" \
     -e "s|{{PRD_FILE}}|$prd_file|g" \
     -e "s|{{PROGRESS_FILE}}|$progress_file|g" \
-    "$SCRIPT_DIR/prompt.md" >"$rendered_prompt_file"
+    "$prompt_template_file" >"$rendered_prompt_file"
+  rm -f "$prompt_template_file"
 
   if ! file_has_non_whitespace "$local_prompt_file"; then
     cat "$rendered_prompt_file"
@@ -431,7 +452,7 @@ render_prompt() {
     return 0
   fi
 
-  if local_prompt_has_named_blocks "$local_prompt_file" && prompt_has_matching_local_marker "$local_prompt_file" "$SCRIPT_DIR/prompt.md"; then
+  if local_prompt_has_named_blocks "$local_prompt_file" && prompt_has_matching_local_marker "$local_prompt_file" "$rendered_prompt_file"; then
     inject_local_prompt_blocks "$local_prompt_file" "$rendered_prompt_file"
     if [ -n "$handoff_prompt" ]; then
       printf '\n\n%s\n' "$handoff_prompt"
