@@ -18,6 +18,9 @@ ITERATION_TRANSCRIPT_LATEST_FILE="$SCRIPT_DIR/.iteration-log-latest.txt"
 ITERATION_HANDOFF_LATEST_FILE="$SCRIPT_DIR/.iteration-handoff-latest.json"
 WORKSPACE_ROOT_PLAYWRIGHT_DIR="$WORKSPACE_ROOT/.playwright-cli"
 LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
+SPEC_CHECK="$SCRIPT_DIR/ralph-spec-check.sh"
+SPEC_STRENGTHEN="$SCRIPT_DIR/ralph-spec-strengthen.sh"
+SPEC_STRENGTHEN_ATTEMPTS=3
 
 AUTO_MODE=0
 REGEN_PRD=0
@@ -317,8 +320,10 @@ Requirements:
 3. Set \`branchName\` to: \`ralph/$sprint_slug/$epic_slug\`.
 4. Keep user stories small, ordered by dependency, and execution-ready.
 5. Include acceptance criteria with typecheck/lint/tests requirements.
-6. Add \`scopePaths\` arrays with exact repo-relative file paths when a story is tightly scoped; otherwise use empty arrays.
-7. Do not include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless they are explicitly required by the PRD.
+6. Preserve and reflect loop-ready execution details from the markdown, including first slice expectations, allowed supporting files, preserved invariants, and explicit verification proof obligations.
+7. Add \`scopePaths\` arrays proactively for realistic file families when the markdown makes them explicit, including configs, verifier scripts, package metadata, workflow files, and support files when they are naturally required by the story.
+8. Do not under-scope stories by omitting helper scripts, build scripts, configs, fixtures, package metadata, or supporting files that the markdown explicitly says are part of the slice.
+9. Keep the JSON compact. Do not inflate descriptions, notes, or acceptance criteria beyond what is required for unambiguous execution.
 
 Return only a short summary after writing the file.
 EOF
@@ -383,8 +388,15 @@ Requirements:
    - medium: 4-6 stories
 4. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
 5. Keep stories small, ordered by dependency, with clear acceptance criteria.
-6. Include explicit assumptions where context is ambiguous.
-7. Overwrite destination if it exists.
+6. Make the PRD loop-ready, not just product-descriptive. Include explicit sections for:
+   - \`## Execution Model\`
+   - \`## First Slice Expectations\`
+   - \`## Allowed Supporting Files\`
+   - \`## Preserved Invariants\`
+7. Keep the markdown concise and execution-focused. Prefer dense bullets over long prose and avoid repeated restatements of the same constraint.
+8. Each story must identify concrete slices, realistic support-file scope, and proof obligations rather than vague architecture themes.
+9. Include explicit assumptions where context is ambiguous.
+10. Overwrite destination if it exists.
 
 Return a short summary and the exact output path.
 EOF
@@ -422,6 +434,32 @@ prompt_no_eligible_epic() {
   exit 1
 }
 
+ensure_markdown_spec_ready() {
+  local markdown_path="$1"
+  local rel_path attempt=1
+
+  rel_path="${markdown_path#$WORKSPACE_ROOT/}"
+  while [ "$attempt" -le "$SPEC_STRENGTHEN_ATTEMPTS" ]; do
+    if "$SPEC_CHECK" "$markdown_path" >/dev/null; then
+      echo "Spec is loop-ready: $rel_path"
+      return 0
+    fi
+
+    echo "Spec check failed for $rel_path (attempt $attempt/$SPEC_STRENGTHEN_ATTEMPTS); strengthening..."
+    if ! "$SPEC_STRENGTHEN" "$markdown_path"; then
+      fail "Spec strengthening failed for $rel_path. Provide stronger context in the source PRD or epic promptContext and retry."
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  if "$SPEC_CHECK" "$markdown_path" >/dev/null; then
+    echo "Spec is loop-ready: $rel_path"
+    return 0
+  fi
+
+  fail "Spec for $rel_path is still too weak after $SPEC_STRENGTHEN_ATTEMPTS strengthening attempts. Provide stronger starting context and retry."
+}
+
 main() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -452,6 +490,8 @@ main() {
   require_cmd tr
   require_cmd git
   require_cmd "$CODEX_BIN"
+  require_cmd "$SPEC_CHECK"
+  require_cmd "$SPEC_STRENGTHEN"
   acquire_workflow_lock
   resolve_epics_file
   ensure_transient_files_not_tracked
@@ -510,6 +550,8 @@ main() {
   if [ ! -f "$WORKSPACE_ROOT/$source_prd" ]; then
     fail "Epic source PRD not found and no promptContext generation available: $source_prd"
   fi
+
+  ensure_markdown_spec_ready "$WORKSPACE_ROOT/$source_prd"
 
   echo "Priming Ralph from $next_epic using $source_prd (source=$source_mode) ..."
   convert_markdown_prd_to_json "$source_prd" "$next_epic" "$ACTIVE_SPRINT"

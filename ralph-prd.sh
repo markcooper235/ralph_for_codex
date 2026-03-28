@@ -11,6 +11,9 @@ CODEX_BIN="${CODEX_BIN:-codex}"
 PRD_JSON="${PRD_JSON_PATH:-$SCRIPT_DIR/prd.json}"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
+SPEC_CHECK="$SCRIPT_DIR/ralph-spec-check.sh"
+SPEC_STRENGTHEN="$SCRIPT_DIR/ralph-spec-strengthen.sh"
+SPEC_STRENGTHEN_ATTEMPTS=3
 
 # shellcheck source=./lib/editor-intake.sh
 source "$EDITOR_HELPER"
@@ -30,6 +33,10 @@ ASSUME_YES=0
 PRIMARY_GOAL="Not provided"
 TARGET_USERS="Not provided"
 SCOPE_LEVEL="Not provided"
+FIRST_SLICE_HINT="Not provided"
+INVARIANTS_HINT="Not provided"
+SUPPORTING_FILES_HINT="Not provided"
+PROOF_HINTS="Not provided"
 AUTO_COMPACT_SELECTED=0
 UI_SINGLE_SLICE_HINT=0
 
@@ -187,6 +194,57 @@ build_codex_exec_args() {
   else
     out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
   fi
+}
+
+convert_markdown_prd_to_json() {
+  local markdown_rel="$1"
+  local prompt codex_args=()
+
+  prompt=$(
+    cat <<EOF
+Use the \`ralph\` skill.
+
+Convert this loop-ready PRD markdown into Ralph JSON:
+- Source: \`$markdown_rel\`
+- Destination: \`$PRD_JSON_REL\`
+
+Requirements:
+1. Produce valid JSON with keys: project, branchName, description, userStories.
+2. Preserve the markdown's execution-ready details, especially first slice expectations, allowed supporting files, preserved invariants, and proof obligations.
+3. Keep user stories dependency-ordered and execution-ready.
+4. Add proactive \`scopePaths\` arrays when the markdown makes realistic support-file scope explicit, including config, package metadata, scripts, workflows, and tests when naturally required.
+5. Do not under-scope stories by omitting required support files that the markdown explicitly puts in scope.
+6. Keep the JSON concise and token-efficient. Avoid long descriptions or repetitive notes when shorter wording is equally precise.
+
+Return only a short summary after writing the file.
+EOF
+  )
+
+  build_codex_exec_args codex_args
+  printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"
+}
+
+ensure_markdown_spec_ready() {
+  local markdown_abs="$1"
+  local attempt=1
+
+  while [ "$attempt" -le "$SPEC_STRENGTHEN_ATTEMPTS" ]; do
+    if "$SPEC_CHECK" "$markdown_abs" >/dev/null; then
+      return 0
+    fi
+
+    log "Spec check failed for ${markdown_abs#$WORKSPACE_ROOT/} (attempt $attempt/$SPEC_STRENGTHEN_ATTEMPTS); strengthening..."
+    if ! "$SPEC_STRENGTHEN" "$markdown_abs"; then
+      fail "Spec strengthening failed for ${markdown_abs#$WORKSPACE_ROOT/}. Provide stronger starting context and retry."
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  if "$SPEC_CHECK" "$markdown_abs" >/dev/null; then
+    return 0
+  fi
+
+  fail "Spec for ${markdown_abs#$WORKSPACE_ROOT/} is still too weak after $SPEC_STRENGTHEN_ATTEMPTS strengthening attempts. Provide stronger starting context and retry."
 }
 
 commit_generated_prd_markdown_if_needed() {
@@ -427,7 +485,7 @@ collect_prd_intake_via_editor() {
     echo
     echo "# Notes"
     echo "- FEATURE_CONCEPT and HARD_CONSTRAINTS can be multi-line."
-    echo "- Keep PRIMARY_GOAL/TARGET_USERS/SCOPE_LEVEL as single-line summaries."
+    echo "- Keep PRIMARY_GOAL/TARGET_USERS/SCOPE_LEVEL/FIRST_SLICE_HINT as single-line summaries when possible."
   } > "$intake_file"
 
   if [ -n "$FEATURE_CONCEPT" ]; then
@@ -452,6 +510,7 @@ collect_prd_intake_via_editor() {
   PRIMARY_GOAL="$(printf '%s\n' "$intake_block" | kv_from_block "PRIMARY_GOAL" | trim_whitespace)"
   TARGET_USERS="$(printf '%s\n' "$intake_block" | kv_from_block "TARGET_USERS" | trim_whitespace)"
   SCOPE_LEVEL="$(printf '%s\n' "$intake_block" | kv_from_block "SCOPE_LEVEL" | trim_whitespace)"
+  FIRST_SLICE_HINT="$(printf '%s\n' "$intake_block" | kv_from_block "FIRST_SLICE_HINT" | trim_whitespace)"
 
   FEATURE_CONCEPT="$({
     printf '%s\n' "$intake_block" | awk '
@@ -464,6 +523,30 @@ collect_prd_intake_via_editor() {
   HARD_CONSTRAINTS="$({
     printf '%s\n' "$intake_block" | awk '
       /^HARD_CONSTRAINTS:[[:space:]]*$/ {in_section=1; next}
+      /^FIRST_SLICE_HINT:[[:space:]]*$/ {in_section=0}
+      in_section {print}
+    '
+  })"
+
+  INVARIANTS_HINT="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^INVARIANTS:[[:space:]]*$/ {in_section=1; next}
+      /^SUPPORTING_FILES:[[:space:]]*$/ {in_section=0}
+      in_section {print}
+    '
+  })"
+
+  SUPPORTING_FILES_HINT="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^SUPPORTING_FILES:[[:space:]]*$/ {in_section=1; next}
+      /^PROOF_HINTS:[[:space:]]*$/ {in_section=0}
+      in_section {print}
+    '
+  })"
+
+  PROOF_HINTS="$({
+    printf '%s\n' "$intake_block" | awk '
+      /^PROOF_HINTS:[[:space:]]*$/ {in_section=1; next}
       in_section {print}
     '
   })"
@@ -471,6 +554,10 @@ collect_prd_intake_via_editor() {
   PRIMARY_GOAL="${PRIMARY_GOAL:-Not provided}"
   TARGET_USERS="${TARGET_USERS:-Not provided}"
   SCOPE_LEVEL="${SCOPE_LEVEL:-Not provided}"
+  FIRST_SLICE_HINT="${FIRST_SLICE_HINT:-Not provided}"
+  INVARIANTS_HINT="${INVARIANTS_HINT:-Not provided}"
+  SUPPORTING_FILES_HINT="${SUPPORTING_FILES_HINT:-Not provided}"
+  PROOF_HINTS="${PROOF_HINTS:-Not provided}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -560,11 +647,17 @@ if [ -n "$REMOVE_TARGET" ]; then
 fi
 
 require_cmd "$CODEX_BIN"
+require_cmd "$SPEC_CHECK"
+require_cmd "$SPEC_STRENGTHEN"
 
 if [ "$QUICK_QUESTIONS_MODE" = "off" ]; then
   PRIMARY_GOAL="Not provided"
   TARGET_USERS="Not provided"
   SCOPE_LEVEL="Not provided"
+  FIRST_SLICE_HINT="Not provided"
+  INVARIANTS_HINT="Not provided"
+  SUPPORTING_FILES_HINT="Not provided"
+  PROOF_HINTS="Not provided"
 fi
 
 if [ -t 0 ] && { [ -z "$FEATURE_CONCEPT" ] || [ "$QUICK_QUESTIONS_MODE" != "off" ]; }; then
@@ -611,6 +704,10 @@ Quick clarifier answers (if provided):
 - Primary goal: $PRIMARY_GOAL
 - Target users: $TARGET_USERS
 - Scope level: $SCOPE_LEVEL
+- First slice hint: $FIRST_SLICE_HINT
+- Preserved invariants: $INVARIANTS_HINT
+- Supporting files: $SUPPORTING_FILES_HINT
+- Proof hints: $PROOF_HINTS
 
 Compact planning rules:
 1. Keep the PRD markdown concise and execution-focused.
@@ -630,15 +727,21 @@ Compact planning rules:
    - "Lint passes"
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
 11. For UI stories, include "Verify in browser using dev-browser skill".
-12. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-13. Add optional structured scope metadata:
+12. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
+   - \`## Execution Model\`
+   - \`## First Slice Expectations\`
+   - \`## Allowed Supporting Files\`
+   - \`## Preserved Invariants\`
+13. Keep the markdown concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
+14. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+15. Add structured scope metadata proactively:
    - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
-   - per-story \`scopePaths\`: exact repo-relative file paths for tightly scoped stories
-   - use empty arrays when exact file scope is not known
-14. Never include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless the feature explicitly requires changing them.
-15. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-16. Do not repeat the same summary twice.
-17. Final output must be 3 lines only:
+   - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
+   - use empty arrays only when exact scope genuinely is not knowable yet
+16. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
+17. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+18. Do not repeat the same summary twice.
+19. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`
@@ -674,6 +777,10 @@ Quick clarifier answers (if provided):
 - Primary goal: $PRIMARY_GOAL
 - Target users: $TARGET_USERS
 - Scope level: $SCOPE_LEVEL
+- First slice hint: $FIRST_SLICE_HINT
+- Preserved invariants: $INVARIANTS_HINT
+- Supporting files: $SUPPORTING_FILES_HINT
+- Proof hints: $PROOF_HINTS
 $SINGLE_SLICE_GUIDANCE
 
 Guidance:
@@ -692,16 +799,22 @@ Guidance:
    - "Lint passes"
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
 9. For UI stories, include "Verify in browser using dev-browser skill".
-10. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-11. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-12. Add optional structured scope metadata:
+10. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
+   - \`## Execution Model\`
+   - \`## First Slice Expectations\`
+   - \`## Allowed Supporting Files\`
+   - \`## Preserved Invariants\`
+11. Keep the markdown concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
+12. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+13. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+14. Add structured scope metadata proactively:
    - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
-   - per-story \`scopePaths\`: exact repo-relative file paths for tightly scoped stories
-   - use empty arrays when exact file scope is not known
-13. Never include helper scripts, build scripts, configs, fixtures, or package metadata in \`scopePaths\` unless the feature explicitly requires changing them.
-14. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-15. Do not repeat the same summary twice.
-16. Final output must be 3 lines only:
+   - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
+   - use empty arrays only when exact scope genuinely is not knowable yet
+15. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
+16. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+17. Do not repeat the same summary twice.
+18. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`
@@ -736,6 +849,9 @@ fi
 if [ ! -s "$WORKSPACE_ROOT/$PRD_MARKDOWN_PATH" ]; then
   fail "Generated PRD markdown missing or empty: $PRD_MARKDOWN_PATH"
 fi
+
+ensure_markdown_spec_ready "$WORKSPACE_ROOT/$PRD_MARKDOWN_PATH"
+convert_markdown_prd_to_json "$PRD_MARKDOWN_PATH"
 
 if [ ! -f "$PRD_JSON" ]; then
   fail "Expected prd.json at $PRD_JSON"

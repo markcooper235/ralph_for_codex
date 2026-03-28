@@ -13,4 +13,12 @@ FEATURE_CONCEPT:
 Describe the feature or requirement here.
 HARD_CONSTRAINTS:
 Optional hard constraints/dependencies.
+FIRST_SLICE_HINT:
+Name the first concrete slice if known.
+INVARIANTS:
+List behavior that must remain unchanged.
+SUPPORTING_FILES:
+List config/scripts/package/workflow/test files that are naturally in scope if known.
+PROOF_HINTS:
+List the strongest verification evidence expected if known.
 <!-- END INPUT -->

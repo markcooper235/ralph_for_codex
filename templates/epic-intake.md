@@ -17,5 +17,11 @@ GOAL:
 OPEN_QUESTION: None currently.
 PROMPT_CONTEXT:
 Provide conversation/prompt context for PRD story generation.
-Include rules references, scope boundaries, constraints, and desired story breakdown.
+Include:
+- rules/invariants that must not drift
+- the intended first slice or first migration order
+- realistic supporting file families that may need to move
+- verification proof expectations
+- explicit out-of-scope boundaries
+- any neighboring epics this one must not overlap with
 <!-- END INPUT -->
