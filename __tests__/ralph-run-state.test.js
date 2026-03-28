@@ -108,6 +108,35 @@ function chmodScripts(rootDir) {
   }
 }
 
+function removeIfExists(targetPath) {
+  fs.rmSync(targetPath, { recursive: true, force: true })
+}
+
+function resetCopiedRalphRuntimeArtifacts(repoDir) {
+  const ralphDir = path.join(repoDir, 'scripts/ralph')
+
+  for (const entry of fs.readdirSync(ralphDir)) {
+    if (
+      /^\.iteration-log(?:-iter-[0-9]+|-latest)?\.txt$/.test(entry) ||
+      /^\.iteration-handoff(?:-iter-[0-9]+|-latest)?\.json$/.test(entry)
+    ) {
+      removeIfExists(path.join(ralphDir, entry))
+    }
+  }
+
+  ;[
+    '.completion-state.json',
+    '.active-prd',
+    '.active-sprint',
+    '.last-branch',
+    '.workflow-lock',
+    'prd.json',
+    'progress.txt',
+  ].forEach(entry => removeIfExists(path.join(ralphDir, entry)))
+
+  removeIfExists(path.join(repoDir, '.playwright-cli'))
+}
+
 function installCodexStub(repoDir) {
   const binDir = path.join(repoDir, 'bin')
   const stubPath = path.join(binDir, 'codex')
@@ -377,6 +406,7 @@ function initTempRepo() {
     filter: (sourcePath) => !sourcePath.includes(`${path.sep}.git${path.sep}`) && !sourcePath.endsWith(`${path.sep}.git`),
   })
   chmodScripts(frameworkRoot)
+  resetCopiedRalphRuntimeArtifacts(repoDir)
 
   writeFile(
     path.join(repoDir, '.gitignore'),
@@ -430,7 +460,7 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
       2
     )
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), '# Test PRD\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
   writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
   writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE PROGRESS\n')
   writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/stale","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
@@ -771,7 +801,7 @@ test('ralph.sh resets stale progress when the previous branch was already archiv
       2
     )
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), '# Test PRD\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
   run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], {
     cwd: repoDir,
   })
@@ -876,7 +906,7 @@ test('ralph.sh cold-start primes the next epic before requiring a populated prd.
       2
     )
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), '# Test PRD\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
   writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '')
   run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], {
     cwd: repoDir,
@@ -969,7 +999,7 @@ test('ralph-prime and archive treat EPIC-R sprint branches as epic-mode runs', (
       2
     )
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'), '# Test PRD\n')
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'), buildLoopReadyMarkdownFixture('EPIC R Test PRD'))
   run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'], {
     cwd: repoDir,
   })
