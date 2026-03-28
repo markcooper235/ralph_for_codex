@@ -214,7 +214,8 @@ Requirements:
 3. Keep user stories dependency-ordered and execution-ready.
 4. Add proactive \`scopePaths\` arrays when the markdown makes realistic support-file scope explicit, including config, package metadata, scripts, workflows, and tests when naturally required.
 5. Do not under-scope stories by omitting required support files that the markdown explicitly puts in scope.
-6. Keep the JSON concise and token-efficient. Avoid long descriptions or repetitive notes when shorter wording is equally precise.
+6. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+7. Keep the JSON concise and token-efficient. Avoid long descriptions or repetitive notes when shorter wording is equally precise.
 
 Return only a short summary after writing the file.
 EOF
@@ -739,9 +740,10 @@ Compact planning rules:
    - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
    - use empty arrays only when exact scope genuinely is not knowable yet
 16. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
-17. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-18. Do not repeat the same summary twice.
-19. Final output must be 3 lines only:
+17. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+18. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+19. Do not repeat the same summary twice.
+20. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`
@@ -812,9 +814,10 @@ Guidance:
    - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
    - use empty arrays only when exact scope genuinely is not knowable yet
 15. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
-16. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-17. Do not repeat the same summary twice.
-18. Final output must be 3 lines only:
+16. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+17. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+18. Do not repeat the same summary twice.
+19. Final output must be 3 lines only:
    - \`PRD markdown path: ...\`
    - \`prd.json path: ...\`
    - \`Number of user stories created: ...\`

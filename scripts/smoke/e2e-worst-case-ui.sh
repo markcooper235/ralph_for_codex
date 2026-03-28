@@ -510,42 +510,82 @@ expected_state="ready"
 
 Implement a bounded UI change for the existing page.
 
+## Scope
+
+- Update the existing release copy in `src/messages.ts`.
+- Update the current render contract in `src/render.ts` without changing the entrypoint flow from `src/index.ts`.
+- Keep browser-proof wiring inside existing verification assets such as tests, verifier scripts, and package scripts when that support scope is required.
+
+## Out of Scope
+
+- Layout, styling, markup shape, or element ID changes.
+- New components, routes, data sources, or state models.
+- Any work outside the existing single-page flow driven by `src/index.ts`.
+
+## Execution Model
+
+- Start with the first slice in the exact source and proof files needed for the copy update, then move to the render contract, then finish browser-proof wiring.
+- Keep support scope explicit per story so targeted verification can pass without reopening earlier slices.
+- Verification pressure is strict: every story must leave typecheck, lint, tests, and the required browser proof in a runnable state for that slice.
+
+## First Slice Expectations
+
+- Exact source entrypoint: `src/messages.ts`.
+- Destination workflow: update the canonical copy/state source, align its directly inferred proof file, then advance to render-contract and browser-proof follow-ups.
+- Caller path remains `src/index.ts -> src/render.ts`; do not migrate callers or introduce new entrypoints.
+- Commands to prove the first slice: `npm test`, `npm run typecheck`, and `npm run lint`.
+
+## Allowed Supporting Files
+
+- Test files under `tests/` are in scope when targeted verification or proof obligations naturally require them.
+- Verifier scripts under `scripts/` and package scripts in `package.json` are in scope when browser verification wiring must remain intact.
+- Build, lint, and verification workflow/config support may be touched only when required to keep the bounded UI proof path working.
+
+## Preserved Invariants
+
+- `src/messages.ts` remains the canonical copy/state source.
+- `src/index.ts` remains the only runtime entrypoint and the existing DOM hooks remain unchanged.
+- The change must preserve the current single-page workflow and keep the verification contract stable and intact outside the bounded slice.
+
 ## User Stories
 
-### US-001 - Update UI copy source
+### Story US-001: Update UI copy source
 As a user, I want the page copy updated so the new release message appears.
 
-Acceptance Criteria:
-- Update src/messages.ts so headline is Hello Sprint Ralph.
-- Update src/messages.ts so status text is Ready for review.
-- Update src/messages.ts so CTA label is View release notes.
-- Update src/messages.ts so state is ready.
-- Update tests/messages.test.mjs for the new copy.
-- Unit tests pass.
-- Typecheck passes.
-- Lint passes.
+Acceptance Criteria
+- Must update `src/messages.ts` so headline is `Hello Sprint Ralph`, status text is `Ready for review`, CTA label is `View release notes`, and state is `ready`.
+- Must update `tests/messages.test.mjs` in the same story so targeted verification for `src/messages.ts` remains honest and passing.
+- Must keep the first slice limited to the canonical copy source and its directly inferred proof file.
+- Must prove the slice with `npm test`, `npm run typecheck`, and `npm run lint`.
 
-### US-002 - Update DOM rendering contract
+### Story US-002: Update DOM rendering contract
 As a user, I want the rendered UI to expose the updated copy and state.
 
-Acceptance Criteria:
-- Update src/render.ts so #status renders the status text and exposes the state value.
-- Update src/render.ts so #cta gets a matching title.
-- Update tests/render.test.mjs for the render contract.
-- Unit tests pass.
-- Typecheck passes.
-- Lint passes.
+Acceptance Criteria
+- Must update `src/render.ts` so `#status` renders the status text and exposes the state value while `#cta` gets a matching title.
+- Must update `tests/render.test.mjs` in the same story so the render-contract slice has passing targeted proof.
+- Must preserve the existing DOM hooks and caller path unchanged.
+- Must prove the slice with `npm test`, `npm run typecheck`, and `npm run lint`.
 
-### US-003 - Update regression coverage and browser verification
+### Story US-003: Update regression coverage and browser verification
 As a developer, I want the tests and browser check updated so the bounded UI change is verified.
 
-Acceptance Criteria:
-- Update tests/browser.test.mjs so the browser contract verifies the new copy and state.
-- Verify #app, #status, and #cta in the browser, including status text, status state, and CTA title.
-- Keep source changes limited to src/messages.ts, src/render.ts, tests/messages.test.mjs, tests/render.test.mjs, and tests/browser.test.mjs.
-- Unit tests pass.
-- Typecheck passes.
-- Lint passes.
+Acceptance Criteria
+- Must update `scripts/browser-check.mjs` or `package.json` only if browser verification wiring needs to rebuild or verify the current ready-state contract.
+- Must verify `#app`, `#status`, and `#cta` in the browser, including status text, status state, and CTA title.
+- Must keep support changes limited to the existing verifier script, package script wiring, and already-in-scope source/test files.
+- Must prove the final slice with `npm test`, `npm run typecheck`, `npm run lint`, and the browser verification command.
+
+## Refinement Checkpoints
+
+- Confirm each story owns the proof files that targeted verification will infer from its changed source files.
+- Keep browser-proof wiring in the final story unless earlier slices cannot pass without it.
+
+## Definition of Done
+
+- All stories pass with verification evidence recorded.
+- The bounded UI change remains inside the stated scope and preserved invariants.
+- The PRD is loop-ready without requiring strengthening before JSON conversion.
 EOF
     ./ralph-epic.sh add \
       --title "Worst Case UI Multi-Story Epic" \
@@ -561,7 +601,7 @@ EOF
     epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
     jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
     assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
-      "scripts/ralph/sprints/sprint-1/epics.json" "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "tests/browser.test.mjs"
+      "scripts/ralph/sprints/sprint-1/epics.json" "scripts/ralph/tasks/sprint-1/prd-epic-001.md" "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "scripts/browser-check.mjs" "package.json"
   grep -qF "$expected_headline" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
   grep -qF "$expected_status" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected status"
   grep -qF "$expected_cta" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected cta"

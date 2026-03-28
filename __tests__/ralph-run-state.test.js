@@ -47,6 +47,50 @@ function buildLoopHandoff({ status = 'completed', completionSignal = true, story
   ].join('\n')
 }
 
+function buildLoopReadyMarkdownFixture(title = 'Stub story') {
+  return [
+    '# PRD',
+    '',
+    '## Scope',
+    '- Deliver the requested stub workflow without broadening into unrelated framework changes.',
+    '',
+    '## Out of Scope',
+    '- No unrelated cleanup or roadmap reshaping.',
+    '',
+    '## Execution Model',
+    '- Start with the first slice in the exact source file path named below, keep support scope limited, and verify the slice before widening.',
+    '- Verification must prove the slice through typecheck, lint, and tests before Ralph advances.',
+    '',
+    '## First Slice Expectations',
+    '- Exact source entrypoint: scripts/ralph/tasks/stub-input.md.',
+    '- Destination workflow: update the generated PRD markdown and then convert it into scripts/ralph/prd.json.',
+    '- Commands to prove the slice: run typecheck, lint, and tests for the changed workflow.',
+    '',
+    '## Allowed Supporting Files',
+    '- package.json test and lint scripts are in scope when verification wiring needs to remain intact.',
+    '- Verification scripts, config files, and workflow helpers under scripts/ are allowed when they are required by the slice.',
+    '',
+    '## Preserved Invariants',
+    '- Existing Ralph workflow contracts remain stable and unchanged outside the requested slice.',
+    '- The generated plan must preserve canonical branch naming and intact verification expectations.',
+    '',
+    '## User Stories',
+    '',
+    '### Story US-001: ' + title,
+    'Acceptance Criteria',
+    '- Must update the exact source slice with execution-ready detail.',
+    '- Must preserve the required support-file workflow and verification commands.',
+    '- Must prove the result with typecheck, lint, and tests.',
+    '',
+    '## Refinement Checkpoints',
+    '- Confirm the first slice stays inside the named workflow and support scope.',
+    '',
+    '## Definition of Done',
+    '- Verification remains intact and the PRD is ready for Ralph loop execution.',
+    '',
+  ].join('\n')
+}
+
 function chmodScripts(rootDir) {
   const stack = [rootDir]
   while (stack.length > 0) {
@@ -150,7 +194,7 @@ const input = fs.readFileSync(0, 'utf8');
     require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped invalid change'], { cwd, stdio: 'pipe' });
   }
 
-  if (fs.existsSync(prdPath) && loopMode !== 'invalid-handoff') {
+  if (fs.existsSync(prdPath) && loopMode !== 'invalid-handoff' && loopMode !== 'blocked-targeted-test-scope') {
     const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
     if (Array.isArray(prd.userStories) && prd.userStories[0]) {
       prd.userStories[0].passes = true;
@@ -229,6 +273,19 @@ const input = fs.readFileSync(0, 'utf8');
       nextLoopAdvice: [],
       completionSignal: true,
     }) + '\\n</ralph_handoff>\\n');
+  } else if (loopMode === 'blocked-targeted-test-scope') {
+    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
+      status: 'blocked',
+      story: { id: 'US-001', title: 'Blocked story' },
+      summary: 'Targeted verification pulled in tests/messages.test.mjs.',
+      errors: ['./scripts/ralph/ralph-verify.sh --targeted fails in tests/messages.test.mjs because it still expects old copy.'],
+      directionChanges: ['US-001 needs tests/messages.test.mjs in scope.'],
+      verification: [],
+      filesChanged: ['src/messages.ts', 'src/render.ts'],
+      assumptions: [],
+      nextLoopAdvice: ['Allow tests/messages.test.mjs so targeted verification can pass.'],
+      completionSignal: false,
+    }) + '\\n</ralph_handoff>\\n');
   } else {
     fs.appendFileSync(
       progressPath,
@@ -238,6 +295,12 @@ const input = fs.readFileSync(0, 'utf8');
   }
 }
 if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
+  if (process.env.RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE === '1') {
+    if (!input.includes('include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths')) {
+      process.stderr.write('missing inferred proof-scope conversion rule\\n');
+      process.exit(20);
+    }
+  }
   const destination = (input.match(/Destination: \`([^\\\`]+)\`/) || [null, 'scripts/ralph/prd.json'])[1];
   const branchName = (input.match(/Set \`branchName\` to: \`([^\\\`]+)\`/) || [null, 'ralph/test/epic-001'])[1];
   const output = {
@@ -271,6 +334,12 @@ if (input.includes('Strengthen this existing PRD markdown in place so it becomes
   process.stdout.write('Status: strengthened\\nReason: Added loop-ready execution details.\\n');
 }
 if (input.includes('Create a complete Ralph planning package') || input.includes('Create a compact Ralph planning package')) {
+  if (process.env.RALPH_TEST_ASSERT_INFERRED_PROOF_SCOPE === '1') {
+    if (!input.includes('include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths')) {
+      process.stderr.write('missing inferred proof-scope planning rule\\n');
+      process.exit(19);
+    }
+  }
   const markdownPath = 'scripts/ralph/tasks/prds/prd-stub-feature.md';
   const jsonPath = 'scripts/ralph/prd.json';
   fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
@@ -993,6 +1062,129 @@ test('ralph-prd persists generated standalone markdown while keeping prd.json tr
     trackedPrdJson = false
   }
   assert.equal(trackedPrdJson, false)
+})
+
+test('ralph-prd prompt requires inferred proof files to stay in the same story scope', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_ASSERT_INFERRED_PROOF_SCOPE: '1',
+  }
+
+  run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+})
+
+test('ralph-prd markdown conversion prompt requires inferred proof files to stay in the same story scope', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE: '1',
+  }
+
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/prds/prd-stub-feature.md'), '# Stub PRD\n')
+  run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+})
+
+test('ralph-prime markdown conversion prompt requires inferred proof files to stay in the same story scope', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE: '1',
+  }
+
+  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'EPIC Test',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001.md'],
+            goal: 'Test goal',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Prime stub story'))
+  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
+
+  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+})
+
+test('ralph.sh auto-expands story scope with verification files from a blocked handoff', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'blocked-targeted-test-scope',
+  }
+
+  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Auto-scope blocked verifier test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Blocked story',
+            description: 'Blocked story',
+            scopePaths: ['src/messages.ts', 'src/render.ts'],
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+
+  const prd = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
+  assert.deepEqual(prd.userStories[0].scopePaths, ['src/messages.ts', 'src/render.ts', 'tests/messages.test.mjs'])
 })
 
 test('ralph.sh explicit-scope validator allows verification-only test expansion', () => {

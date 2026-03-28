@@ -1002,6 +1002,74 @@ all_allowed_scope_paths() {
   } | sed '/^$/d' | sort -u
 }
 
+handoff_text_values() {
+  local handoff_path="$1"
+  [ -f "$handoff_path" ] || return 1
+
+  jq -r '
+    [
+      (.summary // ""),
+      (.errors[]? // ""),
+      (.directionChanges[]? // ""),
+      (.verification[]? // ""),
+      (.assumptions[]? // ""),
+      (.nextLoopAdvice[]? // "")
+    ]
+    | map(select(type == "string" and length > 0))
+    | .[]
+  ' "$handoff_path" 2>/dev/null
+}
+
+extract_verification_paths_from_handoff() {
+  local handoff_path="$1"
+  handoff_text_values "$handoff_path" \
+    | grep -Eo '([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.[A-Za-z0-9]+' \
+    | while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if is_verification_only_path "$candidate"; then
+          printf '%s\n' "$candidate"
+        fi
+      done \
+    | sort -u
+}
+
+maybe_expand_story_scope_from_blocked_handoff() {
+  local handoff_path="${1:-$ITERATION_HANDOFF_LATEST_FILE}"
+  local story_id verification_paths_json verification_paths
+
+  [ -f "$PRD_FILE" ] || return 0
+  [ -f "$handoff_path" ] || return 0
+
+  if ! jq -e '.status == "blocked"' "$handoff_path" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  story_id="$(get_story_id_from_handoff "$handoff_path" || true)"
+  [ -n "$story_id" ] || return 0
+
+  verification_paths="$(extract_verification_paths_from_handoff "$handoff_path" || true)"
+  [ -n "$verification_paths" ] || return 0
+
+  verification_paths_json="$(printf '%s\n' "$verification_paths" | jq -Rsc 'split("\n") | map(select(length > 0))')"
+
+  if jq -e --arg story_id "$story_id" --argjson extra_paths "$verification_paths_json" '
+    any(.userStories[]?; .id == $story_id and (((.scopePaths // []) + $extra_paths) | unique) != (.scopePaths // []))
+  ' "$PRD_FILE" >/dev/null 2>&1; then
+    jq --arg story_id "$story_id" --argjson extra_paths "$verification_paths_json" '
+      .userStories |= map(
+        if .id == $story_id then
+          .scopePaths = (((.scopePaths // []) + $extra_paths) | unique)
+        else
+          .
+        end
+      )
+    ' "$PRD_FILE" > "${PRD_FILE}.tmp"
+    mv "${PRD_FILE}.tmp" "$PRD_FILE"
+    echo "Expanded $story_id scopePaths with verification files inferred from blocked handoff:"
+    printf '%s\n' "$verification_paths"
+  fi
+}
+
 is_helper_or_config_path() {
   local path="$1"
   printf '%s\n' "$path" | grep -Eq "$EXPLICIT_HELPER_PATH_PATTERN"
@@ -1620,6 +1688,7 @@ for ((i=START_ITERATION; i<=END_ITERATION; i++)); do
   if ! ensure_explicit_scope_worktree_valid "$CODEX_ITER_HANDOFF_FILE"; then
     exit 1
   fi
+  maybe_expand_story_scope_from_blocked_handoff "$CODEX_ITER_HANDOFF_FILE"
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
   if strict_completion_ready; then
     finalize_wrapper_completion "$i" "$branch_name"

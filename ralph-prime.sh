@@ -323,7 +323,8 @@ Requirements:
 6. Preserve and reflect loop-ready execution details from the markdown, including first slice expectations, allowed supporting files, preserved invariants, and explicit verification proof obligations.
 7. Add \`scopePaths\` arrays proactively for realistic file families when the markdown makes them explicit, including configs, verifier scripts, package metadata, workflow files, and support files when they are naturally required by the story.
 8. Do not under-scope stories by omitting helper scripts, build scripts, configs, fixtures, package metadata, or supporting files that the markdown explicitly says are part of the slice.
-9. Keep the JSON compact. Do not inflate descriptions, notes, or acceptance criteria beyond what is required for unambiguous execution.
+9. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+10. Keep the JSON compact. Do not inflate descriptions, notes, or acceptance criteria beyond what is required for unambiguous execution.
 
 Return only a short summary after writing the file.
 EOF
