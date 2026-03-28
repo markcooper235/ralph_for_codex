@@ -155,6 +155,21 @@ So the real answer is:
 - **execution path**: largely matches the gold path
 - **upfront roadmap planning path**: now materially matches the gold path
 
+## Simplified Golden Path
+
+The current repo now supports a much simpler operator story than earlier versions:
+
+1. Install Ralph into the target repo
+2. Run `doctor.sh`
+3. Choose one planning path:
+4. Standalone: `ralph-prd.sh`
+5. Sprint: `ralph-roadmap.sh`
+6. Run `ralph.sh`
+7. Run `ralph-commit.sh` after each completed PRD or epic
+8. In sprint mode, finish with `ralph-sprint-commit.sh`
+
+That is the documentation shape the repo should optimize around. Everything else is advanced control surface.
+
 ## Process Outline
 
 ### Fresh baseline to planning-ready
@@ -162,7 +177,7 @@ So the real answer is:
 1. Run [`install.sh`](../install.sh)
 2. Run [`doctor.sh`](../doctor.sh)
 3. Generate roadmap/sprint backlogs with [`ralph-roadmap.sh`](../ralph-roadmap.sh)
-4. Review/use sprint with [`ralph-sprint.sh`](../ralph-sprint.sh)
+4. Review or activate sprint with [`ralph-sprint.sh`](../ralph-sprint.sh)
 5. Refine epics manually with [`ralph-epic.sh`](../ralph-epic.sh) only when needed
 
 ### Planning phase
@@ -178,7 +193,7 @@ Standalone path:
 
 Epic path:
 
-1. Run [`ralph-prime.sh`](../ralph-prime.sh)
+1. Normal path: run [`ralph.sh`](../ralph.sh), which auto-calls [`ralph-prime.sh`](../ralph-prime.sh) when needed
 2. Next eligible epic is selected from `epics.json`-style backlog
 3. If needed, markdown PRD is generated from `promptContext`
 4. Markdown PRD is converted to transient `prd.json`
