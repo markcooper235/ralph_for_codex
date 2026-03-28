@@ -28,6 +28,7 @@ Commands:
   create <sprint-name>              Create sprint structure and open iterative epic intake
   remove <sprint-name> [options]    Remove sprint (archive by default)
   use <sprint-name>                 Set active sprint
+  next [--activate]                 Show the next unfinished sprint, optionally activate it
   branch <sprint-name>              Ensure sprint branch exists (ralph/sprint/<sprint-name>)
   status                            Show active sprint + readiness checks
   add-epic [sprint-name]            Add one epic using editor intake
@@ -227,6 +228,60 @@ legacy_archive_has_entries() {
 set_active_sprint() {
   local sprint="$1"
   echo "$sprint" > "$ACTIVE_SPRINT_FILE"
+}
+
+activate_sprint() {
+  local sprint="$1"
+  [ -f "$(sprint_epics_file "$sprint")" ] || fail "Sprint does not exist: $sprint"
+  ensure_sprint_branch_exists "$sprint"
+  set_active_sprint "$sprint"
+  echo "Active sprint set to: $sprint"
+  checkout_sprint_branch "$sprint"
+}
+
+sorted_sprints() {
+  [ -d "$SPRINTS_DIR" ] || return 0
+
+  find "$SPRINTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+    | awk '
+        match($0, /^sprint-([0-9]+)$/, m) {
+          printf "0\t%09d\t%s\n", m[1] + 0, $0
+          next
+        }
+        {
+          printf "1\t%s\t%s\n", $0, $0
+        }
+      ' \
+    | sort -t $'\t' -k1,1 -k2,2 \
+    | cut -f3
+}
+
+sprint_is_unfinished() {
+  local sprint="$1"
+  local epics_file
+  epics_file="$(sprint_epics_file "$sprint")"
+  [ -f "$epics_file" ] || return 1
+
+  jq -e '
+    (.epics | type) == "array" and (
+      (.activeEpicId // null) != null
+      or any(.epics[]?; (.status // "planned") as $status | ($status != "done" and $status != "abandoned"))
+      or (.epics | length == 0)
+    )
+  ' "$epics_file" >/dev/null 2>&1
+}
+
+find_next_sprint() {
+  local sprint
+  while IFS= read -r sprint; do
+    [ -n "$sprint" ] || continue
+    if sprint_is_unfinished "$sprint"; then
+      printf '%s\n' "$sprint"
+      return 0
+    fi
+  done < <(sorted_sprints)
+
+  return 1
 }
 
 next_epic_id() {
@@ -914,9 +969,7 @@ main() {
   local cmd="${1:-}"
   case "$cmd" in
     list)
-      if [ -d "$SPRINTS_DIR" ]; then
-        find "$SPRINTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
-      fi
+      sorted_sprints
       ;;
     create)
       shift
@@ -930,11 +983,29 @@ main() {
       [ $# -eq 2 ] || fail "Usage: use <sprint-name>"
       local sprint
       sprint="$(normalize_sprint_name "$2")"
-      [ -f "$(sprint_epics_file "$sprint")" ] || fail "Sprint does not exist: $sprint"
-      ensure_sprint_branch_exists "$sprint"
-      set_active_sprint "$sprint"
-      echo "Active sprint set to: $sprint"
-      checkout_sprint_branch "$sprint"
+      activate_sprint "$sprint"
+      ;;
+    next)
+      shift
+      local next_sprint activate
+      activate=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --activate)
+            activate=1
+            ;;
+          *)
+            fail "Usage: next [--activate]"
+            ;;
+        esac
+        shift
+      done
+
+      next_sprint="$(find_next_sprint)" || fail "No unfinished sprint found."
+      echo "$next_sprint"
+      if [ "$activate" -eq 1 ]; then
+        activate_sprint "$next_sprint"
+      fi
       ;;
     branch)
       [ $# -eq 2 ] || fail "Usage: branch <sprint-name>"

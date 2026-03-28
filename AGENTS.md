@@ -34,6 +34,8 @@ Roadmap planning is part of sprint mode. It plans ordered sprint backlogs; the r
 # Sprint / roadmap planning
 ./ralph-roadmap.sh --vision "Roadmap from baseline to target state"
 ./ralph-sprint.sh status
+./ralph-sprint.sh next
+./ralph-sprint.sh next --activate
 
 # Loop execution
 ./ralph.sh [max_iterations]

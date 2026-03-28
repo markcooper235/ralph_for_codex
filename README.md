@@ -175,6 +175,8 @@ See [README-local.md](README-local.md).
 ./ralph-roadmap.sh --vision "Roadmap from current state to target state"
 ./ralph-roadmap.sh --refine --revision-note "Adjust after new findings"
 ./ralph-sprint.sh status
+./ralph-sprint.sh next
+./ralph-sprint.sh next --activate
 ./ralph-sprint.sh create sprint-2
 ./ralph-sprint.sh use sprint-1
 

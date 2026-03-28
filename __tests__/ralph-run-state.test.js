@@ -290,6 +290,146 @@ test('ralph-prime resets stale progress and run artifacts for a new epic', () =>
   assert.equal(primed.branchName, 'ralph/sprint-test/epic-001')
 })
 
+test('ralph-sprint next returns the lowest-numbered unfinished sprint', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-1',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Finished epic',
+            priority: 1,
+            status: 'done',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
+            goal: 'Done',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-2',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Planned epic',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-2/prd-epic-001.md'],
+            goal: 'Next',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-10/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-10',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Later epic',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-10/prd-epic-001.md'],
+            goal: 'Later',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['next'], { cwd: repoDir })
+  assert.equal(output.trim(), 'sprint-2')
+})
+
+test('ralph-sprint next --activate selects and activates the next unfinished sprint', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-1',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Finished epic',
+            priority: 1,
+            status: 'done',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
+            goal: 'Done',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-2',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Active sprint epic',
+            priority: 1,
+            status: 'ready',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-2/prd-epic-001.md'],
+            goal: 'Activate',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['next', '--activate'], { cwd: repoDir })
+  assert.match(output, /^sprint-2$/m)
+  assert.match(output, /Active sprint set to: sprint-2/)
+  assert.match(output, /Checked out sprint branch: ralph\/sprint\/sprint-2/)
+  assert.equal(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'utf8'), 'sprint-2\n')
+  assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-2')
+})
+
 test('ralph-archive clears local run artifacts after archiving a completed run', () => {
   const repoDir = initTempRepo()
 
