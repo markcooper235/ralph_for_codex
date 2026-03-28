@@ -430,6 +430,75 @@ test('ralph-sprint next --activate selects and activates the next unfinished spr
   assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-2')
 })
 
+test('ralph-sprint next skips historic blocked-only sprints before the roadmap baseline', () => {
+  const repoDir = initTempRepo()
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/roadmap.json'),
+    JSON.stringify(
+      {
+        sprints: [
+          { name: 'sprint-3' },
+          { name: 'sprint-4' },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-1',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Historic blocked epic',
+            priority: 1,
+            status: 'blocked',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
+            goal: 'Blocked historic work',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-3/epics.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        project: 'tmp-ralph-test',
+        sprint: 'sprint-3',
+        activeEpicId: null,
+        epics: [
+          {
+            id: 'EPIC-001',
+            title: 'Baseline sprint epic',
+            priority: 1,
+            status: 'planned',
+            dependsOn: [],
+            prdPaths: ['scripts/ralph/tasks/sprint-3/prd-epic-001.md'],
+            goal: 'Current roadmap work',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['next'], { cwd: repoDir })
+  assert.equal(output.trim(), 'sprint-3')
+})
+
 test('ralph-archive clears local run artifacts after archiving a completed run', () => {
   const repoDir = initTempRepo()
 

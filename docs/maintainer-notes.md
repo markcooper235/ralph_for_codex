@@ -22,6 +22,7 @@ Use `AGENTS.md` for the broad operating model. Use this file when you need deepe
 - Fresh-install epics should include `promptContext` so `ralph-prime.sh` can generate missing PRD markdown when starter `prdPaths` are not yet on disk.
 - `ralph-sprint.sh status` should treat missing PRDs with `promptContext` as generatable warnings, and only fail for missing PRDs that cannot be generated.
 - `ralph-sprint.sh status` should report both `Active epic` and `Next epic` to avoid confusion when an epic is already active.
+- `ralph-sprint.sh next` should ignore pre-baseline roadmap sprints when their remaining epics are only `blocked`, so stale historic work does not outrank the current roadmap baseline.
 
 ## Prompt And Intake Policy
 

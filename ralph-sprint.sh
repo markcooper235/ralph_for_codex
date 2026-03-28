@@ -256,16 +256,66 @@ sorted_sprints() {
     | cut -f3
 }
 
+sprint_ordinal() {
+  local sprint="$1"
+  if [[ "$sprint" =~ ^sprint-([0-9]+)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+roadmap_baseline_sprint() {
+  local roadmap_file
+  roadmap_file="$SCRIPT_DIR/roadmap.json"
+  [ -f "$roadmap_file" ] || return 1
+
+  jq -r '
+    [.sprints[]?.name | select(test("^sprint-[0-9]+$"))]
+    | sort_by(capture("^sprint-(?<n>[0-9]+)$").n | tonumber)
+    | .[0] // empty
+  ' "$roadmap_file"
+}
+
+sprint_is_historic_for_auto_selection() {
+  local sprint="$1"
+  local sprint_num baseline_sprint baseline_num
+
+  sprint_num="$(sprint_ordinal "$sprint" || true)"
+  [ -n "$sprint_num" ] || return 1
+
+  baseline_sprint="$(roadmap_baseline_sprint || true)"
+  [ -n "$baseline_sprint" ] || return 1
+
+  baseline_num="$(sprint_ordinal "$baseline_sprint" || true)"
+  [ -n "$baseline_num" ] || return 1
+
+  [ "$sprint_num" -lt "$baseline_num" ]
+}
+
 sprint_is_unfinished() {
   local sprint="$1"
   local epics_file
+  local historic_for_auto_selection
   epics_file="$(sprint_epics_file "$sprint")"
   [ -f "$epics_file" ] || return 1
+  historic_for_auto_selection=false
+  if sprint_is_historic_for_auto_selection "$sprint"; then
+    historic_for_auto_selection=true
+  fi
 
-  jq -e '
+  jq -e --argjson historic_for_auto_selection "$historic_for_auto_selection" '
     (.epics | type) == "array" and (
       (.activeEpicId // null) != null
-      or any(.epics[]?; (.status // "planned") as $status | ($status != "done" and $status != "abandoned"))
+      or any(
+        .epics[]?;
+        (.status // "planned") as $status
+        | if $historic_for_auto_selection then
+            ($status != "done" and $status != "abandoned" and $status != "blocked")
+          else
+            ($status != "done" and $status != "abandoned")
+          end
+      )
       or (.epics | length == 0)
     )
   ' "$epics_file" >/dev/null 2>&1
