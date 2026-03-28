@@ -1075,13 +1075,66 @@ is_helper_or_config_path() {
   printf '%s\n' "$path" | grep -Eq "$EXPLICIT_HELPER_PATH_PATTERN"
 }
 
+scope_path_matches() {
+  local allowed_path="$1"
+  local candidate_path="$2"
+  local subtree_prefix
+
+  [ -n "$allowed_path" ] || return 1
+  [ -n "$candidate_path" ] || return 1
+
+  if [ "$candidate_path" = "$allowed_path" ]; then
+    return 0
+  fi
+
+  case "$candidate_path" in
+    $allowed_path)
+      return 0
+      ;;
+  esac
+
+  if [[ "$allowed_path" == *"/**/*" ]]; then
+    subtree_prefix="${allowed_path%/**/*}"
+    case "$candidate_path" in
+      "$subtree_prefix"/*)
+        return 0
+        ;;
+    esac
+  fi
+
+  if [[ "$allowed_path" == *"/**" ]]; then
+    subtree_prefix="${allowed_path%/**}"
+    case "$candidate_path" in
+      "$subtree_prefix"/*)
+        return 0
+        ;;
+    esac
+  fi
+
+  return 1
+}
+
+path_is_within_allowed_scope() {
+  local candidate_path="$1"
+  local allowed_path
+
+  while IFS= read -r allowed_path; do
+    [ -n "$allowed_path" ] || continue
+    if scope_path_matches "$allowed_path" "$candidate_path"; then
+      return 0
+    fi
+  done <<< "$2"
+
+  return 1
+}
+
 changed_paths_outside_scope() {
   local allowed_paths="$1"
   local changed_paths="$2"
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
+    if path_is_within_allowed_scope "$path" "$allowed_paths"; then
       continue
     fi
     if is_verification_only_path "$path"; then
@@ -1100,7 +1153,7 @@ changed_helper_paths_without_explicit_scope() {
     if ! is_helper_or_config_path "$path"; then
       continue
     fi
-    if printf '%s\n' "$allowed_paths" | grep -qx "$path"; then
+    if path_is_within_allowed_scope "$path" "$allowed_paths"; then
       continue
     fi
     printf '%s\n' "$path"
