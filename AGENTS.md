@@ -47,6 +47,8 @@ Roadmap planning is part of sprint mode. It plans ordered sprint backlogs; the r
 # Advanced / recovery helpers
 ./ralph-epic.sh list
 ./ralph-prime.sh
+./ralph-spec-check.sh scripts/ralph/tasks/prds/my-prd.md
+./ralph-spec-strengthen.sh scripts/ralph/tasks/prds/my-prd.md
 ./ralph-cleanup.sh --force
 ```
 
@@ -78,6 +80,8 @@ Normal sprint runs should start with `./ralph.sh`, not manual `ralph-prime.sh`. 
 - `ralph-sprint.sh` - Manage sprint containers and sprint readiness
 - `ralph-epic.sh` - Inspect or adjust epic backlog state
 - `ralph-prime.sh` - Advanced helper that primes `prd.json` from the active sprint backlog
+- `ralph-spec-check.sh` - Check whether a PRD markdown file is loop-ready for Ralph
+- `ralph-spec-strengthen.sh` - Strengthen a PRD markdown file in place until it is loop-ready
 - `ralph.sh` - Main clean-context loop
 - `ralph-verify.sh` - Targeted and full verification wrapper
 - `ralph-commit.sh` - Archive and merge a completed standalone PRD or sprint epic

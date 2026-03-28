@@ -186,6 +186,10 @@ See [README-local.md](README-local.md).
 ./ralph-epic.sh start-next
 ./ralph-epic.sh add --title "My Epic" --effort 3 --prompt-context "Planning context"
 
+# Spec helpers
+./ralph-spec-check.sh scripts/ralph/tasks/prds/my-prd.md
+./ralph-spec-strengthen.sh scripts/ralph/tasks/prds/my-prd.md
+
 # Loop / verification / closeout
 ./ralph.sh 10
 ./ralph-verify.sh --targeted
@@ -247,6 +251,8 @@ Notes:
 | `ralph-sprint.sh` | Manage sprint containers and sprint readiness |
 | `ralph-epic.sh` | Inspect and adjust epic backlog sequencing |
 | `ralph-prime.sh` | Prime `prd.json` from sprint backlog state |
+| `ralph-spec-check.sh` | Check whether a PRD markdown file is loop-ready for Ralph |
+| `ralph-spec-strengthen.sh` | Strengthen a PRD markdown file in place until it is loop-ready |
 | `ralph.sh` | Run the clean-context Codex loop |
 | `ralph-verify.sh` | Run targeted or full verification |
 | `ralph-commit.sh` | Archive and merge one completed PRD run |
