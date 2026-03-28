@@ -265,6 +265,7 @@ Notes:
 
 - Fresh installs seed `sprint-1`; create more sprints only when needed.
 - `ralph-sprint.sh status` reports both `Active epic` and `Next epic`.
+- `ralph-sprint.sh next` skips pre-baseline roadmap sprints when their only remaining epics are `blocked`, so stale historic work does not outrank the current roadmap sprint.
 - `ralph-archive.sh` has no `--help`; invoking it performs an archive run.
 - OpenSpec conversion is optional and does not change core Ralph loop behavior.
 - Keep `prompt.md` small because every loop iteration pays for it again.

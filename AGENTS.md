@@ -121,6 +121,7 @@ Transient and should remain untracked:
 - Completion is handoff-driven and finalized by Ralph itself in `.completion-state.json`.
 - `ralph-verify.sh --targeted` runs during iterations; `--full` is the final gate.
 - Explicit file-scoped tasks are lightly enforced at loop time; verification-oriented file expansion is allowed when needed.
+- `ralph-sprint.sh next` ignores pre-baseline roadmap sprints when their remaining epics are only `blocked`.
 - `prompt.local.md` is the right place for repo-specific behavior; marker-based local prompt injection is supported.
 - `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default unless `--keep` is passed.
 - `.active-prd` records `baseBranch`, and closeout should prefer it over merge-target guessing.

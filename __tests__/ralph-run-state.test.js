@@ -74,6 +74,49 @@ function installCodexStub(repoDir) {
 const fs = require('fs');
 const path = require('path');
 const args = process.argv.slice(2);
+function buildLoopReadyMarkdown(title = 'Stub story') {
+  return [
+    '# PRD',
+    '',
+    '## Scope',
+    '- Deliver the requested stub workflow without broadening into unrelated framework changes.',
+    '',
+    '## Out of Scope',
+    '- No unrelated cleanup or roadmap reshaping.',
+    '',
+    '## Execution Model',
+    '- Start with the first slice in the exact source file path named below, keep support scope limited, and verify the slice before widening.',
+    '- Verification must prove the slice through typecheck, lint, and tests before Ralph advances.',
+    '',
+    '## First Slice Expectations',
+    '- Exact source entrypoint: scripts/ralph/tasks/stub-input.md.',
+    '- Destination workflow: update the generated PRD markdown and then convert it into scripts/ralph/prd.json.',
+    '- Commands to prove the slice: run typecheck, lint, and tests for the changed workflow.',
+    '',
+    '## Allowed Supporting Files',
+    '- package.json test and lint scripts are in scope when verification wiring needs to remain intact.',
+    '- Verification scripts, config files, and workflow helpers under scripts/ are allowed when they are required by the slice.',
+    '',
+    '## Preserved Invariants',
+    '- Existing Ralph workflow contracts remain stable and unchanged outside the requested slice.',
+    '- The generated plan must preserve canonical branch naming and intact verification expectations.',
+    '',
+    '## User Stories',
+    '',
+    '### Story US-001: ' + title,
+    'Acceptance Criteria',
+    '- Must update the exact source slice with execution-ready detail.',
+    '- Must preserve the required support-file workflow and verification commands.',
+    '- Must prove the result with typecheck, lint, and tests.',
+    '',
+    '## Refinement Checkpoints',
+    '- Confirm the first slice stays inside the named workflow and support scope.',
+    '',
+    '## Definition of Done',
+    '- Verification remains intact and the PRD is ready for Ralph loop execution.',
+    '',
+  ].join('\\n');
+}
 if (args.includes('--help')) {
   process.stdout.write('Run Codex non-interactively\\n');
   process.exit(0);
@@ -171,13 +214,19 @@ if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
 if (input.includes('Generate a complete PRD markdown from this epic context and write it to:')) {
   const destination = (input.match(/write it to:\\n\`([^\\\`]+)\`/) || [null, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'])[1];
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.writeFileSync(destination, '# PRD\\n\\n## User Stories\\n\\n### US-001: Stub story\\n- Typecheck passes\\n- Lint passes\\n- Tests pass\\n');
+  fs.writeFileSync(destination, buildLoopReadyMarkdown('Stub story'));
+}
+if (input.includes('Strengthen this existing PRD markdown in place so it becomes loop-ready for Ralph:')) {
+  const destination = (input.match(/Ralph:\\n\`([^\\\`]+)\`/) || [null, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'])[1];
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.writeFileSync(destination, buildLoopReadyMarkdown('Strengthened stub story'));
+  process.stdout.write('Status: strengthened\\nReason: Added loop-ready execution details.\\n');
 }
 if (input.includes('Create a complete Ralph planning package') || input.includes('Create a compact Ralph planning package')) {
   const markdownPath = 'scripts/ralph/tasks/prds/prd-stub-feature.md';
   const jsonPath = 'scripts/ralph/prd.json';
   fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
-  fs.writeFileSync(markdownPath, '# PRD\\n\\n## User Stories\\n\\n### US-001: Stub story\\n- Typecheck passes\\n- Lint passes\\n- Tests pass\\n');
+  fs.writeFileSync(markdownPath, buildLoopReadyMarkdown('Stub story'));
   fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
   fs.writeFileSync(jsonPath, JSON.stringify({
     project: 'tmp-ralph-test',
