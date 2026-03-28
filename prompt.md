@@ -52,7 +52,7 @@ Then end with this exact wrapper:
 
 Handoff rules:
 - Use valid JSON only inside the wrapper.
-- Keep arrays to the most important 0-3 items.
+- Keep arrays to the most important 0-4 items.
 - Use `status: "completed"` with `completionSignal: true` only after full verification passes.
 - Do not spend an extra iteration on completion bookkeeping.
 

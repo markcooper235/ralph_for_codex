@@ -105,7 +105,7 @@ extract_preloop_tokens_from_log() {
       }
       return 0
     }
-    /Ralph Iteration [0-9]+ of [0-9]+/ { exit }
+    /Ralph Iteration [0-9]+ \(run step [0-9]+ of [0-9]+\)/ { exit }
     {
       line = $0
       lower = tolower(line)
@@ -140,7 +140,7 @@ extract_iteration_count_from_log() {
     echo 0
     return 0
   }
-  awk '/Ralph Iteration [0-9]+ of [0-9]+/ { count += 1 } END { print count + 0 }' "$log_file"
+  awk '/Ralph Iteration [0-9]+ \(run step [0-9]+ of [0-9]+\)/ { count += 1 } END { print count + 0 }' "$log_file"
 }
 
 extract_completed_iteration_from_log() {
@@ -149,7 +149,7 @@ extract_completed_iteration_from_log() {
     echo 0
     return 0
   }
-  awk 'match($0, /Completed at iteration ([0-9]+) of [0-9]+/, m) { completed = m[1] } END { print completed + 0 }' "$log_file"
+  awk 'match($0, /Completed at iteration ([0-9]+) \(run step [0-9]+ of [0-9]+\)/, m) { completed = m[1] } END { print completed + 0 }' "$log_file"
 }
 
 append_benchmark_row() {
@@ -562,7 +562,7 @@ Acceptance Criteria
 As a user, I want the rendered UI to expose the updated copy and state.
 
 Acceptance Criteria
-- Must update `src/render.ts` so `#status` renders the status text and exposes the state value while `#cta` gets a matching title.
+- Must update `src/render.ts` so `#status` renders the status text and exposes the state value while `#cta` gets a title that matches the CTA label/copy, not the status text.
 - Must update `tests/render.test.mjs` in the same story so the render-contract slice has passing targeted proof.
 - Must preserve the existing DOM hooks and caller path unchanged.
 - Must prove the slice with `npm test`, `npm run typecheck`, and `npm run lint`.
@@ -572,7 +572,7 @@ As a developer, I want the tests and browser check updated so the bounded UI cha
 
 Acceptance Criteria
 - Must update `scripts/browser-check.mjs` or `package.json` only if browser verification wiring needs to rebuild or verify the current ready-state contract.
-- Must verify `#app`, `#status`, and `#cta` in the browser, including status text, status state, and CTA title.
+- Must verify `#app`, `#status`, and `#cta` in the browser, including status text, status state, and CTA title matching the CTA label/copy.
 - Must keep support changes limited to the existing verifier script, package script wiring, and already-in-scope source/test files.
 - Must prove the final slice with `npm test`, `npm run typecheck`, `npm run lint`, and the browser verification command.
 

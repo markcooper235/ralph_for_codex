@@ -249,7 +249,7 @@ const input = fs.readFileSync(0, 'utf8');
       nextLoopAdvice: [],
       completionSignal: true,
     }) + '\\n</ralph_handoff>\\n');
-  } else if (loopMode === 'three-verification-completion') {
+  } else if (loopMode === 'four-verification-completion') {
     if (fs.existsSync(prdPath)) {
       const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
       if (Array.isArray(prd.userStories)) {
@@ -267,7 +267,7 @@ const input = fs.readFileSync(0, 'utf8');
       summary: 'Completed the second story.',
       errors: [],
       directionChanges: [],
-      verification: ['targeted passed', 'browser passed', 'full passed'],
+      verification: ['targeted passed', 'tests passed', 'browser passed', 'full passed'],
       filesChanged: ['src/render.ts'],
       assumptions: [],
       nextLoopAdvice: [],
@@ -1872,11 +1872,11 @@ test('ralph.sh preserves the model story when completion fallback follows an inv
   assert.equal(latestHandoff.completionSignal, true)
 })
 
-test('ralph.sh accepts completion handoffs with three verification entries', () => {
+test('ralph.sh accepts completion handoffs with four verification entries', () => {
   const repoDir = initTempRepo()
   const env = {
     PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'three-verification-completion',
+    RALPH_TEST_LOOP_MODE: 'four-verification-completion',
   }
 
   writeFile(
@@ -1898,7 +1898,7 @@ test('ralph.sh accepts completion handoffs with three verification entries', () 
       {
         project: 'tmp-ralph-test',
         branchName: 'ralph/test/standalone',
-        description: 'Three verification entries test.',
+        description: 'Four verification entries test.',
         userStories: [
           {
             id: 'US-001',

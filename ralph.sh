@@ -512,7 +512,7 @@ handoff_schema_is_valid() {
     and (.completionSignal | type == "boolean")
     and (
       [.errors, .directionChanges, .verification, .filesChanged, .assumptions, .nextLoopAdvice]
-      | all(.[]; type == "array" and length <= 3 and all(.[]; type == "string"))
+      | all(.[]; type == "array" and length <= 4 and all(.[]; type == "string"))
     )
     and (
       if .status == "no_change" then
