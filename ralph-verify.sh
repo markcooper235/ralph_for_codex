@@ -30,6 +30,10 @@ done
 
 cd "$WORKSPACE_ROOT"
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
 run_base_checks() {
   echo "[ralph-verify] running typecheck"
   npm run typecheck
@@ -45,7 +49,13 @@ collect_changed_files() {
 }
 
 list_repo_test_files() {
-  rg --files src app tests 2>/dev/null | rg '(^|/)(__tests__/.*|.*\.(test|spec)\.[^.]+)$' || true
+  if has_rg; then
+    rg --files src app tests 2>/dev/null | rg '(^|/)(__tests__/.*|.*\.(test|spec)\.[^.]+)$' || true
+  else
+    find src app tests -type f 2>/dev/null \
+      | sed 's#^\./##' \
+      | grep -E '(^|/)(__tests__/.*|.*\.(test|spec)\.[^.]+)$' || true
+  fi
 }
 
 append_matching_tests_for_source() {

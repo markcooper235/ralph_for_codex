@@ -24,25 +24,45 @@ fail() {
   exit 1
 }
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
 section_exists() {
   local heading="$1"
   local file="$2"
-  rg -q "^## ${heading}\$" "$file"
+  if has_rg; then
+    rg -q "^## ${heading}\$" "$file"
+  else
+    grep -Eq "^## ${heading}\$" "$file"
+  fi
 }
 
 count_story_headings() {
   local file="$1"
-  rg -c '^### Story ' "$file"
+  if has_rg; then
+    rg -c '^### Story ' "$file"
+  else
+    grep -Ec '^### Story ' "$file" || true
+  fi
 }
 
 count_acceptance_headings() {
   local file="$1"
-  rg -c '^Acceptance Criteria$' "$file"
+  if has_rg; then
+    rg -c '^Acceptance Criteria$' "$file"
+  else
+    grep -Ec '^Acceptance Criteria$' "$file" || true
+  fi
 }
 
 count_must_bullets() {
   local file="$1"
-  rg -c '^- Must ' "$file"
+  if has_rg; then
+    rg -c '^- Must ' "$file"
+  else
+    grep -Ec '^- Must ' "$file" || true
+  fi
 }
 
 section_body() {
@@ -109,30 +129,55 @@ main() {
   fi
 
   execution_body="$(section_body "Execution Model" "$file")"
-  if ! printf '%s\n' "$execution_body" | rg -qi 'first slice|support|scope|verify|verification'; then
+  if has_rg; then
+    if ! printf '%s\n' "$execution_body" | rg -qi 'first slice|support|scope|verify|verification'; then
+      report_issue "Execution Model must describe slice order, supporting scope, or verification pressure"
+      issue_count=$((issue_count + 1))
+    fi
+  elif ! printf '%s\n' "$execution_body" | grep -Eqi 'first slice|support|scope|verify|verification'; then
     report_issue "Execution Model must describe slice order, supporting scope, or verification pressure"
     issue_count=$((issue_count + 1))
   fi
 
   first_slice_body="$(section_body "First Slice Expectations" "$file")"
-  if ! printf '%s\n' "$first_slice_body" | rg -qi 'exact source|destination|entrypoint|caller migration|caller set|workflow|commands'; then
+  if has_rg; then
+    if ! printf '%s\n' "$first_slice_body" | rg -qi 'exact source|destination|entrypoint|caller migration|caller set|workflow|commands'; then
+      report_issue "First Slice Expectations must name exact source/destination/caller or workflow/command details"
+      issue_count=$((issue_count + 1))
+    fi
+  elif ! printf '%s\n' "$first_slice_body" | grep -Eqi 'exact source|destination|entrypoint|caller migration|caller set|workflow|commands'; then
     report_issue "First Slice Expectations must name exact source/destination/caller or workflow/command details"
     issue_count=$((issue_count + 1))
   fi
 
   allowed_body="$(section_body "Allowed Supporting Files" "$file")"
-  if ! printf '%s\n' "$allowed_body" | rg -qi 'project\.json|nx\.json|package\.json|lint|test|verify|workflow|config|script'; then
+  if has_rg; then
+    if ! printf '%s\n' "$allowed_body" | rg -qi 'project\.json|nx\.json|package\.json|lint|test|verify|workflow|config|script'; then
+      report_issue "Allowed Supporting Files must proactively name realistic support file families"
+      issue_count=$((issue_count + 1))
+    fi
+  elif ! printf '%s\n' "$allowed_body" | grep -Eqi 'project\.json|nx\.json|package\.json|lint|test|verify|workflow|config|script'; then
     report_issue "Allowed Supporting Files must proactively name realistic support file families"
     issue_count=$((issue_count + 1))
   fi
 
   invariants_body="$(section_body "Preserved Invariants" "$file")"
-  if ! printf '%s\n' "$invariants_body" | rg -qi 'remain|preserve|unchanged|mandatory|canonical|intact|stable'; then
+  if has_rg; then
+    if ! printf '%s\n' "$invariants_body" | rg -qi 'remain|preserve|unchanged|mandatory|canonical|intact|stable'; then
+      report_issue "Preserved Invariants must name behaviors or rules that cannot drift"
+      issue_count=$((issue_count + 1))
+    fi
+  elif ! printf '%s\n' "$invariants_body" | grep -Eqi 'remain|preserve|unchanged|mandatory|canonical|intact|stable'; then
     report_issue "Preserved Invariants must name behaviors or rules that cannot drift"
     issue_count=$((issue_count + 1))
   fi
 
-  if rg -qi 'where appropriate|as needed|if helpful|if applicable' "$file"; then
+  if has_rg; then
+    if rg -qi 'where appropriate|as needed|if helpful|if applicable' "$file"; then
+      report_issue "Spec still contains vague guidance phrases that often cause loop churn"
+      issue_count=$((issue_count + 1))
+    fi
+  elif grep -Eqi 'where appropriate|as needed|if helpful|if applicable' "$file"; then
     report_issue "Spec still contains vague guidance phrases that often cause loop churn"
     issue_count=$((issue_count + 1))
   fi

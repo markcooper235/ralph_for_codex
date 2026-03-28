@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TMPDIR_MATRIX=""
 
+has_rg() {
+  command -v rg >/dev/null 2>&1
+}
+
 run_case() {
   local tmpdir="$1"
   local name="$2"
@@ -41,7 +45,11 @@ run_case() {
   local default_compact_prompt="no"
   local compact_prompt="no"
 
-  if rg -q "compact Ralph planning package" "$prompt_file"; then
+  if has_rg; then
+    if rg -q "compact Ralph planning package" "$prompt_file"; then
+      default_compact_prompt="yes"
+    fi
+  elif grep -q "compact Ralph planning package" "$prompt_file"; then
     default_compact_prompt="yes"
   fi
 
@@ -62,7 +70,11 @@ run_case() {
         >"$compact_stdout_file" 2>"$compact_stderr_file"
   )
 
-  if rg -q "compact Ralph planning package" "$compact_prompt_file"; then
+  if has_rg; then
+    if rg -q "compact Ralph planning package" "$compact_prompt_file"; then
+      compact_prompt="yes"
+    fi
+  elif grep -q "compact Ralph planning package" "$compact_prompt_file"; then
     compact_prompt="yes"
   fi
   [ "$compact_prompt" = "yes" ] || {
