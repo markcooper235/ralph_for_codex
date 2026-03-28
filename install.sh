@@ -150,6 +150,8 @@ copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
 copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
 copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
 copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
+copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
+copy_file "$SOURCE_DIR/ralph-spec-strengthen.sh" "$DEST_DIR_REL/ralph-spec-strengthen.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
@@ -179,6 +181,8 @@ chmod +x \
   "$DEST_DIR_REL/ralph-epic.sh" \
   "$DEST_DIR_REL/ralph-roadmap.sh" \
   "$DEST_DIR_REL/ralph-prime.sh" \
+  "$DEST_DIR_REL/ralph-spec-check.sh" \
+  "$DEST_DIR_REL/ralph-spec-strengthen.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \

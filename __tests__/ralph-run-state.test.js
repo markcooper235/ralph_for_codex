@@ -181,6 +181,54 @@ const input = fs.readFileSync(0, 'utf8');
     );
     process.stdout.write('<ralph_handoff>\\n{"status":"no_change","story":{"id":"US-000","title":"Example"},"summary":"Prompt example.","errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[],"completionSignal":false}\\n</ralph_handoff>\\n');
     process.stdout.write(${JSON.stringify(buildLoopHandoff())});
+  } else if (loopMode === 'invalid-completion-schema') {
+    if (fs.existsSync(prdPath)) {
+      const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
+      if (Array.isArray(prd.userStories)) {
+        for (const story of prd.userStories) story.passes = true;
+        fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+      }
+    }
+    fs.appendFileSync(
+      progressPath,
+      '\\n## [2026-03-22 17:30:01 EDT] - [US-002]\\n- Implemented: Completed second story\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
+    );
+    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
+      status: 'completed',
+      story: { id: 'US-002', title: 'Second story' },
+      summary: 'Completed the second story.',
+      errors: [],
+      directionChanges: [],
+      verification: ['targeted passed', 'browser passed', 'full passed', 'post-check passed'],
+      filesChanged: ['src/render.ts'],
+      assumptions: [],
+      nextLoopAdvice: [],
+      completionSignal: true,
+    }) + '\\n</ralph_handoff>\\n');
+  } else if (loopMode === 'three-verification-completion') {
+    if (fs.existsSync(prdPath)) {
+      const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
+      if (Array.isArray(prd.userStories)) {
+        for (const story of prd.userStories) story.passes = true;
+        fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+      }
+    }
+    fs.appendFileSync(
+      progressPath,
+      '\\n## [2026-03-22 17:30:01 EDT] - [US-002]\\n- Implemented: Completed second story\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
+    );
+    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
+      status: 'completed',
+      story: { id: 'US-002', title: 'Second story' },
+      summary: 'Completed the second story.',
+      errors: [],
+      directionChanges: [],
+      verification: ['targeted passed', 'browser passed', 'full passed'],
+      filesChanged: ['src/render.ts'],
+      assumptions: [],
+      nextLoopAdvice: [],
+      completionSignal: true,
+    }) + '\\n</ralph_handoff>\\n');
   } else {
     fs.appendFileSync(
       progressPath,
@@ -1566,6 +1614,131 @@ test('ralph.sh extracts the last handoff block from the transcript', () => {
   assert.match(output, /Ralph completed all tasks!/)
   const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
   assert.equal(latestHandoff.story.id, 'US-001')
+  assert.equal(latestHandoff.status, 'completed')
+  assert.equal(latestHandoff.completionSignal, true)
+})
+
+test('ralph.sh preserves the model story when completion fallback follows an invalid handoff schema', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'invalid-completion-schema',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Fallback story preservation test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'First story',
+            description: 'First story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+          {
+            id: 'US-002',
+            title: 'Second story',
+            description: 'Second story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 2,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.story.id, 'US-002')
+  assert.equal(latestHandoff.story.title, 'Second story')
+  assert.equal(latestHandoff.status, 'completed')
+  assert.equal(latestHandoff.completionSignal, true)
+})
+
+test('ralph.sh accepts completion handoffs with three verification entries', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_LOOP_MODE: 'three-verification-completion',
+  }
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/.active-prd'),
+    JSON.stringify(
+      {
+        mode: 'standalone',
+        baseBranch: 'master',
+        sourcePath: 'scripts/ralph/prd.json',
+        activatedAt: '2026-03-22T17:30:00-04:00',
+      },
+      null,
+      2
+    )
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test/standalone',
+        description: 'Three verification entries test.',
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'First story',
+            description: 'First story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+          },
+          {
+            id: 'US-002',
+            title: 'Second story',
+            description: 'Second story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 2,
+            passes: false,
+            notes: '',
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+
+  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  assert.match(output, /Ralph completed all tasks!/)
+  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
+  assert.equal(latestHandoff.story.id, 'US-002')
+  assert.equal(latestHandoff.story.title, 'Second story')
+  assert.doesNotMatch(latestHandoff.summary, /invalid handoff schema/i)
   assert.equal(latestHandoff.status, 'completed')
   assert.equal(latestHandoff.completionSignal, true)
 })

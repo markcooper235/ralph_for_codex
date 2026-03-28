@@ -512,7 +512,7 @@ handoff_schema_is_valid() {
     and (.completionSignal | type == "boolean")
     and (
       [.errors, .directionChanges, .verification, .filesChanged, .assumptions, .nextLoopAdvice]
-      | all(.[]; type == "array" and length <= 2 and all(.[]; type == "string"))
+      | all(.[]; type == "array" and length <= 3 and all(.[]; type == "string"))
     )
     and (
       if .status == "no_change" then
@@ -567,7 +567,7 @@ latest_completed_story_context() {
   [ -f "$PROGRESS_FILE" ] || return 0
   awk '
     /^## / {
-      if (match($0, /^## .* - (US-[0-9]+)/, parts)) {
+      if (match($0, /^## .* - \[?(US-[0-9]+)\]?/, parts)) {
         latest = parts[1]
       }
     }
@@ -602,9 +602,15 @@ write_fallback_handoff() {
   local error_message="${7:-}"
   local next_advice="${8:-}"
   local completion="${9:-false}"
+  local preferred_story_id="${10:-}"
+  local preferred_story_title="${11:-}"
   local story_context="" story_id story_title latest_completed_story_id
 
-  if [ "$status" = "completed" ] && [ "$completion" = "true" ]; then
+  if [ -n "$preferred_story_id" ] || [ -n "$preferred_story_title" ]; then
+    story_context="${preferred_story_id}"$'\t'"${preferred_story_title}"
+  fi
+
+  if [ -z "$story_context" ] && [ "$status" = "completed" ] && [ "$completion" = "true" ]; then
     latest_completed_story_id="$(latest_completed_story_context)"
     story_context="$(story_context_from_story_id "$latest_completed_story_id")"
   fi
@@ -680,9 +686,16 @@ finalize_handoff_json() {
   local timestamp="$3"
   local branch="$4"
   local source_json="$5"
-  local tmp_json
+  local tmp_json source_story_id source_story_title
 
   tmp_json="$(mktemp)"
+  source_story_id=""
+  source_story_title=""
+
+  if [ -n "$source_json" ] && printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
+    source_story_id="$(printf '%s\n' "$source_json" | jq -r 'if (.story | type == "object") then (.story.id // "") else "" end' 2>/dev/null || true)"
+    source_story_title="$(printf '%s\n' "$source_json" | jq -r 'if (.story | type == "object") then (.story.title // "") else "" end' 2>/dev/null || true)"
+  fi
 
   if [ -n "$source_json" ] && ! printf '%s\n' "$source_json" | jq -e '.' >/dev/null 2>&1; then
     if handoff_completion_evidence_present; then
@@ -708,12 +721,12 @@ finalize_handoff_json() {
 
     if ! handoff_schema_is_valid "$tmp_json"; then
       if handoff_completion_evidence_present; then
-        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "completed" "Completion inferred from Ralph state despite invalid handoff schema." "" "" true
+        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "completed" "Completion inferred from Ralph state despite invalid handoff schema." "" "" true "$source_story_id" "$source_story_title"
       else
-        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration emitted an invalid structured handoff." "Invalid handoff schema emitted; review latest transcript." "Emit a valid handoff schema with consistent status and completion fields." false
+        write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration emitted an invalid structured handoff." "Invalid handoff schema emitted; review latest transcript." "Emit a valid handoff schema with consistent status and completion fields." false "$source_story_id" "$source_story_title"
       fi
     elif ! handoff_completion_state_is_valid "$tmp_json"; then
-      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration claimed completion without matching Ralph state." "Completion handoff disagreed with PRD/progress state." "Only mark completion after stories pass and a completion entry is recorded." false
+      write_fallback_handoff "$tmp_json" "$iteration" "$timestamp" "$branch" "blocked" "Iteration claimed completion without matching Ralph state." "Completion handoff disagreed with PRD/progress state." "Only mark completion after stories pass and a completion entry is recorded." false "$source_story_id" "$source_story_title"
     fi
   else
     if handoff_completion_evidence_present; then
