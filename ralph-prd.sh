@@ -196,6 +196,70 @@ build_codex_exec_args() {
   fi
 }
 
+planning_context_block() {
+  cat <<EOF
+Feature concept:
+$FEATURE_CONCEPT
+
+Hard constraints/dependencies (if any):
+${HARD_CONSTRAINTS:-None provided}
+
+Quick clarifier answers (if provided):
+- Primary goal: $PRIMARY_GOAL
+- Target users: $TARGET_USERS
+- Scope level: $SCOPE_LEVEL
+- First slice hint: $FIRST_SLICE_HINT
+- Preserved invariants: $INVARIANTS_HINT
+- Supporting files: $SUPPORTING_FILES_HINT
+- Proof hints: $PROOF_HINTS
+EOF
+}
+
+planning_output_contract_block() {
+  cat <<EOF
+Required outputs:
+- Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
+- Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
+- Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
+EOF
+}
+
+planning_shared_rules_block() {
+  cat <<'EOF'
+Shared rules:
+1. Fit the PRD into 1-6 executable stories.
+2. Use task classes that naturally fit that range:
+   - micro: 1 story
+   - small: 2-3 stories
+   - medium: 4-6 stories
+3. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
+4. Every story must be dependency-ordered and execution-ready.
+5. Every story acceptance criteria must include:
+   - "Typecheck passes"
+   - "Lint passes"
+   - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
+6. For UI stories, include "Verify in browser using dev-browser skill".
+7. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
+   - `## Execution Model`
+   - `## First Slice Expectations`
+   - `## Allowed Supporting Files`
+   - `## Preserved Invariants`
+8. Add structured scope metadata proactively:
+   - top-level `scopePaths`: exact repo-relative file paths only when the whole PRD is tightly scoped
+   - per-story `scopePaths`: exact repo-relative file paths or support-file families made explicit by the markdown
+   - use empty arrays only when exact scope genuinely is not knowable yet
+9. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in `scopePaths` when the feature explicitly or naturally requires them.
+10. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+11. Keep the markdown and JSON concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
+12. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+13. Do not repeat the same summary twice.
+14. Final output must be 3 lines only:
+   - `PRD markdown path: ...`
+   - `prd.json path: ...`
+   - `Number of user stories created: ...`
+EOF
+}
+
 convert_markdown_prd_to_json() {
   local markdown_rel="$1"
   local prompt codex_args=()
@@ -688,6 +752,10 @@ if [[ "$PRD_JSON" == "$WORKSPACE_ROOT/"* ]]; then
   PRD_JSON_REL="${PRD_JSON#$WORKSPACE_ROOT/}"
 fi
 
+PROMPT_CONTEXT="$(planning_context_block)"
+PROMPT_OUTPUTS="$(planning_output_contract_block)"
+PROMPT_SHARED_RULES="$(planning_shared_rules_block)"
+
 if [ "$COMPACT_MODE" -eq 1 ]; then
 PROMPT=$(
   cat <<PROMPT_EOF
@@ -695,58 +763,17 @@ Use the \`prd\` skill and then the \`ralph\` skill, in that order.
 
 Create a compact Ralph planning package for a tightly scoped change.
 
-Feature concept:
-$FEATURE_CONCEPT
-
-Hard constraints/dependencies (if any):
-${HARD_CONSTRAINTS:-None provided}
-
-Quick clarifier answers (if provided):
-- Primary goal: $PRIMARY_GOAL
-- Target users: $TARGET_USERS
-- Scope level: $SCOPE_LEVEL
-- First slice hint: $FIRST_SLICE_HINT
-- Preserved invariants: $INVARIANTS_HINT
-- Supporting files: $SUPPORTING_FILES_HINT
-- Proof hints: $PROOF_HINTS
+$PROMPT_CONTEXT
 
 Compact planning rules:
 1. Keep the PRD markdown concise and execution-focused.
 2. Prefer the fewest dependency-ordered stories that still keep verification evidence honest.
-3. Fit the PRD into 1-6 executable stories.
-4. Use task classes that naturally fit that range:
-   - micro: 1 story
-   - small: 2-3 stories
-   - medium: 4-6 stories
-5. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
-6. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
-7. Avoid long narrative sections or speculative detail.
-8. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
-9. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-10. Every story acceptance criteria must include:
-   - "Typecheck passes"
-   - "Lint passes"
-   - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-11. For UI stories, include "Verify in browser using dev-browser skill".
-12. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
-   - \`## Execution Model\`
-   - \`## First Slice Expectations\`
-   - \`## Allowed Supporting Files\`
-   - \`## Preserved Invariants\`
-13. Keep the markdown concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
-14. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-15. Add structured scope metadata proactively:
-   - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
-   - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
-   - use empty arrays only when exact scope genuinely is not knowable yet
-16. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
-17. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
-18. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-19. Do not repeat the same summary twice.
-20. Final output must be 3 lines only:
-   - \`PRD markdown path: ...\`
-   - \`prd.json path: ...\`
-   - \`Number of user stories created: ...\`
+3. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
+4. Avoid long narrative sections or speculative detail.
+
+$PROMPT_OUTPUTS
+
+$PROMPT_SHARED_RULES
 
 Return only those 3 lines.
 PROMPT_EOF
@@ -769,58 +796,17 @@ Use the \`prd\` skill and then the \`ralph\` skill, in that order.
 
 Create a complete Ralph planning package from this feature concept.
 
-Feature concept:
-$FEATURE_CONCEPT
-
-Hard constraints/dependencies (if any):
-${HARD_CONSTRAINTS:-None provided}
-
-Quick clarifier answers (if provided):
-- Primary goal: $PRIMARY_GOAL
-- Target users: $TARGET_USERS
-- Scope level: $SCOPE_LEVEL
-- First slice hint: $FIRST_SLICE_HINT
-- Preserved invariants: $INVARIANTS_HINT
-- Supporting files: $SUPPORTING_FILES_HINT
-- Proof hints: $PROOF_HINTS
+$PROMPT_CONTEXT
 $SINGLE_SLICE_GUIDANCE
 
 Guidance:
 1. If critical gaps remain, infer using explicit assumptions instead of blocking.
-2. Fit the PRD into 1-6 executable stories.
-3. Use task classes that naturally fit that range:
-   - micro: 1 story
-   - small: 2-3 stories
-   - medium: 4-6 stories
-4. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
-5. Generate a PRD markdown file in \`scripts/ralph/tasks/prds/prd-[feature-name].md\`.
-6. Break work into small, one-iteration user stories ordered by dependency.
-7. Set clear story priorities (1..N in execution order).
-8. Every story acceptance criteria must include:
-   - "Typecheck passes"
-   - "Lint passes"
-   - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-9. For UI stories, include "Verify in browser using dev-browser skill".
-10. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
-   - \`## Execution Model\`
-   - \`## First Slice Expectations\`
-   - \`## Allowed Supporting Files\`
-   - \`## Preserved Invariants\`
-11. Keep the markdown concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
-12. Convert the PRD to Ralph JSON and write it to \`$PRD_JSON_REL\`.
-13. Ensure JSON schema fields: \`project\`, \`branchName\`, \`description\`, \`userStories\`.
-14. Add structured scope metadata proactively:
-   - top-level \`scopePaths\`: exact repo-relative file paths only when the whole PRD is tightly scoped
-   - per-story \`scopePaths\`: exact repo-relative file paths or support-file families made explicit by the markdown
-   - use empty arrays only when exact scope genuinely is not knowable yet
-15. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in \`scopePaths\` when the feature explicitly or naturally requires them.
-16. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
-17. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-18. Do not repeat the same summary twice.
-19. Final output must be 3 lines only:
-   - \`PRD markdown path: ...\`
-   - \`prd.json path: ...\`
-   - \`Number of user stories created: ...\`
+2. Break work into small, one-iteration user stories ordered by dependency.
+3. Set clear story priorities (1..N in execution order).
+
+$PROMPT_OUTPUTS
+
+$PROMPT_SHARED_RULES
 
 Return only those 3 lines.
 PROMPT_EOF
