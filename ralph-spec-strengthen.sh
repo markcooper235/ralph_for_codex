@@ -94,18 +94,30 @@ Requirements:
 5. Do not add narrative background, motivational prose, or repeated reminders unless they materially change execution behavior.
 6. Reuse existing sections where possible instead of expanding the document with redundant explanation.
 7. Add or strengthen these sections only as much as needed:
+   - \`## Scope\`
+   - \`## Out of Scope\`
    - \`## Execution Model\`
    - \`## First Slice Expectations\`
    - \`## Allowed Supporting Files\`
    - \`## Preserved Invariants\`
-8. Keep story count as low as honestly possible while preserving safe sequencing; do not add stories just to spread detail around.
-9. Tighten user stories so they name concrete first slices, caller migration sets, support file families, and verification proof obligations.
-10. Reduce overlapping ownership with neighboring epics when the file itself provides enough context to do so honestly.
-11. If context is strong enough, fix the spec completely and keep assumptions explicit but minimal.
-12. If context is not strong enough to strengthen honestly, do not bluff. Leave the file unchanged and output:
+   - \`## User Stories\`
+   - \`## Refinement Checkpoints\`
+   - \`## Definition of Done\`
+8. Story headings must use the exact format \`### Story N: Title\`.
+9. Each story must contain a plain \`Acceptance Criteria\` heading followed by \`- Must ...\` bullets.
+10. Tighten user stories so they name concrete first slices, caller migration sets, support file families, and verification proof obligations.
+11. \`## First Slice Expectations\` must literally include labels such as \`exact source:\`, \`destination:\`, and \`entrypoint:\` or \`workflow:\`/ \`commands:\`.
+12. \`## Execution Model\` must explicitly use wording that covers at least two of: first slice/sequence/order/dependency, support/scope/supporting, verify/verification/proof/targeted/full.
+13. \`## Preserved Invariants\` must contain at least 2 explicit bullets about behaviors that remain stable or unchanged.
+14. \`## Refinement Checkpoints\` must contain at least one concrete checkpoint bullet.
+15. Avoid vague phrases such as "as needed", "if applicable", "if helpful", "appropriate", "and/or", or "etc.".
+16. Keep story count as low as honestly possible while preserving safe sequencing; do not add stories just to spread detail around.
+17. Reduce overlapping ownership with neighboring epics when the file itself provides enough context to do so honestly.
+18. If context is strong enough, fix the spec completely and keep assumptions explicit but minimal.
+19. If context is not strong enough to strengthen honestly, do not bluff. Leave the file unchanged and output:
    \`Status: blocked\`
    \`Reason: <short reason>\`
-13. If you do strengthen the spec, output:
+20. If you do strengthen the spec, output:
    \`Status: strengthened\`
    \`Reason: <short summary>\`
 

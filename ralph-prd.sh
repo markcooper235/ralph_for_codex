@@ -240,20 +240,38 @@ Shared rules:
    - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
 6. For UI stories, include "Verify in browser using dev-browser skill".
 7. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
+   - `## Scope`
+   - `## Out of Scope`
    - `## Execution Model`
    - `## First Slice Expectations`
    - `## Allowed Supporting Files`
    - `## Preserved Invariants`
-8. Add structured scope metadata proactively:
+   - `## User Stories`
+   - `## Refinement Checkpoints`
+   - `## Definition of Done`
+8. Story headings must use the exact format `### Story N: Title`.
+9. Each story must contain a plain `Acceptance Criteria` heading followed by `- Must ...` bullets only.
+10. `## First Slice Expectations` must name both using explicit labels or equivalent literal wording:
+   - `exact source:` and `destination:`
+   - `entrypoint:`, `caller workflow:`, `workflow:`, or `commands:`
+11. `## Execution Model` must explicitly use wording that covers at least two of:
+   - `first slice`, `sequence`, `order`, or `dependency`
+   - `support`, `scope`, or `supporting`
+   - `verify`, `verification`, `proof`, `targeted`, or `full`
+12. `## Allowed Supporting Files` must proactively name realistic support files or file families such as tests, scripts, package/config files, verification files, or workflows when they are relevant to execution.
+13. `## Preserved Invariants` must contain at least 2 explicit bullets describing behaviors or rules that remain stable/unchanged.
+14. `## Refinement Checkpoints` must contain at least one concrete checkpoint bullet.
+15. Avoid vague phrases such as "as needed", "if applicable", "if helpful", "appropriate", "and/or", or "etc." in the markdown or acceptance criteria.
+16. Add structured scope metadata proactively:
    - top-level `scopePaths`: exact repo-relative file paths only when the whole PRD is tightly scoped
    - per-story `scopePaths`: exact repo-relative file paths or support-file families made explicit by the markdown
    - use empty arrays only when exact scope genuinely is not knowable yet
-9. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in `scopePaths` when the feature explicitly or naturally requires them.
-10. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
-11. Keep the markdown and JSON concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
-12. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-13. Do not repeat the same summary twice.
-14. Final output must be 3 lines only:
+17. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in `scopePaths` when the feature explicitly or naturally requires them.
+18. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+19. Keep the markdown and JSON concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
+20. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+21. Do not repeat the same summary twice.
+22. Final output must be 3 lines only:
    - `PRD markdown path: ...`
    - `prd.json path: ...`
    - `Number of user stories created: ...`
