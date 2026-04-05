@@ -73,6 +73,8 @@ main() {
   )
 
   cp "$REPO_ROOT/ralph-prd.sh" "$tmpdir/scripts/ralph/ralph-prd.sh"
+  cp "$REPO_ROOT/ralph-spec-check.sh" "$tmpdir/scripts/ralph/ralph-spec-check.sh"
+  cp "$REPO_ROOT/ralph-spec-strengthen.sh" "$tmpdir/scripts/ralph/ralph-spec-strengthen.sh"
   cp "$REPO_ROOT/lib/editor-intake.sh" "$tmpdir/scripts/ralph/lib/editor-intake.sh"
   cp "$REPO_ROOT/templates/prd-intake.md" "$tmpdir/scripts/ralph/templates/prd-intake.md"
 
@@ -84,10 +86,53 @@ if [ "${1:-}" = "--yolo" ] && [ "${2:-}" = "exec" ] && [ "${3:-}" = "--help" ]; 
   exit 0
 fi
 prompt_path="${CODEX_PROMPT_PATH:-codex-prompt.txt}"
-cat > "$prompt_path"
+if [ -f "$prompt_path" ]; then
+  printf '\n==== NEXT PROMPT ====\n' >> "$prompt_path"
+fi
+cat >> "$prompt_path"
 mkdir -p scripts/ralph/tasks/prds
 cat > scripts/ralph/tasks/prds/prd-test.md <<'PRD'
 # Test PRD
+
+## Scope
+- Keep the UI copy change scoped to the named source and proof files.
+
+## Out of Scope
+- Router refactors or unrelated workflow changes.
+
+## Execution Model
+- Start with the first slice in the exact source file path, keep support scope bounded, and verify before widening.
+- Keep verification pressure explicit through typecheck, lint, tests, and any required browser proof.
+
+## First Slice Expectations
+- exact source: src/example.ts
+- destination: scripts/ralph/prd.json
+- entrypoint: ./scripts/ralph/ralph-prd.sh
+- commands: npm run typecheck, npm run lint, npm test
+
+## Allowed Supporting Files
+- package.json
+- tests/example.test.ts
+- scripts/verify-example.sh
+
+## Preserved Invariants
+- Existing Ralph planning contracts remain stable and unchanged.
+- Verification expectations remain intact and canonical.
+
+## User Stories
+### Story 1: Test story
+Acceptance Criteria
+- Must update the exact source slice with execution-ready detail.
+- Must preserve the required support-file workflow and verification commands.
+- Must ensure Typecheck passes.
+- Must ensure Lint passes.
+- Must ensure Unit tests pass.
+
+## Refinement Checkpoints
+- Confirm the first slice stays inside the named scope.
+
+## Definition of Done
+- The PRD is loop-ready and verification remains intact.
 PRD
 cat > scripts/ralph/prd.json <<'JSON'
 {"project":"x","branchName":"ralph/test","description":"d","userStories":[{"id":"US-001","title":"t","description":"d","acceptanceCriteria":["Typecheck passes","Lint passes","Unit tests pass"],"priority":1,"passes":false,"notes":""}]}

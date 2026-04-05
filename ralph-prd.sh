@@ -92,64 +92,74 @@ count_distinct_file_paths() {
     | tr -d ' '
 }
 
-should_auto_compact_mode() {
-  local combined lower explicit_scope path_count feature_len
-  combined="$(printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS")"
-  lower="$(printf '%s' "$combined" | tr '[:upper:]' '[:lower:]')"
-  feature_len="$(printf '%s' "$FEATURE_CONCEPT" | wc -c | tr -d ' ')"
-  path_count="$(count_distinct_file_paths)"
+planning_request_lower() {
+  printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS" | tr '[:upper:]' '[:lower:]'
+}
 
-  case "$lower" in
-    *auth*|*session*|*database*|*migration*|*schema*|*routing*|*router*|*provider*|*permission*|*"api contract"*|*"shared state"*|*"event pipeline"*|*"global config"*|*refactor*|*architecture*|*epic*|*sprint*|*cross-cutting*|*shared\ hook*|*shared\ component*|*state\ management*|*browser*|*playwright*|*cypress*)
-      return 1
-      ;;
-  esac
+feature_concept_length() {
+  printf '%s' "$FEATURE_CONCEPT" | wc -c | tr -d ' '
+}
 
-  explicit_scope=0
+has_explicit_file_scope_request() {
+  local lower="$1"
   case "$lower" in
     *"keep changes limited to "*|*"only change "*|*"limited to "*)
-      explicit_scope=1
+      return 0
       ;;
   esac
+  return 1
+}
 
-  [ "$explicit_scope" -eq 1 ] || return 1
+is_complex_or_cross_cutting_request() {
+  local lower="$1"
+  case "$lower" in
+    *auth*|*session*|*database*|*migration*|*schema*|*routing*|*router*|*provider*|*permission*|*"api contract"*|*"shared state"*|*"event pipeline"*|*"global config"*|*refactor*|*architecture*|*epic*|*sprint*|*cross-cutting*|*shared\ hook*|*shared\ component*|*state\ management*|*playwright*|*cypress*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_ui_request() {
+  local lower="$1"
+  case "$lower" in
+    *browser*|*ui*|*"#app"*|*render*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+matches_tight_scoped_request() {
+  local lower="$1"
+  local max_feature_len="$2"
+  local path_count feature_len
+
+  path_count="$(count_distinct_file_paths)"
+  feature_len="$(feature_concept_length)"
+
+  has_explicit_file_scope_request "$lower" || return 1
   [ "$path_count" -ge 1 ] && [ "$path_count" -le 2 ] || return 1
-  [ "$feature_len" -le 120 ] || return 1
+  [ "$feature_len" -le "$max_feature_len" ] || return 1
   return 0
 }
 
+should_auto_compact_mode() {
+  local lower
+  lower="$(planning_request_lower)"
+
+  is_complex_or_cross_cutting_request "$lower" && return 1
+  is_ui_request "$lower" && return 1
+  matches_tight_scoped_request "$lower" 120
+}
+
 should_hint_single_slice_ui_story() {
-  local combined lower explicit_scope path_count feature_len
-  combined="$(printf '%s\n%s\n' "$FEATURE_CONCEPT" "$HARD_CONSTRAINTS")"
-  lower="$(printf '%s' "$combined" | tr '[:upper:]' '[:lower:]')"
-  feature_len="$(printf '%s' "$FEATURE_CONCEPT" | wc -c | tr -d ' ')"
-  path_count="$(count_distinct_file_paths)"
+  local lower
+  lower="$(planning_request_lower)"
 
-  case "$lower" in
-    *browser*|*ui*|*"#app"*|*render*)
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-
-  case "$lower" in
-    *auth*|*session*|*database*|*migration*|*schema*|*routing*|*router*|*provider*|*permission*|*"api contract"*|*"shared state"*|*"event pipeline"*|*"global config"*|*refactor*|*architecture*|*epic*|*sprint*|*cross-cutting*|*shared\ hook*|*shared\ component*|*state\ management*|*playwright*|*cypress*)
-      return 1
-      ;;
-  esac
-
-  explicit_scope=0
-  case "$lower" in
-    *"keep changes limited to "*|*"only change "*|*"limited to "*)
-      explicit_scope=1
-      ;;
-  esac
-
-  [ "$explicit_scope" -eq 1 ] || return 1
-  [ "$path_count" -ge 1 ] && [ "$path_count" -le 2 ] || return 1
-  [ "$feature_len" -le 200 ] || return 1
-  return 0
+  is_ui_request "$lower" || return 1
+  is_complex_or_cross_cutting_request "$lower" && return 1
+  matches_tight_scoped_request "$lower" 200
 }
 
 mark_active_standalone_prd() {
@@ -275,6 +285,54 @@ Shared rules:
    - `PRD markdown path: ...`
    - `prd.json path: ...`
    - `Number of user stories created: ...`
+EOF
+}
+
+compact_mode_rules_block() {
+  cat <<'EOF'
+Compact planning rules:
+1. Keep the PRD markdown concise and execution-focused.
+2. Prefer the fewest dependency-ordered stories that still keep verification evidence honest.
+3. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
+4. Avoid long narrative sections or speculative detail.
+EOF
+}
+
+normal_mode_guidance_block() {
+  local extra_guidance="$1"
+  cat <<EOF
+Guidance:
+1. If critical gaps remain, infer using explicit assumptions instead of blocking.
+2. Break work into small, one-iteration user stories ordered by dependency.
+3. Set clear story priorities (1..N in execution order).$extra_guidance
+EOF
+}
+
+build_planning_prompt() {
+  local mode="$1"
+  local mode_header="" mode_rules=""
+
+  if [ "$mode" = "compact" ]; then
+    mode_header="Create a compact Ralph planning package for a tightly scoped change."
+    mode_rules="$(compact_mode_rules_block)"
+  else
+    mode_header="Create a complete Ralph planning package from this feature concept."
+    mode_rules="$(normal_mode_guidance_block "$2")"
+  fi
+
+  cat <<EOF
+Use the \`prd\` skill and then the \`ralph\` skill, in that order.
+
+$mode_header
+
+$PROMPT_CONTEXT
+$mode_rules
+
+$PROMPT_OUTPUTS
+
+$PROMPT_SHARED_RULES
+
+Return only those 3 lines.
 EOF
 }
 
@@ -775,27 +833,7 @@ PROMPT_OUTPUTS="$(planning_output_contract_block)"
 PROMPT_SHARED_RULES="$(planning_shared_rules_block)"
 
 if [ "$COMPACT_MODE" -eq 1 ]; then
-PROMPT=$(
-  cat <<PROMPT_EOF
-Use the \`prd\` skill and then the \`ralph\` skill, in that order.
-
-Create a compact Ralph planning package for a tightly scoped change.
-
-$PROMPT_CONTEXT
-
-Compact planning rules:
-1. Keep the PRD markdown concise and execution-focused.
-2. Prefer the fewest dependency-ordered stories that still keep verification evidence honest.
-3. For small file-scoped work, prefer 1-2 user stories unless more are truly necessary.
-4. Avoid long narrative sections or speculative detail.
-
-$PROMPT_OUTPUTS
-
-$PROMPT_SHARED_RULES
-
-Return only those 3 lines.
-PROMPT_EOF
-)
+PROMPT="$(build_planning_prompt "compact")"
 else
 SINGLE_SLICE_GUIDANCE=""
 if [ "$UI_SINGLE_SLICE_HINT" -eq 1 ]; then
@@ -808,27 +846,7 @@ Additional guidance for this request:
 GUIDANCE_EOF
 )
 fi
-PROMPT=$(
-  cat <<PROMPT_EOF
-Use the \`prd\` skill and then the \`ralph\` skill, in that order.
-
-Create a complete Ralph planning package from this feature concept.
-
-$PROMPT_CONTEXT
-$SINGLE_SLICE_GUIDANCE
-
-Guidance:
-1. If critical gaps remain, infer using explicit assumptions instead of blocking.
-2. Break work into small, one-iteration user stories ordered by dependency.
-3. Set clear story priorities (1..N in execution order).
-
-$PROMPT_OUTPUTS
-
-$PROMPT_SHARED_RULES
-
-Return only those 3 lines.
-PROMPT_EOF
-)
+PROMPT="$(build_planning_prompt "normal" "$SINGLE_SLICE_GUIDANCE")"
 fi
 
 log "Generating PRD and prd.json via Codex skills..."

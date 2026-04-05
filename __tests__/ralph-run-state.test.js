@@ -369,6 +369,32 @@ if (input.includes('Create a complete Ralph planning package') || input.includes
       process.exit(19);
     }
   }
+  if (process.env.RALPH_TEST_EXPECT_COMPACT_PROMPT === '1') {
+    if (!input.includes('Create a compact Ralph planning package for a tightly scoped change.')) {
+      process.stderr.write('expected compact planning prompt\\n');
+      process.exit(21);
+    }
+    if (input.includes('Additional guidance for this request:')) {
+      process.stderr.write('compact prompt should not include normal-mode UI guidance\\n');
+      process.exit(22);
+    }
+  }
+  if (process.env.RALPH_TEST_EXPECT_NORMAL_PROMPT === '1') {
+    if (!input.includes('Create a complete Ralph planning package from this feature concept.')) {
+      process.stderr.write('expected normal planning prompt\\n');
+      process.exit(23);
+    }
+    if (input.includes('Create a compact Ralph planning package for a tightly scoped change.')) {
+      process.stderr.write('normal prompt should not use compact planning text\\n');
+      process.exit(24);
+    }
+  }
+  if (process.env.RALPH_TEST_EXPECT_NORMAL_UI_HINT === '1') {
+    if (!input.includes('Additional guidance for this request:') || !input.includes('keep them in one story')) {
+      process.stderr.write('expected normal-mode UI single-slice guidance\\n');
+      process.exit(25);
+    }
+  }
   const markdownPath = 'scripts/ralph/tasks/prds/prd-stub-feature.md';
   const jsonPath = 'scripts/ralph/prd.json';
   fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
@@ -1102,6 +1128,51 @@ test('ralph-prd prompt requires inferred proof files to stay in the same story s
   }
 
   run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+})
+
+test('ralph-prd auto-selects compact mode for tightly scoped simple tasks', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_EXPECT_COMPACT_PROMPT: '1',
+  }
+
+  run(
+    './scripts/ralph/ralph-prd.sh',
+    [
+      '--feature',
+      'Change greeting text',
+      '--constraints',
+      'Keep changes limited to src/index.ts and tests/hello.test.mjs only.',
+      '--no-questions',
+    ],
+    { cwd: repoDir, env }
+  )
+
+  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+})
+
+test('ralph-prd keeps normal mode for scoped UI tasks and adds single-slice guidance', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexStub(repoDir),
+    RALPH_TEST_EXPECT_NORMAL_PROMPT: '1',
+    RALPH_TEST_EXPECT_NORMAL_UI_HINT: '1',
+  }
+
+  run(
+    './scripts/ralph/ralph-prd.sh',
+    [
+      '--feature',
+      'Change UI output greeting to Hello PRD Ralph in src/index.ts and verify rendered #app output.',
+      '--constraints',
+      'Keep changes limited to src/index.ts and tests/hello.test.mjs only. Verify browser output.',
+      '--no-questions',
+    ],
+    { cwd: repoDir, env }
+  )
+
   assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
 })
 
