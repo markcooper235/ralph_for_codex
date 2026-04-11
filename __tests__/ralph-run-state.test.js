@@ -423,6 +423,48 @@ if (input.includes('Create a complete Ralph planning package') || input.includes
   return `${binDir}:${process.env.PATH}`
 }
 
+function installCodexCleanupResidueStub(repoDir) {
+  const binDir = path.join(repoDir, 'bin')
+  const stubPath = path.join(binDir, 'codex')
+  fs.mkdirSync(binDir, { recursive: true })
+  writeFile(
+    stubPath,
+    `#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const args = process.argv.slice(2);
+if (args.includes('--help')) {
+  process.stdout.write('Run Codex non-interactively\\n');
+  process.exit(0);
+}
+const cwdIndex = args.indexOf('-C');
+const repoRoot = cwdIndex !== -1 ? args[cwdIndex + 1] : process.cwd();
+const prdPath = path.join(repoRoot, 'scripts/ralph/prd.json');
+const dirtyPath = path.join(repoRoot, 'src/story-file.ts');
+const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
+prd.userStories = (prd.userStories || []).map(story => ({ ...story, passes: true }));
+fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+fs.appendFileSync(dirtyPath, '\\n// dirty cleanup residue\\n');
+process.stdout.write('<ralph_handoff>\\n');
+process.stdout.write(JSON.stringify({
+  status: 'progressed',
+  story: { id: 'US-001', title: 'Cleanup story' },
+  summary: 'Marked the story passed but left a scoped dirty file behind.',
+  errors: [],
+  directionChanges: [],
+  verification: [],
+  filesChanged: ['src/story-file.ts'],
+  assumptions: [],
+  nextLoopAdvice: ['Clean up remaining scoped worktree changes before completion.'],
+  completionSignal: false
+}) + '\\n');
+process.stdout.write('</ralph_handoff>\\n');
+`
+  )
+  fs.chmodSync(stubPath, 0o755)
+  return `${binDir}:${process.env.PATH}`
+}
+
 function initTempRepo() {
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-run-state-'))
   const frameworkRoot = path.join(repoDir, 'scripts', 'ralph')
@@ -2034,6 +2076,56 @@ test('ralph.sh accepts completion handoffs with four verification entries', () =
   assert.doesNotMatch(latestHandoff.summary, /invalid handoff schema/i)
   assert.equal(latestHandoff.status, 'completed')
   assert.equal(latestHandoff.completionSignal, true)
+})
+
+test('ralph.sh reopens the latest passed story when all stories pass but scoped dirty changes remain', () => {
+  const repoDir = initTempRepo()
+  const env = {
+    PATH: installCodexCleanupResidueStub(repoDir),
+  }
+
+  writeFile(path.join(repoDir, 'src/story-file.ts'), 'export const storyFile = true\n')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/prd.json'),
+    JSON.stringify(
+      {
+        project: 'tmp-ralph-test',
+        branchName: 'ralph/test-cleanup',
+        description: 'Standalone cleanup test.',
+        scopePaths: ['src/story-file.ts'],
+        userStories: [
+          {
+            id: 'US-001',
+            title: 'Cleanup story',
+            description: 'Cleanup story',
+            acceptanceCriteria: ['Tests pass'],
+            priority: 1,
+            passes: false,
+            notes: '',
+            scopePaths: ['src/story-file.ts'],
+          },
+        ],
+      },
+      null,
+      2
+    )
+  )
+  run('git', ['add', 'src/story-file.ts'], { cwd: repoDir })
+  run('git', ['commit', '-m', 'add scoped story file'], { cwd: repoDir })
+
+  let runError = null
+  try {
+    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
+  } catch (error) {
+    runError = error
+  }
+
+  assert.ok(runError)
+  assert.equal(runError.status, 1)
+
+  const prd = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
+  assert.equal(prd.userStories[0].passes, false)
+  assert.match(run('git', ['status', '--short'], { cwd: repoDir }), / M src\/story-file\.ts/)
 })
 
 test('ralph-archive rejects unpaired transcript and handoff artifacts', () => {

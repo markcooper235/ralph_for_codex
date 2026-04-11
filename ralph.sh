@@ -577,6 +577,46 @@ latest_completed_story_context() {
   ' "$PROGRESS_FILE" 2>/dev/null || true
 }
 
+reopen_latest_story_for_cleanup() {
+  local handoff_path="${1:-$ITERATION_HANDOFF_LATEST_FILE}"
+  local story_id story_title latest_completed_story_id
+
+  prd_all_passes || return 1
+  has_non_transient_worktree_changes || return 1
+  [ -f "$PRD_FILE" ] || return 1
+
+  story_id="$(get_story_id_from_handoff "$handoff_path" || true)"
+  if [ -n "$story_id" ] && ! jq -e --arg story_id "$story_id" '.userStories[]? | select(.id == $story_id)' "$PRD_FILE" >/dev/null 2>&1; then
+    story_id=""
+  fi
+
+  if [ -z "$story_id" ]; then
+    latest_completed_story_id="$(latest_completed_story_context)"
+    story_id="$latest_completed_story_id"
+  fi
+
+  [ -n "$story_id" ] || return 1
+  if ! jq -e --arg story_id "$story_id" '.userStories[]? | select(.id == $story_id and .passes == true)' "$PRD_FILE" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  story_title="$(jq -r --arg story_id "$story_id" '(.userStories[]? | select(.id == $story_id) | .title) // ""' "$PRD_FILE" 2>/dev/null || true)"
+
+  jq --arg story_id "$story_id" '
+    .userStories |= map(
+      if .id == $story_id then
+        .passes = false
+      else
+        .
+      end
+    )
+  ' "$PRD_FILE" > "${PRD_FILE}.tmp"
+  mv "${PRD_FILE}.tmp" "$PRD_FILE"
+
+  echo "Reopened ${story_id}${story_title:+ - $story_title} for cleanup because non-transient worktree changes remain after all stories passed."
+  return 0
+}
+
 story_context_from_story_id() {
   local story_id="$1"
   [ -n "$story_id" ] || return 0
@@ -1738,6 +1778,7 @@ for ((i=START_ITERATION; i<=END_ITERATION; i++)); do
   if ! ensure_transient_files_not_tracked; then
     exit 1
   fi
+  reopen_latest_story_for_cleanup "$CODEX_ITER_HANDOFF_FILE" || true
   if ! ensure_explicit_scope_worktree_valid "$CODEX_ITER_HANDOFF_FILE"; then
     exit 1
   fi
