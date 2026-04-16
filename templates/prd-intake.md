@@ -21,4 +21,10 @@ SUPPORTING_FILES:
 List config/scripts/package/workflow/test files that are naturally in scope if known.
 PROOF_HINTS:
 List the strongest verification evidence expected if known.
+Use literal proof phrases when possible, for example:
+- Typecheck passes
+- Lint passes
+- Unit tests pass
+- Tests pass
+- Verify in browser
 <!-- END INPUT -->

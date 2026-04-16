@@ -122,9 +122,28 @@ Source context:
 
 Requirements:
 1. Write the PRD markdown to the exact destination path above.
-2. Include execution-ready user stories with explicit acceptance criteria.
-3. Keep stories dependency-ordered and implementable in small iterations.
-4. If context has ambiguities, state assumptions explicitly in the markdown.
+2. Include execution-ready user stories with explicit acceptance criteria and explicit proof obligations.
+3. Each story must contain:
+   - a plain \`Acceptance Criteria\` heading followed by only \`- Must ...\` bullets
+   - a plain \`Proof Obligations\` heading followed by only \`- Must ...\` bullets
+   - at least one proof bullet using checker-recognized wording such as \`Typecheck passes\`, \`Lint passes\`, \`Unit tests pass\`, \`Tests pass\`, \`Verify in browser\`, \`Playwright\`, \`Cypress\`, or \`verification\`
+4. Include the minimum loop-ready section set:
+   - \`## Scope\`
+   - \`## Out of Scope\`
+   - \`## Execution Model\`
+   - \`## First Slice Expectations\`
+   - \`## Allowed Supporting Files\`
+   - \`## Preserved Invariants\`
+   - \`## User Stories\`
+   - \`## Refinement Checkpoints\`
+   - \`## Definition of Done\`
+5. \`## First Slice Expectations\` must literally include labels such as \`exact source:\`, \`destination:\`, and \`entrypoint:\` or \`workflow:\` / \`commands:\`.
+6. \`## Execution Model\` must explicitly describe at least two of: sequence/order/dependency, supporting scope, verification pressure.
+7. \`## Allowed Supporting Files\` must proactively name realistic support-file families such as tests, scripts, package/config files, verification files, or workflows when relevant.
+8. Keep stories dependency-ordered and implementable in small iterations.
+9. Avoid vague phrases such as \`as needed\`, \`if applicable\`, \`if helpful\`, \`appropriate\`, \`and/or\`, or \`etc.\`.
+10. The generated markdown should pass \`scripts/ralph/ralph-spec-check.sh\` immediately without needing a strengthen pass.
+11. If context has ambiguities, state assumptions explicitly in the markdown.
 
 Return a short summary including the output path.
 EOF

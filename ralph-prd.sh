@@ -244,12 +244,20 @@ Shared rules:
    - medium: 4-6 stories
 3. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
 4. Every story must be dependency-ordered and execution-ready.
-5. Every story acceptance criteria must include:
+5. Every story must contain both:
+   - a plain `Acceptance Criteria` heading followed by only `- Must ...` bullets
+   - a plain `Proof Obligations` heading followed by only `- Must ...` bullets
+6. Every story must include at least one proof-obligation bullet using checker-recognized wording such as:
    - "Typecheck passes"
    - "Lint passes"
-   - "Unit tests pass" (or "Tests pass" only if unit tests are not applicable)
-6. For UI stories, include "Verify in browser using dev-browser skill".
-7. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
+   - "Unit tests pass"
+   - "Tests pass"
+   - "Verify in browser"
+   - "Playwright"
+   - "Cypress"
+   - "verification"
+7. For UI stories, include at least one proof obligation using the literal wording "Verify in browser".
+8. The markdown must be loop-ready, not merely descriptive. Include explicit sections for:
    - `## Scope`
    - `## Out of Scope`
    - `## Execution Model`
@@ -259,29 +267,30 @@ Shared rules:
    - `## User Stories`
    - `## Refinement Checkpoints`
    - `## Definition of Done`
-8. Story headings must use the exact format `### Story N: Title`.
-9. Each story must contain a plain `Acceptance Criteria` heading followed by `- Must ...` bullets only.
-10. `## First Slice Expectations` must name both using explicit labels or equivalent literal wording:
+9. Story headings must use the exact format `### Story N: Title`.
+10. Each story must contain both a plain `Acceptance Criteria` heading and a plain `Proof Obligations` heading.
+11. `## First Slice Expectations` must name both using explicit labels or equivalent literal wording:
    - `exact source:` and `destination:`
    - `entrypoint:`, `caller workflow:`, `workflow:`, or `commands:`
-11. `## Execution Model` must explicitly use wording that covers at least two of:
+12. `## Execution Model` must explicitly use wording that covers at least two of:
    - `first slice`, `sequence`, `order`, or `dependency`
    - `support`, `scope`, or `supporting`
    - `verify`, `verification`, `proof`, `targeted`, or `full`
-12. `## Allowed Supporting Files` must proactively name realistic support files or file families such as tests, scripts, package/config files, verification files, or workflows when they are relevant to execution.
-13. `## Preserved Invariants` must contain at least 2 explicit bullets describing behaviors or rules that remain stable/unchanged.
-14. `## Refinement Checkpoints` must contain at least one concrete checkpoint bullet.
-15. Avoid vague phrases such as "as needed", "if applicable", "if helpful", "appropriate", "and/or", or "etc." in the markdown or acceptance criteria.
-16. Add structured scope metadata proactively:
+13. `## Allowed Supporting Files` must proactively name realistic support files or file families such as tests, scripts, package/config files, verification files, or workflows when they are relevant to execution.
+14. `## Preserved Invariants` must contain at least 2 explicit bullets describing behaviors or rules that remain stable/unchanged.
+15. `## Refinement Checkpoints` must contain at least one concrete checkpoint bullet.
+16. Avoid vague phrases such as "as needed", "if applicable", "if helpful", "appropriate", "and/or", or "etc." in the markdown, acceptance criteria, or proof obligations.
+17. Add structured scope metadata proactively:
    - top-level `scopePaths`: exact repo-relative file paths only when the whole PRD is tightly scoped
    - per-story `scopePaths`: exact repo-relative file paths or support-file families made explicit by the markdown
    - use empty arrays only when exact scope genuinely is not knowable yet
-17. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in `scopePaths` when the feature explicitly or naturally requires them.
-18. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
-19. Keep the markdown and JSON concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
-20. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
-21. Do not repeat the same summary twice.
-22. Final output must be 3 lines only:
+18. Include helper scripts, build scripts, configs, fixtures, workflows, or package metadata in `scopePaths` when the feature explicitly or naturally requires them.
+19. If a story changes source files, include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths; do not defer those proof files to a later story when the earlier story would otherwise fail verification.
+20. Keep the markdown and JSON concise and token-efficient. Prefer short bullets and direct constraints over explanatory prose.
+21. After writing files, do not print PRD markdown, JSON contents, file diffs, or file-update blocks.
+22. Do not repeat the same summary twice.
+23. The generated markdown should pass `scripts/ralph/ralph-spec-check.sh` immediately without needing a strengthen pass.
+24. Final output must be 3 lines only:
    - `PRD markdown path: ...`
    - `prd.json path: ...`
    - `Number of user stories created: ...`

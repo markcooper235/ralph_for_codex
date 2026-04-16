@@ -388,16 +388,30 @@ Requirements:
    - small: 2-3 stories
    - medium: 4-6 stories
 4. If honest decomposition would require more than 6 stories, create the best 1-6 story slice for this PRD and explicitly recommend a follow-up PRD for the deferred scope.
-5. Keep stories small, ordered by dependency, with clear acceptance criteria.
-6. Make the PRD loop-ready, not just product-descriptive. Include explicit sections for:
+5. Keep stories small, ordered by dependency, with clear acceptance criteria and explicit proof obligations.
+6. Every story must contain:
+   - a plain \`Acceptance Criteria\` heading followed by only \`- Must ...\` bullets
+   - a plain \`Proof Obligations\` heading followed by only \`- Must ...\` bullets
+   - at least one proof bullet using checker-recognized wording such as \`Typecheck passes\`, \`Lint passes\`, \`Unit tests pass\`, \`Tests pass\`, \`Verify in browser\`, \`Playwright\`, \`Cypress\`, or \`verification\`
+7. Make the PRD loop-ready, not just product-descriptive. Include explicit sections for:
+   - \`## Scope\`
+   - \`## Out of Scope\`
    - \`## Execution Model\`
    - \`## First Slice Expectations\`
    - \`## Allowed Supporting Files\`
    - \`## Preserved Invariants\`
-7. Keep the markdown concise and execution-focused. Prefer dense bullets over long prose and avoid repeated restatements of the same constraint.
-8. Each story must identify concrete slices, realistic support-file scope, and proof obligations rather than vague architecture themes.
-9. Include explicit assumptions where context is ambiguous.
-10. Overwrite destination if it exists.
+   - \`## User Stories\`
+   - \`## Refinement Checkpoints\`
+   - \`## Definition of Done\`
+8. \`## First Slice Expectations\` must literally include labels such as \`exact source:\`, \`destination:\`, and \`entrypoint:\` or \`workflow:\` / \`commands:\`.
+9. \`## Execution Model\` must explicitly describe at least two of: sequence/order/dependency, supporting scope, verification pressure.
+10. \`## Allowed Supporting Files\` must proactively name realistic support-file families such as tests, scripts, package/config files, verification files, or workflows when relevant.
+11. Avoid vague phrases such as \`as needed\`, \`if applicable\`, \`if helpful\`, \`appropriate\`, \`and/or\`, or \`etc.\`.
+12. Keep the markdown concise and execution-focused. Prefer dense bullets over long prose and avoid repeated restatements of the same constraint.
+13. Each story must identify concrete slices, realistic support-file scope, and proof obligations rather than vague architecture themes.
+14. Include explicit assumptions where context is ambiguous.
+15. The generated markdown should pass \`scripts/ralph/ralph-spec-check.sh\` immediately without needing a strengthen pass.
+16. Overwrite destination if it exists.
 
 Return a short summary and the exact output path.
 EOF

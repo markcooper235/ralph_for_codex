@@ -22,6 +22,8 @@ Include:
 - the intended first slice or first migration order
 - realistic supporting file families that may need to move
 - verification proof expectations
+- literal proof phrases when known, for example: Typecheck passes, Lint passes, Unit tests pass, Tests pass, Verify in browser
 - explicit out-of-scope boundaries
 - any neighboring epics this one must not overlap with
+- any checker-sensitive structural requirements that must be present in the PRD on first generation
 <!-- END INPUT -->
