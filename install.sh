@@ -143,6 +143,9 @@ copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
 copy_file "$SOURCE_DIR/ralph-spec-strengthen.sh" "$DEST_DIR_REL/ralph-spec-strengthen.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
+copy_file "$SOURCE_DIR/ralph-sprint-migrate.sh" "$DEST_DIR_REL/ralph-sprint-migrate.sh"
+copy_file "$SOURCE_DIR/ralph-story.sh" "$DEST_DIR_REL/ralph-story.sh"
+copy_file "$SOURCE_DIR/ralph-task.sh" "$DEST_DIR_REL/ralph-task.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
 copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
@@ -156,6 +159,8 @@ copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.m
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
+copy_file "$SOURCE_DIR/story.json.example" "$DEST_DIR_REL/story.json.example"
+copy_file "$SOURCE_DIR/stories.json.example" "$DEST_DIR_REL/stories.json.example"
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
   "$DEST_DIR_REL/ralph-prd.sh" \
@@ -170,6 +175,9 @@ chmod +x \
   "$DEST_DIR_REL/ralph-spec-strengthen.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
+  "$DEST_DIR_REL/ralph-sprint-migrate.sh" \
+  "$DEST_DIR_REL/ralph-story.sh" \
+  "$DEST_DIR_REL/ralph-task.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 

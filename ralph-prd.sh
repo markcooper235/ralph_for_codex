@@ -180,7 +180,7 @@ mark_active_standalone_prd() {
   "mode": "standalone",
   "baseBranch": "$base_branch",
   "sourcePath": "$source_path",
-  "activatedAt": "$(date -Iseconds)"
+  "activatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 JSON
 }
@@ -198,11 +198,11 @@ supports_codex_yolo() {
 }
 
 build_codex_exec_args() {
-  local -n out_args_ref="$1"
+  CODEX_EXEC_ARGS=()
   if supports_codex_yolo; then
-    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(--yolo exec -C "$WORKSPACE_ROOT" -)
   else
-    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
   fi
 }
 
@@ -347,7 +347,7 @@ EOF
 
 convert_markdown_prd_to_json() {
   local markdown_rel="$1"
-  local prompt codex_args=()
+  local prompt
 
   prompt=$(
     cat <<EOF
@@ -359,7 +359,7 @@ Convert this loop-ready PRD markdown into Ralph JSON:
 
 Requirements:
 1. Produce valid JSON with keys: project, branchName, description, userStories.
-2. Preserve the markdown's execution-ready details, especially first slice expectations, allowed supporting files, preserved invariants, and proof obligations.
+2. Preserve the markdown execution-ready details, especially first slice expectations, allowed supporting files, preserved invariants, and proof obligations.
 3. Keep user stories dependency-ordered and execution-ready.
 4. Add proactive \`scopePaths\` arrays when the markdown makes realistic support-file scope explicit, including config, package metadata, scripts, workflows, and tests when naturally required.
 5. Do not under-scope stories by omitting required support files that the markdown explicitly puts in scope.
@@ -370,8 +370,8 @@ Return only a short summary after writing the file.
 EOF
   )
 
-  build_codex_exec_args codex_args
-  printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"
+  build_codex_exec_args
+  printf '%s\n' "$prompt" | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}"
 }
 
 ensure_markdown_spec_ready() {
@@ -582,7 +582,7 @@ remove_prd() {
     mv "$abs_path" "$archive_dir/"
     cat > "$archive_dir/archive-manifest.txt" <<EOF
 action=remove-prd
-removed_at=$(date -Iseconds)
+removed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 source_path=$rel_path
 EOF
     echo "Archived PRD to: $archive_dir"
@@ -866,9 +866,8 @@ fi
 before_prd_state="$(mktemp)"
 after_prd_state="$(mktemp)"
 snapshot_prd_markdown_state > "$before_prd_state"
-CODEX_ARGS=()
-build_codex_exec_args CODEX_ARGS
-printf '%s\n' "$PROMPT" | "$CODEX_BIN" "${CODEX_ARGS[@]}"
+build_codex_exec_args
+printf '%s\n' "$PROMPT" | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}"
 snapshot_prd_markdown_state > "$after_prd_state"
 
 PRD_MARKDOWN_PATH="$(detect_changed_prd_markdown "$before_prd_state" "$after_prd_state" || true)"

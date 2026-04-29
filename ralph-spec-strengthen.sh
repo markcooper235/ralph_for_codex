@@ -43,16 +43,16 @@ supports_codex_yolo() {
 }
 
 build_codex_exec_args() {
-  local -n out_args_ref="$1"
+  CODEX_EXEC_ARGS=()
   if supports_codex_yolo; then
-    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(--yolo exec -C "$WORKSPACE_ROOT" -)
   else
-    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
   fi
 }
 
 main() {
-  local file rel_path issues prompt codex_args=()
+  local file rel_path issues prompt
 
   case "${1:-}" in
     -h|--help|help)
@@ -88,7 +88,7 @@ $issues
 
 Requirements:
 1. Preserve the epic or feature goal, dependencies, and real constraints already present in the file.
-2. Rewrite the markdown in place so it passes Ralph's loop-readiness expectations.
+2. Rewrite the markdown in place so it passes Ralph loop-readiness expectations.
 3. Make the spec more execution-ready, not more verbose for its own sake.
 4. Be concise and token-efficient. Prefer short bullets, direct language, and the minimum wording needed to remove ambiguity.
 5. Do not add narrative background, motivational prose, or repeated reminders unless they materially change execution behavior.
@@ -125,8 +125,8 @@ Do not print the full file or a diff.
 EOF
   )
 
-  build_codex_exec_args codex_args
-  printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"
+  build_codex_exec_args
+  printf '%s\n' "$prompt" | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}"
 
   [ -f "$file" ] || fail "Spec file disappeared during strengthening: $file"
   "$SPEC_CHECK" "$file" >/dev/null || fail "Spec is still weak after strengthening: $file"
