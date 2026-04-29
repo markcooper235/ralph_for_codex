@@ -67,12 +67,12 @@ supports_codex_yolo() {
   return 1
 }
 
+CODEX_EXEC_ARGS=()
 build_codex_exec_args() {
-  local -n out_args_ref="$1"
   if supports_codex_yolo; then
-    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(--yolo exec -C "$WORKSPACE_ROOT" -)
   else
-    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
   fi
 }
 
@@ -85,7 +85,7 @@ generate_prd_markdown_from_intake_context() {
   local depends_csv="$6"
   local open_questions="$7"
   local prompt_context="$8"
-  local sidecar prompt codex_args=()
+  local sidecar prompt
 
   require_cmd "$CODEX_BIN"
   mkdir -p "$(dirname "$WORKSPACE_ROOT/$markdown_path")"
@@ -149,8 +149,8 @@ Return a short summary including the output path.
 EOF
   )
 
-  build_codex_exec_args codex_args
-  if printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"; then
+  build_codex_exec_args
+  if printf '%s\n' "$prompt" | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}"; then
     rm -f "$sidecar"
     return 0
   fi
@@ -261,10 +261,11 @@ activate_sprint() {
 sorted_sprints() {
   [ -d "$SPRINTS_DIR" ] || return 0
 
-  find "$SPRINTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+  find "$SPRINTS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null -exec basename {} \; \
     | awk '
-        match($0, /^sprint-([0-9]+)$/, m) {
-          printf "0\t%09d\t%s\n", m[1] + 0, $0
+        /^sprint-[0-9]+$/ {
+          num = $0; sub(/^sprint-/, "", num)
+          printf "0\t%09d\t%s\n", num + 0, $0
           next
         }
         {
@@ -998,7 +999,7 @@ remove_sprint() {
     cat > "$archive_dir/archive-manifest.txt" <<EOF
 action=remove-sprint
 sprint=$sprint
-removed_at=$(date -Iseconds)
+removed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 source_sprint_dir=$sprint_dir
 source_tasks_dir=$tasks_dir
 EOF

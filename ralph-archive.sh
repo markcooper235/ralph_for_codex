@@ -93,7 +93,8 @@ infer_prd_mode_from_branch() {
 
 iteration_ids_for_pattern() {
   local pattern="$1"
-  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' 2>/dev/null \
+  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" 2>/dev/null \
+    -exec basename {} \; \
     | sed -E 's/.*-iter-([0-9]+)\..*/\1/' \
     | sort -n
 }
@@ -260,7 +261,7 @@ PLAYWRIGHT_ARCHIVE_PRESENT=0
 [ -d "$ARCHIVE_DIR/.playwright-cli" ] && PLAYWRIGHT_ARCHIVE_PRESENT=1
 
 {
-  echo "archive_time=$(date -Iseconds)"
+  echo "archive_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   echo "source_branch=$BRANCH_NAME"
   echo "source_iteration_transcripts=$TRANSCRIPT_SOURCE_COUNT"
   echo "archived_iteration_transcripts=$TRANSCRIPT_ARCHIVE_COUNT"

@@ -172,8 +172,10 @@ local_prompt_has_named_blocks() {
 local_prompt_block_keys() {
   local path="$1"
   awk '
-    match($0, /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m) {
-      key = m[1]
+    /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:[A-Za-z0-9:_-]+[[:space:]]*-->[[:space:]]*$/ {
+      key = $0
+      sub(/^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:/, "", key)
+      sub(/[[:space:]]*-->[[:space:]]*$/, "", key)
       if (!seen[key]++) print key
     }
   ' "$path"
@@ -198,8 +200,11 @@ inject_local_prompt_blocks() {
 
   awk '
     FNR == NR {
-      if (match($0, /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
-        current = m[1]
+      if ($0 ~ /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:[A-Za-z0-9:_-]+[[:space:]]*-->[[:space:]]*$/) {
+        key = $0
+        sub(/^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:/, "", key)
+        sub(/[[:space:]]*-->[[:space:]]*$/, "", key)
+        current = key
         in_block = 1
         if (!(current in block_order_seen)) {
           block_order[++block_count] = current
@@ -209,8 +214,11 @@ inject_local_prompt_blocks() {
         next
       }
 
-      if (match($0, /^[[:space:]]*<!--[[:space:]]*\/RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
-        if (in_block && m[1] == current) {
+      if ($0 ~ /^[[:space:]]*<!--[[:space:]]*\/RALPH:LOCAL:[A-Za-z0-9:_-]+[[:space:]]*-->[[:space:]]*$/) {
+        key = $0
+        sub(/^[[:space:]]*<!--[[:space:]]*\/RALPH:LOCAL:/, "", key)
+        sub(/[[:space:]]*-->[[:space:]]*$/, "", key)
+        if (in_block && key == current) {
           in_block = 0
           current = ""
         }
@@ -224,9 +232,11 @@ inject_local_prompt_blocks() {
     }
 
     {
-      if (match($0, /^([[:space:]]*)<!--[[:space:]]*RALPH:LOCAL:([A-Za-z0-9:_-]+)[[:space:]]*-->[[:space:]]*$/, m)) {
-        indent = m[1]
-        key = m[2]
+      if ($0 ~ /^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:[A-Za-z0-9:_-]+[[:space:]]*-->[[:space:]]*$/) {
+        indent = $0; sub(/<!--.*$/, "", indent)
+        key = $0
+        sub(/^[[:space:]]*<!--[[:space:]]*RALPH:LOCAL:/, "", key)
+        sub(/[[:space:]]*-->[[:space:]]*$/, "", key)
         if (key in block_content) {
           line_count = split(block_content[key], lines, /\n/)
           min_leading = -1
@@ -792,7 +802,7 @@ write_iteration_handoff() {
   fi
 
   branch_name="$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || true)"
-  timestamp="$(date -Iseconds)"
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   if [ "$codex_exit_code" -ne 0 ]; then
     write_codex_failure_handoff "$output_file" "$iteration" "$timestamp" "$branch_name" "$codex_exit_code"
   else
@@ -815,7 +825,7 @@ write_completion_state() {
   local iteration="$1"
   local branch_name="$2"
   local timestamp
-  timestamp="$(date -Iseconds)"
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
   jq -n \
     --argjson iteration "$iteration" \
@@ -851,7 +861,8 @@ clear_completion_state() {
 
 iteration_ids_for_pattern() {
   local pattern="$1"
-  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' 2>/dev/null \
+  find "$SCRIPT_DIR" -maxdepth 1 -type f -name "$pattern" 2>/dev/null \
+    -exec basename {} \; \
     | sed -E 's/.*-iter-([0-9]+)\..*/\1/' \
     | sort -n
 }
@@ -905,7 +916,7 @@ write_wrapper_completed_handoff() {
   local iteration="$2"
   local branch_name="$3"
   local timestamp
-  timestamp="$(date -Iseconds)"
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
   write_fallback_handoff \
     "$output_path" \
@@ -976,8 +987,7 @@ extract_explicit_scope_paths() {
   local text="$1"
   printf '%s\n' "$text" \
     | awk '
-        BEGIN { IGNORECASE=1 }
-        /'"$EXPLICIT_SCOPE_SIGNAL_PATTERN"'/ { print }
+        tolower($0) ~ /'"$EXPLICIT_SCOPE_SIGNAL_PATTERN"'/ { print }
       ' \
     | grep -Eo '([A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.[A-Za-z0-9]+' \
     | sort -u
@@ -1408,7 +1418,7 @@ write_active_prd_state() {
   "baseBranch": "${base_branch}",
   "sourcePath": "$source_path",
   "epicId": "${epic_id}",
-  "activatedAt": "$(date -Iseconds)"
+  "activatedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
 }
@@ -1424,18 +1434,17 @@ sync_active_prd_mode_with_current_prd() {
   fi
 }
 
+CODEX_EXEC_ARGS=()
 build_codex_exec_args() {
-  local -n out_args_ref="$1"
-
   if supports_codex_yolo; then
-    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(--yolo exec -C "$WORKSPACE_ROOT" -)
   else
-    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
+    CODEX_EXEC_ARGS=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
   fi
 }
 
 bootstrap_prd_json() {
-  local bootstrap_prompt bootstrap_output codex_args=()
+  local bootstrap_prompt bootstrap_output
   bootstrap_prompt=$(
     cat <<'EOF'
 `scripts/ralph/prd.json` is missing or empty.
@@ -1450,8 +1459,8 @@ EOF
   )
 
   echo "PRD is missing/empty. Bootstrapping via Codex (prd + ralph skills)..."
-  build_codex_exec_args codex_args
-  bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${codex_args[@]}" 2>&1) || true
+  build_codex_exec_args
+  bootstrap_output=$(printf '%s\n' "$bootstrap_prompt" | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}" 2>&1) || true
 
   if echo "$bootstrap_output" | grep -qi "error"; then
     echo "Warning: bootstrap run reported errors; validating prd.json..."
@@ -1753,12 +1762,12 @@ for ((i=START_ITERATION; i<=END_ITERATION; i++)); do
     exit 1
   fi
 
-  build_codex_exec_args CODEX_ARGS
+  build_codex_exec_args
 
   # Run Codex with the Ralph prompt (fresh context every iteration).
   # Avoid storing full model output in shell memory.
   set +e
-  render_prompt | "$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE"
+  render_prompt | "$CODEX_BIN" "${CODEX_EXEC_ARGS[@]}" 2>&1 | tee "$CODEX_ITER_TRANSCRIPT_FILE"
   CODEX_EXIT_CODE="${PIPESTATUS[1]:-1}"
   set -e
 

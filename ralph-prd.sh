@@ -419,7 +419,9 @@ commit_generated_prd_markdown_if_needed() {
 
 snapshot_prd_markdown_state() {
   mkdir -p "$SCRIPT_DIR/tasks/prds"
-  find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' -printf '%P|%s|%T@\n' 2>/dev/null | sort
+  find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' 2>/dev/null \
+    | while IFS= read -r f; do printf '%s|%s\n' "$(basename "$f")" "$(cksum "$f" | awk '{print $1}')"; done \
+    | sort
 }
 
 detect_changed_prd_markdown() {
@@ -448,10 +450,9 @@ detect_changed_prd_markdown() {
 latest_prd_markdown() {
   local latest=""
   latest="$(
-    find "$SCRIPT_DIR/tasks/prds" -maxdepth 1 -type f -name 'prd-*.md' -printf '%P|%T@\n' 2>/dev/null \
-      | sort -t'|' -k2,2n \
-      | tail -n 1 \
-      | cut -d'|' -f1
+    ls -t "$SCRIPT_DIR/tasks/prds"/prd-*.md 2>/dev/null \
+      | head -n 1 \
+      | while IFS= read -r f; do basename "$f"; done
   )"
   if [ -n "$latest" ]; then
     printf 'scripts/ralph/tasks/prds/%s\n' "$latest"
