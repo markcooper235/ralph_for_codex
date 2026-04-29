@@ -265,7 +265,6 @@ Notes:
 | `prompt.local.md` | Repo-local prompt extensions |
 | `prd.json.example` | Example PRD format |
 | `epics.json.example` | Example sprint epic backlog format |
-| `scripts/openspec/openspec-skill.sh` | Optional OpenSpec-to-Ralph adapter |
 
 ## Notes
 

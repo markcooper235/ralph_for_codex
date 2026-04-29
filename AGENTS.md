@@ -134,7 +134,6 @@ Transient and should remain untracked:
 
 - Use `ralph-epic.sh` when you need to inspect backlog order, add ad hoc epics, or mark epics abandoned.
 - Use `ralph-prime.sh` for recovery or advanced control, not as the default sprint entrypoint.
-- Use `scripts/openspec/openspec-skill.sh` only for the optional OpenSpec planning path.
 
 ## More Detail
 

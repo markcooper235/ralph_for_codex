@@ -65,7 +65,6 @@ Use `AGENTS.md` for the broad operating model. Use this file when you need deepe
 
 - `ralph-commit.sh` and `ralph-sprint-commit.sh` delete merged source branches by default; pass `--keep` to retain them.
 - `.active-prd` includes explicit `baseBranch`; `ralph-commit.sh` should use it before fallback target inference.
-- OpenSpec conversion is opt-in via `scripts/openspec/openspec-skill.sh` and is not invoked by `ralph.sh`; core Ralph loop behavior remains unchanged.
 
 ## Story Sizing Policy
 

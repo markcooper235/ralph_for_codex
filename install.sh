@@ -14,11 +14,6 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(pwd)"
 DEST_DIR_REL="scripts/ralph"
 DEST_PARENT_REL="$(dirname "$DEST_DIR_REL")"
-if [ "$DEST_PARENT_REL" = "." ]; then
-  OPENSPEC_DEST_REL="openspec"
-else
-  OPENSPEC_DEST_REL="$DEST_PARENT_REL/openspec"
-fi
 FORCE=0
 WITH_EXAMPLE_PRD=1
 INSTALL_SKILLS=0
@@ -61,11 +56,6 @@ while [[ $# -gt 0 ]]; do
     --dest)
       DEST_DIR_REL="${2:-}"
       DEST_PARENT_REL="$(dirname "$DEST_DIR_REL")"
-      if [ "$DEST_PARENT_REL" = "." ]; then
-        OPENSPEC_DEST_REL="openspec"
-      else
-        OPENSPEC_DEST_REL="$DEST_PARENT_REL/openspec"
-      fi
       shift 2
       ;;
     --force)
@@ -118,7 +108,6 @@ if [ "$SKIP_GIT_CHECK" -ne 1 ]; then
 fi
 
 mkdir -p "$DEST_DIR_REL"
-mkdir -p "$OPENSPEC_DEST_REL"
 mkdir -p "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
 
 copy_file() {
@@ -167,10 +156,6 @@ copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.m
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
-if [ -f "$SOURCE_DIR/scripts/openspec/openspec-skill.sh" ]; then
-  copy_file "$SOURCE_DIR/scripts/openspec/openspec-skill.sh" "$OPENSPEC_DEST_REL/openspec-skill.sh"
-fi
-
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
   "$DEST_DIR_REL/ralph-prd.sh" \
@@ -187,10 +172,6 @@ chmod +x \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
-
-if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
-  chmod +x "$OPENSPEC_DEST_REL/openspec-skill.sh"
-fi
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
   if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
@@ -304,9 +285,5 @@ echo "    ./$DEST_DIR_REL/ralph-roadmap.sh --vision \"Baseline to target-state r
 echo "    ./$DEST_DIR_REL/ralph-sprint.sh status"
 echo "    ./$DEST_DIR_REL/ralph.sh 10"
 echo "    ./$DEST_DIR_REL/ralph-commit.sh"
-if [ -f "$OPENSPEC_DEST_REL/openspec-skill.sh" ]; then
-  echo "Optional OpenSpec adapter:"
-  echo "  ./$OPENSPEC_DEST_REL/openspec-skill.sh convert --change <name>"
-fi
 echo "  Sprint closeout:"
 echo "    ./$DEST_DIR_REL/ralph-sprint-commit.sh"
