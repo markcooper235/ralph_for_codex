@@ -145,6 +145,7 @@ copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commi
 copy_file "$SOURCE_DIR/ralph-sprint-migrate.sh" "$DEST_DIR_REL/ralph-sprint-migrate.sh"
 copy_file "$SOURCE_DIR/ralph-story.sh" "$DEST_DIR_REL/ralph-story.sh"
 copy_file "$SOURCE_DIR/ralph-task.sh" "$DEST_DIR_REL/ralph-task.sh"
+copy_file "$SOURCE_DIR/ralph-fallow.sh" "$DEST_DIR_REL/ralph-fallow.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
 copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
@@ -175,6 +176,7 @@ chmod +x \
   "$DEST_DIR_REL/ralph-sprint-migrate.sh" \
   "$DEST_DIR_REL/ralph-story.sh" \
   "$DEST_DIR_REL/ralph-task.sh" \
+  "$DEST_DIR_REL/ralph-fallow.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 

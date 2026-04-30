@@ -552,6 +552,7 @@ expected_state="ready"
         "grep -q 'Ready for review' src/messages.ts",
         "grep -q 'View release notes' src/messages.ts",
         "npm run typecheck",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
@@ -567,9 +568,25 @@ expected_state="ready"
       "checks": [
         "grep -q 'Hello Sprint Ralph' tests/messages.test.mjs",
         "grep -q 'Ready for review' tests/messages.test.mjs",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression verification",
+      "context": "Run npm run build to compile, npm run lint to check code quality, and npm test to run the full test suite. If any issues are found, fix them and commit. If everything passes, nothing needs to be committed.",
+      "scope": ["src/messages.ts", "tests/messages.test.mjs"],
+      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "checks": [
+        "npm run build",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -609,7 +626,8 @@ STORYJSON
       "checks": [
         "grep -q 'data-state' src/render.ts",
         "grep -q 'title' src/render.ts",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -623,9 +641,25 @@ STORYJSON
       "acceptance": "tests/render.test.mjs asserts data-state is set on #status and title is set on #cta. All tests pass.",
       "checks": [
         "grep -q 'data-state' tests/render.test.mjs",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression verification",
+      "context": "Run npm run build to compile, npm run lint to check code quality, and npm test to run the full test suite. If any issues are found, fix them and commit. If everything passes, nothing needs to be committed.",
+      "scope": ["src/render.ts", "tests/render.test.mjs"],
+      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "checks": [
+        "npm run build",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -661,12 +695,13 @@ STORYJSON
       "title": "Create tests/ui.spec.mjs Playwright test suite",
       "context": "Create tests/ui.spec.mjs: a comprehensive Playwright test suite. Import chromium from playwright. Create a local HTTP server (like scripts/browser-check.mjs pattern) to serve files from the current directory. Navigate to index.html. Wait for all elements to render. Assert at least 6 things: #app text equals $expected_headline, #status text equals $expected_status, #status data-state attribute equals $expected_state, #cta text equals $expected_cta, #cta title attribute equals $expected_cta, and #cta is a button element. Close browser and server when done. console.log PASS with assertion count. Commit.",
       "scope": ["tests/ui.spec.mjs"],
-      "acceptance": "tests/ui.spec.mjs exists, imports chromium, and includes data-state assertions. Typecheck passes.",
+      "acceptance": "tests/ui.spec.mjs exists, imports chromium, and includes data-state assertions. Typecheck passes. Lint passes.",
       "checks": [
         "test -f tests/ui.spec.mjs",
         "grep -q 'chromium' tests/ui.spec.mjs",
         "grep -q 'data-state' tests/ui.spec.mjs",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -674,16 +709,33 @@ STORYJSON
     },
     {
       "id": "T-02",
-      "title": "Build and run full verification suite",
-      "context": "Run npm run build to compile the project. Then run npm run -s browser:check -- $expected_headline $expected_status $expected_cta $expected_state to verify the browser contract. Then run npm test which will include the new ui.spec.mjs Playwright tests. Fix any issues found. Commit.",
+      "title": "Verify Playwright spec has all required assertions",
+      "context": "Review tests/ui.spec.mjs and ensure it has assertions for all required elements: #app text ($expected_headline), #status text ($expected_status), #status data-state=$expected_state, #cta text ($expected_cta), #cta title=$expected_cta, and that #cta is a button element. Add any missing assertions. Run npm run lint. Commit any changes.",
+      "scope": ["tests/ui.spec.mjs"],
+      "acceptance": "tests/ui.spec.mjs has all 6+ assertions. Lint passes.",
+      "checks": [
+        "grep -q '#app' tests/ui.spec.mjs",
+        "grep -q 'data-state' tests/ui.spec.mjs",
+        "grep -q '#cta' tests/ui.spec.mjs",
+        "npm run lint"
+      ],
+      "depends_on": ["T-01"],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression: build, browser verify, and test suite",
+      "context": "Run npm run build to compile the project. Then run npm run -s browser:check -- $expected_headline $expected_status $expected_cta $expected_state to verify the full browser contract. Run npm run lint. Run npm test to execute all tests including the Playwright suite. Fix any issues found and commit any fixes.",
       "scope": ["src/render.ts", "tests/ui.spec.mjs", "scripts/browser-check.mjs"],
-      "acceptance": "Build succeeds. Browser check passes for all 4 args. npm test passes including Playwright suite.",
+      "acceptance": "Build succeeds. Browser check passes for all 4 args. All tests pass including Playwright. Lint passes.",
       "checks": [
         "npm run build",
         "npm run -s browser:check -- 'Hello Sprint Ralph' 'Ready for review' 'View release notes' ready",
+        "npm run lint",
         "npm test"
       ],
-      "depends_on": ["T-01"],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -691,6 +743,14 @@ STORYJSON
   "passes": false
 }
 STORYJSON
+
+  cat > "ralph-sprint-test.sh" <<SPRSH
+#!/bin/bash
+set -euo pipefail
+cd "\$(git rev-parse --show-toplevel)"
+npm run build && npm run lint && npm test && npm run -s browser:check -- '$expected_headline' '$expected_status' '$expected_cta' '$expected_state'
+SPRSH
+  chmod +x "ralph-sprint-test.sh"
 
   ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-001.log" 2>&1
   ./ralph-sprint.sh status > "$WORK_DIR/status-sprint-preloop.log" 2>&1 || true
@@ -741,6 +801,7 @@ assert_contains "$WORK_DIR/loop-S-002.log" "Story S-002 COMPLETE"
 assert_contains "$WORK_DIR/loop-S-003.log" "Story S-003 COMPLETE"
 assert_contains "$WORK_DIR/test-sprint.log" "test ok"
 assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $expected_headline \| $expected_status \| $expected_cta \| $expected_state"
+assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Sprint regression: PASS"
 assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
 
 planning_tokens=0

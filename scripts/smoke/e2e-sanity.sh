@@ -741,10 +741,12 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       sprint_s003_title="Add document title and verify browser"
       sprint_s003_goal="Add document.title assignment to src/index.ts and run browser verification."
       sprint_s003_context="Add document.title assignment in src/index.ts and update test, then build and verify browser output."
-      sprint_s003_t01_context="Add document.title = 'Sprint Ralph' to src/index.ts. Update tests/hello.test.mjs to assert Sprint Ralph is present. Commit the change."
-      sprint_s003_t01_acceptance="src/index.ts contains document.title assignment for Sprint Ralph. Typecheck passes."
-      sprint_s003_t02_context="Build the project with npm run build. Then run npm run -s browser:check -- Hello Sprint Ralph to verify the browser shows Hello Sprint Ralph in the #app element. Fix any issues. Commit the change."
-      sprint_s003_t02_acceptance="Build succeeds. Browser check passes for Hello Sprint Ralph."
+      sprint_s003_t01_context="Add document.title = 'Sprint Ralph' to src/index.ts. Keep all other code unchanged. Commit the change."
+      sprint_s003_t01_acceptance="src/index.ts contains document.title assignment for Sprint Ralph. Typecheck passes. Lint passes."
+      sprint_s003_t02_context="Update tests/hello.test.mjs to also assert that src/index.ts contains Sprint Ralph. Commit the change."
+      sprint_s003_t02_acceptance="tests/hello.test.mjs asserts Sprint Ralph is present in src/index.ts. Lint passes. Tests pass."
+      sprint_s003_t03_context="Build the project with npm run build. Then run npm run -s browser:check -- Hello Sprint Ralph to verify the browser shows Hello Sprint Ralph in the #app element. Run npm test. Fix any issues and commit any fixes needed."
+      sprint_s003_t03_acceptance="Build succeeds. Browser check passes for Hello Sprint Ralph. Tests pass. Lint passes."
     else
       sprint_expected_status="Status: ready"
       sprint_s001_title="Update greeting to Hello Sprint Ralph"
@@ -819,7 +821,8 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       "acceptance": "$sprint_s001_t01_acceptance",
       "checks": [
         "grep -q 'Hello Sprint Ralph' src/index.ts",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -833,9 +836,25 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       "acceptance": "$sprint_s001_t02_acceptance",
       "checks": [
         "grep -q 'Hello Sprint Ralph' tests/hello.test.mjs",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression verification",
+      "context": "Run npm run build to compile, npm run lint to check code quality, and npm test to run the full test suite. If any issues are found, fix them and commit. If everything passes, nothing needs to be committed.",
+      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "checks": [
+        "npm run build",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -873,7 +892,8 @@ STORYJSON
       "acceptance": "$sprint_s002_t01_acceptance",
       "checks": [
         "grep -q 'sprint-smoke' src/index.ts",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -887,9 +907,25 @@ STORYJSON
       "acceptance": "$sprint_s002_t02_acceptance",
       "checks": [
         "grep -q 'sprint-smoke' tests/hello.test.mjs",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression verification",
+      "context": "Run npm run build to compile, npm run lint to check code quality, and npm test to run the full test suite. If any issues are found, fix them and commit. If everything passes, nothing needs to be committed.",
+      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "checks": [
+        "npm run build",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -922,13 +958,14 @@ STORYJSON
   "tasks": [
     {
       "id": "T-01",
-      "title": "Add document.title assignment to src/index.ts and update test",
+      "title": "Add document.title assignment to src/index.ts",
       "context": "$sprint_s003_t01_context",
-      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "scope": ["src/index.ts"],
       "acceptance": "$sprint_s003_t01_acceptance",
       "checks": [
         "grep -q 'document.title' src/index.ts",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -936,15 +973,32 @@ STORYJSON
     },
     {
       "id": "T-02",
-      "title": "Build and verify browser output",
+      "title": "Update tests/hello.test.mjs to assert document.title",
       "context": "$sprint_s003_t02_context",
-      "scope": ["src/index.ts"],
+      "scope": ["tests/hello.test.mjs"],
       "acceptance": "$sprint_s003_t02_acceptance",
       "checks": [
-        "npm run build",
-        "npm run -s browser:check -- 'Hello Sprint Ralph'"
+        "grep -q 'Sprint Ralph' tests/hello.test.mjs",
+        "npm run lint",
+        "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Build and browser regression verification",
+      "context": "$sprint_s003_t03_context",
+      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "acceptance": "$sprint_s003_t03_acceptance",
+      "checks": [
+        "npm run build",
+        "npm run -s browser:check -- 'Hello Sprint Ralph'",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -981,7 +1035,8 @@ STORYJSON
       "acceptance": "$sprint_s003_t01_acceptance",
       "checks": [
         "grep -q 'Status: ready' src/index.ts",
-        "npm run typecheck"
+        "npm run typecheck",
+        "npm run lint"
       ],
       "depends_on": [],
       "status": "pending",
@@ -995,9 +1050,25 @@ STORYJSON
       "acceptance": "$sprint_s003_t02_acceptance",
       "checks": [
         "grep -q 'Status: ready' tests/hello.test.mjs",
+        "npm run lint",
         "npm test"
       ],
       "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Full regression verification",
+      "context": "Run npm run build to compile, npm run lint to check code quality, and npm test to run the full test suite. If any issues are found, fix them and commit. If everything passes, nothing needs to be committed.",
+      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "checks": [
+        "npm run build",
+        "npm run lint",
+        "npm test"
+      ],
+      "depends_on": ["T-02"],
       "status": "pending",
       "passes": false
     }
@@ -1006,6 +1077,14 @@ STORYJSON
 }
 STORYJSON
       fi
+
+      cat > "ralph-sprint-test.sh" <<'SPRSH'
+#!/bin/bash
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+npm run build && npm run lint && npm test
+SPRSH
+      chmod +x "ralph-sprint-test.sh"
 
       ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-001.log" 2>&1
       commit_framework_baseline "$SPRINT_REPO" "chore(smoke): pre-loop planning state (sprint)"
@@ -1076,6 +1155,7 @@ STORYJSON
       assert_contains "$WORK_DIR/runtime-sprint.log" "^$sprint_expected_msg$"
     fi
     assert_contains "$WORK_DIR/test-sprint.log" "test ok"
+    assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Sprint regression: PASS"
     assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
     sprint_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-S-001.log")"
     sprint_tokens=$((sprint_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-002.log")))

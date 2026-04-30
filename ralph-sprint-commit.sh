@@ -16,23 +16,26 @@ SPRINT_BRANCH_PREFIX="ralph/sprint"
 TARGET_BRANCH=""
 DRY_RUN=false
 KEEP_SOURCE=false
+SKIP_REGRESSION=false
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run] [--keep]
+Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run] [--keep] [--skip-regression]
 
 Behavior:
   1. Validates active sprint exists and all stories are done/abandoned
-  2. Ensures sprint branch exists (ralph/sprint/<active-sprint>)
-  3. Archives sprint-level artifacts to scripts/ralph/tasks/archive/sprints/
-  4. Merges sprint branch into target branch (master preferred, else main)
-  5. Clears active Ralph sprint/prd state for next sprint/standalone run
+  2. Runs sprint regression gate (ralph-sprint-test.sh) if present
+  3. Ensures sprint branch exists (ralph/sprint/<active-sprint>)
+  4. Archives sprint-level artifacts to scripts/ralph/tasks/archive/sprints/
+  5. Merges sprint branch into target branch (master preferred, else main)
+  6. Clears active Ralph sprint/prd state for next sprint/standalone run
 
 Options:
-  --target BRANCH  Explicit merge target branch
-  --dry-run        Print plan only
-  --keep           Keep sprint branch after successful merge
-  -h, --help       Show this help
+  --target BRANCH      Explicit merge target branch
+  --dry-run            Print plan only
+  --keep               Keep sprint branch after successful merge
+  --skip-regression    Skip the sprint regression gate (bypass for debugging)
+  -h, --help           Show this help
 USAGE
 }
 
@@ -122,6 +125,10 @@ while [ $# -gt 0 ]; do
       KEEP_SOURCE=true
       shift
       ;;
+    --skip-regression)
+      SKIP_REGRESSION=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -182,6 +189,15 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 ensure_clean_worktree
+
+# Pre-merge regression gate
+if [ "$SKIP_REGRESSION" != "true" ] && [ -f "$SCRIPT_DIR/ralph-sprint-test.sh" ]; then
+  echo "--- Sprint regression gate ---"
+  if ! "$SCRIPT_DIR/ralph-sprint-test.sh"; then
+    fail "Sprint regression failed — correct failures before sprint commit. Use --skip-regression to bypass."
+  fi
+  echo "Sprint regression: PASS"
+fi
 
 CURRENT_BRANCH="$(git branch --show-current)"
 
