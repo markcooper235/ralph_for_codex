@@ -255,6 +255,12 @@ cmd_start_next() {
 
   echo "Started story: $next_id"
 
+  # Commit the activeStoryId update to the sprint branch before creating story branch
+  git -C "$WORKSPACE_ROOT" add "$STORIES_FILE" 2>/dev/null || true
+  if ! git -C "$WORKSPACE_ROOT" diff --cached --quiet 2>/dev/null; then
+    git -C "$WORKSPACE_ROOT" commit -m "chore(ralph): start $next_id"
+  fi
+
   # Checkout or create story branch from sprint branch
   local story_branch active_sprint sprint_branch
   story_branch="$(jq -r '.branchName // ""' "$story_path" 2>/dev/null || true)"

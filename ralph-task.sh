@@ -495,6 +495,14 @@ Total changed: ${_story_total_diff}"
             || git -C "$WORKSPACE_ROOT" branch -D "$_story_branch" 2>/dev/null \
             || true
           log "Merged and deleted story branch: $_story_branch"
+          # Commit story metadata on the sprint branch
+          local _meta_stories_file="$SCRIPT_DIR/sprints/${_sprint}/stories.json"
+          git -C "$WORKSPACE_ROOT" add "$STORY_FILE" 2>/dev/null || true
+          [ -f "$_meta_stories_file" ] && git -C "$WORKSPACE_ROOT" add "$_meta_stories_file" 2>/dev/null || true
+          if ! git -C "$WORKSPACE_ROOT" diff --cached --quiet 2>/dev/null; then
+            git -C "$WORKSPACE_ROOT" commit -m "chore(ralph): $STORY_ID complete — story metadata"
+            log "Committed story metadata on sprint branch."
+          fi
         else
           log "WARN: Merge conflict merging $_story_branch → $_sprint_branch. Resolve manually then delete $_story_branch."
         fi
