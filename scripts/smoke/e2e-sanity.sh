@@ -722,18 +722,52 @@ if [ "$WITH_LOOP" -eq 1 ]; then
   if [ "$LOOP_MODE" = "sprint" ] || [ "$LOOP_MODE" = "both" ]; then
     sprint_expected_target="ralph/sprint/sprint-1"
     sprint_expected_msg="Hello Sprint Ralph"
+    sprint_expected_app="App: sprint-smoke"
     if [ "$APP_MODE" = "ui" ]; then
-      sprint_story_title="Update UI greeting string and unit test"
-      sprint_task_t01_context="Update src/index.ts UI greeting constant to exactly Hello Sprint Ralph. The current value is Hello World. Change only the greeting string, keep all other code unchanged. Commit the change."
-      sprint_task_t01_acceptance="src/index.ts contains Hello Sprint Ralph as the greeting value. Typecheck passes."
-      sprint_task_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
-      sprint_task_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
+      sprint_s001_title="Update greeting to Hello Sprint Ralph"
+      sprint_s001_goal="Update the app greeting to Hello Sprint Ralph and update tests accordingly."
+      sprint_s001_context="Change the greeting string in src/index.ts and update the assertion in tests/hello.test.mjs."
+      sprint_s001_t01_context="Update src/index.ts UI greeting constant to exactly Hello Sprint Ralph. The current value is Hello World. Change only the greeting string, keep all other code unchanged. Commit the change."
+      sprint_s001_t01_acceptance="src/index.ts contains Hello Sprint Ralph as the greeting value. Typecheck passes."
+      sprint_s001_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
+      sprint_s001_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
+      sprint_s002_title="Add app identifier output"
+      sprint_s002_goal="Add a console.log line for the app identifier sprint-smoke to src/index.ts and update tests."
+      sprint_s002_context="Add console.log for app identifier after existing output in src/index.ts and update test to verify the identifier is present in source."
+      sprint_s002_t01_context="Add console.log(\"App: sprint-smoke\") line to src/index.ts after the existing console.log. Change only what is needed. Commit the change."
+      sprint_s002_t01_acceptance="src/index.ts contains App: sprint-smoke. Typecheck passes."
+      sprint_s002_t02_context="Update tests/hello.test.mjs to also assert that src/index.ts contains sprint-smoke. Commit the change."
+      sprint_s002_t02_acceptance="tests/hello.test.mjs asserts sprint-smoke is present in src/index.ts. All tests pass."
+      sprint_s003_title="Add document title and verify browser"
+      sprint_s003_goal="Add document.title assignment to src/index.ts and run browser verification."
+      sprint_s003_context="Add document.title assignment in src/index.ts and update test, then build and verify browser output."
+      sprint_s003_t01_context="Add document.title = \"Sprint Ralph\" to src/index.ts. Update tests/hello.test.mjs to assert Sprint Ralph is present. Commit the change."
+      sprint_s003_t01_acceptance="src/index.ts contains document.title assignment for Sprint Ralph. Typecheck passes."
+      sprint_s003_t02_context="Build the project with npm run build. Then run npm run -s browser:check -- Hello Sprint Ralph to verify the browser shows Hello Sprint Ralph in the #app element. Fix any issues. Commit the change."
+      sprint_s003_t02_acceptance="Build succeeds. Browser check passes for Hello Sprint Ralph."
     else
-      sprint_story_title="Update greeting string and unit test"
-      sprint_task_t01_context="Update src/index.ts to print exactly Hello Sprint Ralph instead of Hello World. Change only the greeting string in the console.log call. Commit the change."
-      sprint_task_t01_acceptance="src/index.ts contains Hello Sprint Ralph in the console.log statement. Typecheck passes."
-      sprint_task_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
-      sprint_task_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
+      sprint_expected_status="Status: ready"
+      sprint_s001_title="Update greeting to Hello Sprint Ralph"
+      sprint_s001_goal="Update the app greeting to Hello Sprint Ralph and update tests accordingly."
+      sprint_s001_context="Change the greeting string in src/index.ts and update the assertion in tests/hello.test.mjs."
+      sprint_s001_t01_context="Update src/index.ts to print exactly Hello Sprint Ralph instead of Hello World. Change only the greeting string in the console.log call. Commit the change."
+      sprint_s001_t01_acceptance="src/index.ts contains Hello Sprint Ralph in the console.log statement. Typecheck passes."
+      sprint_s001_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
+      sprint_s001_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
+      sprint_s002_title="Add app identifier output"
+      sprint_s002_goal="Add a console.log line for the app identifier sprint-smoke to src/index.ts and update tests."
+      sprint_s002_context="Add console.log for app identifier after existing output in src/index.ts and update test to verify the identifier is present in source."
+      sprint_s002_t01_context="Add console.log(\"App: sprint-smoke\") line to src/index.ts after the existing console.log. Change only what is needed. Commit the change."
+      sprint_s002_t01_acceptance="src/index.ts contains App: sprint-smoke. Typecheck passes."
+      sprint_s002_t02_context="Update tests/hello.test.mjs to also assert that src/index.ts contains sprint-smoke. Commit the change."
+      sprint_s002_t02_acceptance="tests/hello.test.mjs asserts sprint-smoke is present in src/index.ts. All tests pass."
+      sprint_s003_title="Add status message output"
+      sprint_s003_goal="Add a console.log line for Status: ready to src/index.ts and update tests."
+      sprint_s003_context="Add console.log for status after existing output in src/index.ts and update test to verify status message is present in source."
+      sprint_s003_t01_context="Add console.log(\"Status: ready\") line to src/index.ts after the existing output. Change only what is needed. Commit the change."
+      sprint_s003_t01_acceptance="src/index.ts contains Status: ready. Typecheck passes."
+      sprint_s003_t02_context="Update tests/hello.test.mjs to also assert that src/index.ts contains Status: ready. Commit the change."
+      sprint_s003_t02_acceptance="tests/hello.test.mjs asserts Status: ready is present in src/index.ts. All tests pass."
     fi
     (
       cd "$SPRINT_REPO/scripts/ralph"
@@ -741,17 +775,28 @@ if [ "$WITH_LOOP" -eq 1 ]; then
       ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-sprint.log" 2>&1 || true
       RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
       ./ralph-story.sh add \
-        --title "$sprint_story_title" \
-        --goal "Update the app greeting to Hello Sprint Ralph and update tests accordingly." \
-        --prompt-context "Change the greeting string in src/index.ts and update the assertion in tests/hello.test.mjs." \
-        > "$WORK_DIR/story-add-sprint.log" 2>&1
+        --title "$sprint_s001_title" \
+        --goal "$sprint_s001_goal" \
+        --prompt-context "$sprint_s001_context" \
+        > "$WORK_DIR/story-add-S-001.log" 2>&1
+      ./ralph-story.sh add \
+        --title "$sprint_s002_title" \
+        --goal "$sprint_s002_goal" \
+        --prompt-context "$sprint_s002_context" \
+        > "$WORK_DIR/story-add-S-002.log" 2>&1
+      ./ralph-story.sh add \
+        --title "$sprint_s003_title" \
+        --goal "$sprint_s003_goal" \
+        --prompt-context "$sprint_s003_context" \
+        > "$WORK_DIR/story-add-S-003.log" 2>&1
+
       mkdir -p "sprints/sprint-1/stories/S-001"
       cat > "sprints/sprint-1/stories/S-001/story.json" <<STORYJSON
 {
   "version": 1,
   "project": "smoke",
   "storyId": "S-001",
-  "title": "$sprint_story_title",
+  "title": "$sprint_s001_title",
   "description": "Update greeting in src/index.ts to Hello Sprint Ralph and update tests accordingly.",
   "branchName": "ralph/sprint-1/story-S-001",
   "sprint": "sprint-1",
@@ -769,9 +814,9 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     {
       "id": "T-01",
       "title": "Update greeting in src/index.ts",
-      "context": "$sprint_task_t01_context",
+      "context": "$sprint_s001_t01_context",
       "scope": ["src/index.ts"],
-      "acceptance": "$sprint_task_t01_acceptance",
+      "acceptance": "$sprint_s001_t01_acceptance",
       "checks": [
         "grep -q 'Hello Sprint Ralph' src/index.ts",
         "npm run typecheck"
@@ -783,9 +828,9 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     {
       "id": "T-02",
       "title": "Update test assertion in tests/hello.test.mjs",
-      "context": "$sprint_task_t02_context",
+      "context": "$sprint_s001_t02_context",
       "scope": ["tests/hello.test.mjs"],
-      "acceptance": "$sprint_task_t02_acceptance",
+      "acceptance": "$sprint_s001_t02_acceptance",
       "checks": [
         "grep -q 'Hello Sprint Ralph' tests/hello.test.mjs",
         "npm test"
@@ -798,21 +843,206 @@ if [ "$WITH_LOOP" -eq 1 ]; then
   "passes": false
 }
 STORYJSON
-      ./ralph-story.sh start-next > "$WORK_DIR/story-start-sprint.log" 2>&1
-      ./ralph-sprint.sh status > "$WORK_DIR/status-sprint-preloop.log" 2>&1 || true
+
+      mkdir -p "sprints/sprint-1/stories/S-002"
+      cat > "sprints/sprint-1/stories/S-002/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-002",
+  "title": "$sprint_s002_title",
+  "description": "Add console.log for the app identifier sprint-smoke to src/index.ts and update tests.",
+  "branchName": "ralph/sprint-1/story-S-002",
+  "sprint": "sprint-1",
+  "priority": 2,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "Add app identifier output to src/index.ts and update tests/hello.test.mjs.",
+    "preserved_invariants": [
+      "All existing tests must pass after changes",
+      "TypeScript typecheck must pass"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Add app identifier console.log to src/index.ts",
+      "context": "$sprint_s002_t01_context",
+      "scope": ["src/index.ts"],
+      "acceptance": "$sprint_s002_t01_acceptance",
+      "checks": [
+        "grep -q 'sprint-smoke' src/index.ts",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Update test to verify app identifier in source",
+      "context": "$sprint_s002_t02_context",
+      "scope": ["tests/hello.test.mjs"],
+      "acceptance": "$sprint_s002_t02_acceptance",
+      "checks": [
+        "grep -q 'sprint-smoke' tests/hello.test.mjs",
+        "npm test"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+
+      mkdir -p "sprints/sprint-1/stories/S-003"
+      if [ "$APP_MODE" = "ui" ]; then
+        cat > "sprints/sprint-1/stories/S-003/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-003",
+  "title": "$sprint_s003_title",
+  "description": "$sprint_s003_goal",
+  "branchName": "ralph/sprint-1/story-S-003",
+  "sprint": "sprint-1",
+  "priority": 3,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "Add document.title to src/index.ts, update tests/hello.test.mjs, build, and verify browser.",
+    "preserved_invariants": [
+      "All existing tests must pass after changes",
+      "TypeScript typecheck must pass"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Add document.title assignment to src/index.ts and update test",
+      "context": "$sprint_s003_t01_context",
+      "scope": ["src/index.ts", "tests/hello.test.mjs"],
+      "acceptance": "$sprint_s003_t01_acceptance",
+      "checks": [
+        "grep -q 'document.title' src/index.ts",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Build and verify browser output",
+      "context": "$sprint_s003_t02_context",
+      "scope": ["src/index.ts"],
+      "acceptance": "$sprint_s003_t02_acceptance",
+      "checks": [
+        "npm run build",
+        "npm run -s browser:check -- 'Hello Sprint Ralph'"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+      else
+        cat > "sprints/sprint-1/stories/S-003/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-003",
+  "title": "$sprint_s003_title",
+  "description": "$sprint_s003_goal",
+  "branchName": "ralph/sprint-1/story-S-003",
+  "sprint": "sprint-1",
+  "priority": 3,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "Add status message output to src/index.ts and update tests/hello.test.mjs.",
+    "preserved_invariants": [
+      "All existing tests must pass after changes",
+      "TypeScript typecheck must pass"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Add status message console.log to src/index.ts",
+      "context": "$sprint_s003_t01_context",
+      "scope": ["src/index.ts"],
+      "acceptance": "$sprint_s003_t01_acceptance",
+      "checks": [
+        "grep -q 'Status: ready' src/index.ts",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Update test to verify status message in source",
+      "context": "$sprint_s003_t02_context",
+      "scope": ["tests/hello.test.mjs"],
+      "acceptance": "$sprint_s003_t02_acceptance",
+      "checks": [
+        "grep -q 'Status: ready' tests/hello.test.mjs",
+        "npm test"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+      fi
+
+      ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-001.log" 2>&1
       commit_framework_baseline "$SPRINT_REPO" "chore(smoke): pre-loop planning state (sprint)"
       sprint_loop_start_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-sprint.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-task.sh
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-001.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-task.sh
+      ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-002.log" 2>&1
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-002.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-task.sh
+      ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-003.log" 2>&1
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-003.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-task.sh
       sprint_loop_end_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+
       jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-001/story.json" >/dev/null
-      jq -e '[.stories[] | select(.id == "S-001")] | .[0].status == "done" and .[0].passes == true' "sprints/sprint-1/stories.json" >/dev/null
-      assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" "src/index.ts" "tests/hello.test.mjs"
+      jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-002/story.json" >/dev/null
+      jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-003/story.json" >/dev/null
+      jq -e 'all(.stories[]; .status == "done" and .passes == true)' "sprints/sprint-1/stories.json" >/dev/null
+
+      if [ "$APP_MODE" = "ui" ]; then
+        assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" \
+          "scripts/ralph/sprints/sprint-1/stories.json" \
+          "scripts/ralph/sprints/sprint-1/stories/*/story.json" \
+          "src/index.ts" "tests/hello.test.mjs" "scripts/browser-check.mjs"
+      else
+        assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" \
+          "scripts/ralph/sprints/sprint-1/stories.json" \
+          "scripts/ralph/sprints/sprint-1/stories/*/story.json" \
+          "src/index.ts" "tests/hello.test.mjs"
+      fi
+
       if [ "$APP_MODE" = "ui" ]; then
         grep -qF "const greeting = \"$sprint_expected_msg\";" "$SPRINT_REPO/src/index.ts" || fail "sprint src/index.ts does not contain expected UI greeting assignment: $sprint_expected_msg"
       else
         grep -qF "console.log(\"$sprint_expected_msg\");" "$SPRINT_REPO/src/index.ts" || fail "sprint src/index.ts does not contain expected greeting: $sprint_expected_msg"
       fi
-      grep -qF "$sprint_expected_msg" "$SPRINT_REPO/tests/hello.test.mjs" || fail "sprint tests/hello.test.mjs missing expected greeting assertion text: $sprint_expected_msg"
+      grep -qF "$sprint_expected_msg" "$SPRINT_REPO/tests/hello.test.mjs" || fail "sprint tests/hello.test.mjs missing expected greeting: $sprint_expected_msg"
+      grep -q "sprint-smoke" "$SPRINT_REPO/src/index.ts" || fail "sprint src/index.ts missing expected app identifier: sprint-smoke"
+      grep -q "sprint-smoke" "$SPRINT_REPO/tests/hello.test.mjs" || fail "sprint tests/hello.test.mjs missing expected app identifier assertion: sprint-smoke"
+
       (
         cd "$SPRINT_REPO"
         npm run -s build > "$WORK_DIR/build-sprint.log" 2>&1
@@ -830,11 +1060,16 @@ STORYJSON
     )
     assert_contains "$WORK_DIR/doctor-sprint.log" "OK: prerequisites present"
     assert_contains "$WORK_DIR/sprint-create-sprint.log" "Created sprint: sprint-1"
-    assert_contains "$WORK_DIR/story-add-sprint.log" "Added story: S-001"
-    assert_contains "$WORK_DIR/story-start-sprint.log" "Started story: S-001"
-    assert_contains "$WORK_DIR/loop-sprint.log" "Task T-01"
-    assert_contains "$WORK_DIR/loop-sprint.log" "Story S-001 COMPLETE"
-    assert_not_contains "$WORK_DIR/loop-sprint.log" "node: bad option: --runInBand"
+    assert_contains "$WORK_DIR/story-add-S-001.log" "Added story: S-001"
+    assert_contains "$WORK_DIR/story-add-S-002.log" "Added story: S-002"
+    assert_contains "$WORK_DIR/story-add-S-003.log" "Added story: S-003"
+    assert_contains "$WORK_DIR/story-start-S-001.log" "Started story: S-001"
+    assert_contains "$WORK_DIR/story-start-S-002.log" "Started story: S-002"
+    assert_contains "$WORK_DIR/story-start-S-003.log" "Started story: S-003"
+    assert_contains "$WORK_DIR/loop-S-001.log" "Story S-001 COMPLETE"
+    assert_contains "$WORK_DIR/loop-S-002.log" "Story S-002 COMPLETE"
+    assert_contains "$WORK_DIR/loop-S-003.log" "Story S-003 COMPLETE"
+    assert_not_contains "$WORK_DIR/loop-S-001.log" "node: bad option: --runInBand"
     if [ "$APP_MODE" = "ui" ]; then
       assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $sprint_expected_msg"
     else
@@ -842,10 +1077,14 @@ STORYJSON
     fi
     assert_contains "$WORK_DIR/test-sprint.log" "test ok"
     assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
-    sprint_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-sprint.log")"
+    sprint_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-S-001.log")"
+    sprint_tokens=$((sprint_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-002.log")))
+    sprint_tokens=$((sprint_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-003.log")))
     sprint_planning_tokens=0
-    sprint_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-sprint.log")"
-    sprint_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-sprint.log")"
+    sprint_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-S-001.log")"
+    sprint_iterations=$((sprint_iterations + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-002.log")))
+    sprint_iterations=$((sprint_iterations + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-003.log")))
+    sprint_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-S-003.log")"
   fi
 
   total_tokens=$((standalone_tokens + sprint_tokens))

@@ -505,43 +505,52 @@ expected_state="ready"
   ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-sprint.log" 2>&1 || true
   RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
   ./ralph-story.sh add \
-    --title "Worst Case UI Multi-Task Story" \
-    --goal "Update UI copy, DOM rendering contract, and browser verification in a multi-task story." \
-    --prompt-context "Update src/messages.ts with new copy, update src/render.ts for data-state and title attributes, and verify browser." \
-    > "$WORK_DIR/story-add-sprint.log" 2>&1
+    --title "Update UI copy source and tests" \
+    --goal "Update src/messages.ts with new headline, status, cta, and state values, and update tests to assert the new values." \
+    --prompt-context "Update src/messages.ts to use the new UI copy values and update tests/messages.test.mjs to assert them." \
+    > "$WORK_DIR/story-add-S-001.log" 2>&1
+  ./ralph-story.sh add \
+    --title "Update DOM rendering contract and tests" \
+    --goal "Update src/render.ts to set data-state on #status and title on #cta, and update tests/render.test.mjs to assert these attributes." \
+    --prompt-context "Extend src/render.ts to set the data-state attribute on #status from uiCopy.state and the title attribute on #cta from uiCopy.cta. Update tests/render.test.mjs accordingly." \
+    > "$WORK_DIR/story-add-S-002.log" 2>&1
+  ./ralph-story.sh add \
+    --title "Add comprehensive Playwright UI test suite and verify" \
+    --goal "Create a Playwright test suite in tests/ui.spec.mjs, build, and run full browser verification." \
+    --prompt-context "Create tests/ui.spec.mjs using Playwright chromium with a local HTTP server. Assert at least 6 things including #app text, #status text, data-state attr, #cta text, title attr, and that cta is a button. Then build and run browser:check." \
+    > "$WORK_DIR/story-add-S-003.log" 2>&1
+
   mkdir -p "sprints/sprint-1/stories/S-001"
   cat > "sprints/sprint-1/stories/S-001/story.json" <<STORYJSON
 {
   "version": 1,
   "project": "smoke",
   "storyId": "S-001",
-  "title": "Worst Case UI Multi-Task Story",
-  "description": "Update UI copy in src/messages.ts, rendering contract in src/render.ts, and verify browser in a multi-task story.",
+  "title": "Update UI copy source and tests",
+  "description": "Update src/messages.ts with new headline, status, cta, and state values, and update tests/messages.test.mjs to assert them.",
   "branchName": "ralph/sprint-1/story-S-001",
   "sprint": "sprint-1",
   "priority": 1,
   "depends_on": [],
   "status": "active",
   "spec": {
-    "scope": "src/messages.ts, src/render.ts, tests/messages.test.mjs, tests/render.test.mjs, scripts/browser-check.mjs",
+    "scope": "src/messages.ts, tests/messages.test.mjs",
     "preserved_invariants": [
       "src/messages.ts remains the canonical copy/state source",
-      "src/index.ts remains the only runtime entrypoint",
-      "Existing DOM hooks remain unchanged"
+      "src/index.ts remains the only runtime entrypoint"
     ]
   },
   "tasks": [
     {
       "id": "T-01",
-      "title": "Update UI copy source in src/messages.ts and tests",
-      "context": "Update src/messages.ts: set headline to '$expected_headline', status to '$expected_status', cta to '$expected_cta', state to '$expected_state'. Update tests/messages.test.mjs to assert the new values. Commit.",
-      "scope": ["src/messages.ts", "tests/messages.test.mjs"],
-      "acceptance": "src/messages.ts has all 4 new values. tests/messages.test.mjs asserts them. Typecheck and tests pass.",
+      "title": "Update src/messages.ts with new UI copy values",
+      "context": "Update src/messages.ts: set headline to $expected_headline, status to $expected_status, cta to $expected_cta, state to $expected_state. Commit.",
+      "scope": ["src/messages.ts"],
+      "acceptance": "src/messages.ts has all 4 new values. Typecheck and tests pass.",
       "checks": [
-        "grep -qF '$expected_headline' src/messages.ts",
-        "grep -qF '$expected_status' src/messages.ts",
-        "grep -qF '$expected_cta' src/messages.ts",
-        "grep -qF '$expected_state' src/messages.ts",
+        "grep -q 'Hello Sprint Ralph' src/messages.ts",
+        "grep -q 'Ready for review' src/messages.ts",
+        "grep -q 'View release notes' src/messages.ts",
         "npm run typecheck",
         "npm test"
       ],
@@ -551,31 +560,16 @@ expected_state="ready"
     },
     {
       "id": "T-02",
-      "title": "Update DOM rendering contract in src/render.ts and tests",
-      "context": "Update src/render.ts to: (1) set data-state attribute on the #status element from uiCopy.state, (2) set title attribute on the #cta element from uiCopy.cta. Update tests/render.test.mjs to assert data-state is set on #status and title is set on #cta. Commit.",
-      "scope": ["src/render.ts", "tests/render.test.mjs"],
-      "acceptance": "src/render.ts sets data-state on #status and title on #cta. tests/render.test.mjs verifies these attributes. Typecheck and tests pass.",
+      "title": "Update tests/messages.test.mjs to assert all 4 new values",
+      "context": "Update tests/messages.test.mjs to assert all 4 new UI copy values: $expected_headline, $expected_status, $expected_cta, and $expected_state. Commit.",
+      "scope": ["tests/messages.test.mjs"],
+      "acceptance": "tests/messages.test.mjs asserts all 4 new values. All tests pass.",
       "checks": [
-        "grep -q 'data-state' src/render.ts",
-        "grep -q 'title' src/render.ts",
-        "npm run typecheck",
+        "grep -q 'Hello Sprint Ralph' tests/messages.test.mjs",
+        "grep -q 'Ready for review' tests/messages.test.mjs",
         "npm test"
       ],
-      "depends_on": ["T-01"],
-      "status": "pending",
-      "passes": false
-    },
-    {
-      "id": "T-03",
-      "title": "Verify complete browser contract",
-      "context": "Build the project and run the complete browser verification that checks #app, #status (including data-state=$expected_state), and #cta (including title=$expected_cta). Update scripts/browser-check.mjs only if browser verification wiring needs changes. Commit.",
-      "scope": ["scripts/browser-check.mjs", "package.json"],
-      "acceptance": "Browser check passes for all 4 contract assertions: headline, status text, cta, and state.",
-      "checks": [
-        "npm run build",
-        "npm run -s browser:check -- '$expected_headline' '$expected_status' '$expected_cta' '$expected_state'"
-      ],
-      "depends_on": ["T-02"],
+      "depends_on": [],
       "status": "pending",
       "passes": false
     }
@@ -583,42 +577,180 @@ expected_state="ready"
   "passes": false
 }
 STORYJSON
-  ./ralph-story.sh start-next > "$WORK_DIR/story-start-sprint.log" 2>&1
+
+  mkdir -p "sprints/sprint-1/stories/S-002"
+  cat > "sprints/sprint-1/stories/S-002/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-002",
+  "title": "Update DOM rendering contract and tests",
+  "description": "Update src/render.ts to set data-state on #status and title on #cta, and update tests/render.test.mjs to assert these attributes.",
+  "branchName": "ralph/sprint-1/story-S-002",
+  "sprint": "sprint-1",
+  "priority": 2,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "src/render.ts, tests/render.test.mjs",
+    "preserved_invariants": [
+      "src/messages.ts remains the canonical copy/state source",
+      "src/index.ts remains the only runtime entrypoint",
+      "Existing DOM element text assignments in render.ts remain unchanged"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Update src/render.ts to set data-state and title attributes",
+      "context": "Update src/render.ts to also set the data-state attribute on the #status element from uiCopy.state, and the title attribute on the #cta element from uiCopy.cta. Commit.",
+      "scope": ["src/render.ts"],
+      "acceptance": "src/render.ts sets data-state on #status and title on #cta. Typecheck passes.",
+      "checks": [
+        "grep -q 'data-state' src/render.ts",
+        "grep -q 'title' src/render.ts",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Update tests/render.test.mjs to assert data-state and title attributes",
+      "context": "Update tests/render.test.mjs to assert that render.ts sets data-state on #status and title on #cta. Commit.",
+      "scope": ["tests/render.test.mjs"],
+      "acceptance": "tests/render.test.mjs asserts data-state is set on #status and title is set on #cta. All tests pass.",
+      "checks": [
+        "grep -q 'data-state' tests/render.test.mjs",
+        "npm test"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+
+  mkdir -p "sprints/sprint-1/stories/S-003"
+  cat > "sprints/sprint-1/stories/S-003/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-003",
+  "title": "Add comprehensive Playwright UI test suite and verify",
+  "description": "Create tests/ui.spec.mjs Playwright test suite, build the project, and run full browser verification.",
+  "branchName": "ralph/sprint-1/story-S-003",
+  "sprint": "sprint-1",
+  "priority": 3,
+  "depends_on": ["S-002"],
+  "status": "active",
+  "spec": {
+    "scope": "tests/ui.spec.mjs, src/render.ts, scripts/browser-check.mjs",
+    "preserved_invariants": [
+      "All existing tests continue to pass",
+      "TypeScript typecheck must pass",
+      "Browser contract: #app=$expected_headline, #status=$expected_status with data-state=$expected_state, #cta=$expected_cta with title=$expected_cta"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Create tests/ui.spec.mjs Playwright test suite",
+      "context": "Create tests/ui.spec.mjs: a comprehensive Playwright test suite. Import chromium from playwright. Create a local HTTP server (like scripts/browser-check.mjs pattern) to serve files from the current directory. Navigate to index.html. Wait for all elements to render. Assert at least 6 things: #app text equals $expected_headline, #status text equals $expected_status, #status data-state attribute equals $expected_state, #cta text equals $expected_cta, #cta title attribute equals $expected_cta, and #cta is a button element. Close browser and server when done. console.log PASS with assertion count. Commit.",
+      "scope": ["tests/ui.spec.mjs"],
+      "acceptance": "tests/ui.spec.mjs exists, imports chromium, and includes data-state assertions. Typecheck passes.",
+      "checks": [
+        "test -f tests/ui.spec.mjs",
+        "grep -q 'chromium' tests/ui.spec.mjs",
+        "grep -q 'data-state' tests/ui.spec.mjs",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Build and run full verification suite",
+      "context": "Run npm run build to compile the project. Then run npm run -s browser:check -- $expected_headline $expected_status $expected_cta $expected_state to verify the browser contract. Then run npm test which will include the new ui.spec.mjs Playwright tests. Fix any issues found. Commit.",
+      "scope": ["src/render.ts", "tests/ui.spec.mjs", "scripts/browser-check.mjs"],
+      "acceptance": "Build succeeds. Browser check passes for all 4 args. npm test passes including Playwright suite.",
+      "checks": [
+        "npm run build",
+        "npm run -s browser:check -- 'Hello Sprint Ralph' 'Ready for review' 'View release notes' ready",
+        "npm test"
+      ],
+      "depends_on": ["T-01"],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+
+  ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-001.log" 2>&1
   ./ralph-sprint.sh status > "$WORK_DIR/status-sprint-preloop.log" 2>&1 || true
   commit_framework_baseline "$SPRINT_REPO" "chore(worst-ui): pre-loop planning state"
   sprint_loop_start_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
-  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-sprint.log" "$SPRINT_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-task.sh
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-001.log" "$SPRINT_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-task.sh
+  ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-002.log" 2>&1
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-002.log" "$SPRINT_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-task.sh
+  ./ralph-story.sh start-next > "$WORK_DIR/story-start-S-003.log" 2>&1
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-S-003.log" "$SPRINT_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-task.sh
   sprint_loop_end_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+
   jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-001/story.json" >/dev/null
-  jq -e '[.stories[] | select(.id == "S-001")] | .[0].status == "done" and .[0].passes == true' "sprints/sprint-1/stories.json" >/dev/null
+  jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-002/story.json" >/dev/null
+  jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-003/story.json" >/dev/null
+  jq -e 'all(.stories[]; .status == "done" and .passes == true)' "sprints/sprint-1/stories.json" >/dev/null
+
   assert_only_allowed_files_changed "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" \
     "scripts/ralph/sprints/sprint-1/stories.json" \
     "scripts/ralph/sprints/sprint-1/stories/S-001/story.json" \
+    "scripts/ralph/sprints/sprint-1/stories/S-002/story.json" \
+    "scripts/ralph/sprints/sprint-1/stories/S-003/story.json" \
     "src/messages.ts" "src/render.ts" \
-    "tests/messages.test.mjs" "tests/render.test.mjs" \
+    "tests/messages.test.mjs" "tests/render.test.mjs" "tests/ui.spec.mjs" \
     "scripts/browser-check.mjs" "package.json"
+
   grep -qF "$expected_headline" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
   grep -qF "$expected_status" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected status"
   grep -qF "$expected_cta" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
   grep -qF "$expected_state" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected state"
+  grep -q "data-state" "$SPRINT_REPO/src/render.ts" || fail "render.ts missing data-state attribute assignment"
+  grep -q "title" "$SPRINT_REPO/src/render.ts" || fail "render.ts missing title attribute assignment"
+
   assert_runtime_ui_contract "$SPRINT_REPO" "$expected_headline" "$expected_status" "$expected_cta" "$expected_state" "$WORK_DIR/runtime-sprint.log"
   ./ralph-sprint-commit.sh > "$WORK_DIR/sprint-commit-sprint.log" 2>&1
 )
 
 assert_contains "$WORK_DIR/doctor-sprint.log" "OK: prerequisites present"
 assert_contains "$WORK_DIR/sprint-create-sprint.log" "Created sprint: sprint-1"
-assert_contains "$WORK_DIR/story-add-sprint.log" "Added story: S-001"
-assert_contains "$WORK_DIR/story-start-sprint.log" "Started story: S-001"
-assert_contains "$WORK_DIR/loop-sprint.log" "Task T-01"
-assert_contains "$WORK_DIR/loop-sprint.log" "Story S-001 COMPLETE"
+assert_contains "$WORK_DIR/story-add-S-001.log" "Added story: S-001"
+assert_contains "$WORK_DIR/story-add-S-002.log" "Added story: S-002"
+assert_contains "$WORK_DIR/story-add-S-003.log" "Added story: S-003"
+assert_contains "$WORK_DIR/story-start-S-001.log" "Started story: S-001"
+assert_contains "$WORK_DIR/story-start-S-002.log" "Started story: S-002"
+assert_contains "$WORK_DIR/story-start-S-003.log" "Started story: S-003"
+assert_contains "$WORK_DIR/loop-S-001.log" "Story S-001 COMPLETE"
+assert_contains "$WORK_DIR/loop-S-002.log" "Story S-002 COMPLETE"
+assert_contains "$WORK_DIR/loop-S-003.log" "Story S-003 COMPLETE"
 assert_contains "$WORK_DIR/test-sprint.log" "test ok"
 assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $expected_headline \| $expected_status \| $expected_cta \| $expected_state"
 assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
 
 planning_tokens=0
-loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-sprint.log")"
-iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-sprint.log")"
-completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-sprint.log")"
+loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-S-001.log")"
+loop_tokens=$((loop_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-002.log")))
+loop_tokens=$((loop_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-003.log")))
+iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-S-001.log")"
+iteration_count=$((iteration_count + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-002.log")))
+iteration_count=$((iteration_count + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-003.log")))
+completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-S-003.log")"
 total_tokens=$((planning_tokens + loop_tokens))
 
 echo "[worst-ui] token summary: planning=$planning_tokens loop=$loop_tokens total=$total_tokens"
