@@ -89,7 +89,16 @@ get_active_sprint() {
 }
 
 ACTIVE_SPRINT="$(get_active_sprint || true)"
-[ -n "$ACTIVE_SPRINT" ] || fail "No active sprint. Run: ./scripts/ralph/ralph-sprint.sh use <sprint-name>"
+
+if [ -z "$ACTIVE_SPRINT" ]; then
+  echo "No active sprint — auto-selecting next unfinished sprint..."
+  if ! "$SCRIPT_DIR/ralph-sprint.sh" next --activate; then
+    fail "No unfinished sprint found. Create one with: ./scripts/ralph/ralph-sprint.sh create <name>"
+  fi
+  ACTIVE_SPRINT="$(get_active_sprint || true)"
+  [ -n "$ACTIVE_SPRINT" ] || fail "Sprint activation succeeded but .active-sprint is still empty."
+  echo "Activated sprint: $ACTIVE_SPRINT"
+fi
 
 STORIES_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/stories.json"
 [ -f "$STORIES_FILE" ] || fail "No stories.json for sprint '$ACTIVE_SPRINT'. Run ralph-sprint.sh create or ralph-sprint-migrate.sh."
