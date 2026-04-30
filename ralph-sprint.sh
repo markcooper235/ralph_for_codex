@@ -577,7 +577,7 @@ main() {
         esac
         shift
       done
-      next_sprint="$(find_next_sprint)" || fail "No unfinished sprint found."
+      next_sprint="$(find_next_sprint)" || fail "No ready sprint found. Mark one ready with: ./ralph-sprint.sh mark-ready <name>"
       echo "$next_sprint"
       if [ "$activate" -eq 1 ]; then
         activate_sprint "$next_sprint"

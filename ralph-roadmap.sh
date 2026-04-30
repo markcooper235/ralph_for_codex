@@ -528,6 +528,7 @@ apply_roadmap_to_sprints() {
       first_sprint="$sprint_name"
     fi
 
+    ensure_sprint_structure_local "$sprint_name"
     if [ -f "$SCRIPT_DIR/sprints/$sprint_name/stories.json" ]; then
       if [ "$REFINE_MODE" -eq 1 ]; then
         if is_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/stories.json"; then
@@ -536,19 +537,16 @@ apply_roadmap_to_sprints() {
       else
         ensure_empty_sprint_backlog "$sprint_name"
       fi
-    else
-      ensure_sprint_structure_local "$sprint_name"
     fi
-    ensure_sprint_structure_local "$sprint_name"
     write_sprint_capacity_metadata "$sprint_name" "$sprint_title"
     reconcile_sprint_backlog "$sprint_name"
   done < <(jq -r '.sprints[] | [.name, .title] | @tsv' "$ROADMAP_JSON_WORK")
 
   if [ -n "$first_sprint" ]; then
-    printf '%s\n' "$first_sprint" > "$ACTIVE_SPRINT_FILE"
-    log "Active sprint set to: $first_sprint"
-    log "Run: ./ralph-sprint.sh mark-ready $first_sprint   (after prepare-all)"
-    log "Then: ./ralph-sprint.sh use $first_sprint         (creates branch + activates)"
+    log "Roadmap applied. Next steps for $first_sprint:"
+    log "  ./ralph-story.sh prepare-all --jobs 2"
+    log "  ./ralph-sprint.sh mark-ready $first_sprint"
+    log "  ./ralph-sprint.sh use $first_sprint         (creates branch + activates)"
   fi
 }
 
