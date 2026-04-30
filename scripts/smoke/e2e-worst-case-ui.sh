@@ -90,78 +90,20 @@ extract_tokens_from_log() {
   ' "$log_file"
 }
 
-extract_preloop_tokens_from_log() {
+extract_story_complete_count_from_log() {
   local log_file="$1"
-  [ -f "$log_file" ] || {
-    echo 0
-    return 0
-  }
-
-  awk '
-    function add_tokens_from_line(raw, lower_line,    m) {
-      if (match(lower_line, /tokens used[[:space:]]*([0-9]+)/, m)) {
-        sum += m[1]
-        return 1
-      }
-      return 0
-    }
-    /Ralph Iteration [0-9]+ \(run step [0-9]+ of [0-9]+\)/ { exit }
-    {
-      line = $0
-      lower = tolower(line)
-      gsub(/,/, "", line)
-      gsub(/,/, "", lower)
-
-      if (pending_tokens_used == 1) {
-        if (match(line, /([0-9]+)/, m)) {
-          sum += m[1]
-        }
-        pending_tokens_used = 0
-        next
-      }
-
-      if (add_tokens_from_line(line, lower)) {
-        next
-      }
-      if (lower ~ /tokens used/) {
-        pending_tokens_used = 1
-        next
-      }
-    }
-    END {
-      print sum + 0
-    }
-  ' "$log_file"
-}
-
-extract_iteration_count_from_log() {
-  local log_file="$1"
-  [ -f "$log_file" ] || {
-    echo 0
-    return 0
-  }
-  awk '/Ralph Iteration [0-9]+ \(run step [0-9]+ of [0-9]+\)/ { count += 1 } END { print count + 0 }' "$log_file"
-}
-
-extract_completed_iteration_from_log() {
-  local log_file="$1"
-  [ -f "$log_file" ] || {
-    echo 0
-    return 0
-  }
-  awk 'match($0, /Completed at iteration ([0-9]+) \(run step [0-9]+ of [0-9]+\)/, m) { completed = m[1] } END { print completed + 0 }' "$log_file"
+  [ -f "$log_file" ] || { echo 0; return 0; }
+  awk '/=== Story .* COMPLETE ===/ { count += 1 } END { print count + 0 }' "$log_file"
 }
 
 append_benchmark_row() {
   local status="$1"
   mkdir -p "$BENCH_DIR"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\n' \
     "$(date -Iseconds)" \
     "$status" \
-    "$planning_tokens" \
     "$loop_tokens" \
-    "$iteration_count" \
-    "$completed_iteration" \
+    "$stories_completed" \
     >>"$BENCH_FILE"
 }
 
@@ -172,7 +114,6 @@ commit_framework_baseline() {
   (
     cd "$repo_root"
     git add -A
-    git reset -- scripts/ralph/prd.json scripts/ralph/progress.txt >/dev/null 2>&1 || true
     if ! git diff --cached --quiet; then
       git commit -m "$commit_msg" >/dev/null
     fi
@@ -484,7 +425,7 @@ HOME="$TMP_HOME" "$REPO_ROOT/install.sh" --install-skills > "$WORK_DIR/install-s
 assert_contains "$WORK_DIR/install-skills.log" "Installed Codex skill: prd"
 
 echo "[worst-ui] install framework"
-HOME="$TMP_HOME" "$REPO_ROOT/install.sh" --project "$TEST_REPO" --no-example-prd > "$WORK_DIR/install-framework.log" 2>&1
+HOME="$TMP_HOME" "$REPO_ROOT/install.sh" --project "$TEST_REPO" > "$WORK_DIR/install-framework.log" 2>&1
 assert_file_exists "$TEST_REPO/scripts/ralph/doctor.sh"
 assert_file_exists "$TEST_REPO/scripts/ralph/ralph-story.sh"
 assert_file_exists "$TEST_REPO/scripts/ralph/ralph-task.sh"
@@ -503,7 +444,7 @@ expected_state="ready"
   cd "$SPRINT_REPO/scripts/ralph"
   CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-sprint.log" 2>&1
   ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-sprint.log" 2>&1 || true
-  RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
+  ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
   ./ralph-story.sh add \
     --title "Update UI copy source and tests" \
     --goal "Update src/messages.ts with new headline, status, cta, and state values, and update tests to assert the new values." \
@@ -804,17 +745,14 @@ assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $expected_headline \
 assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Sprint regression: PASS"
 assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
 
-planning_tokens=0
 loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-S-001.log")"
 loop_tokens=$((loop_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-002.log")))
 loop_tokens=$((loop_tokens + $(extract_tokens_from_log "$WORK_DIR/loop-S-003.log")))
-iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-S-001.log")"
-iteration_count=$((iteration_count + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-002.log")))
-iteration_count=$((iteration_count + $(extract_iteration_count_from_log "$WORK_DIR/loop-S-003.log")))
-completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-S-003.log")"
-total_tokens=$((planning_tokens + loop_tokens))
+stories_completed="$(extract_story_complete_count_from_log "$WORK_DIR/loop-S-001.log")"
+stories_completed=$((stories_completed + $(extract_story_complete_count_from_log "$WORK_DIR/loop-S-002.log")))
+stories_completed=$((stories_completed + $(extract_story_complete_count_from_log "$WORK_DIR/loop-S-003.log")))
 
-echo "[worst-ui] token summary: planning=$planning_tokens loop=$loop_tokens total=$total_tokens"
-echo "[worst-ui] iteration summary: iterations=$iteration_count completed_iteration=$completed_iteration"
+echo "[worst-ui] token summary: loop=$loop_tokens total=$loop_tokens"
+echo "[worst-ui] stories completed: $stories_completed"
 append_benchmark_row "pass"
 echo "[worst-ui] PASS: worst-case UI smoke completed"
