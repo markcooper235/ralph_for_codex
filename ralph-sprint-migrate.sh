@@ -169,6 +169,18 @@ SPRINT_PROJECT="$(jq -r '.project' "$EPICS_FILE")"
 CAPACITY_TARGET="$(jq -r '.capacityTarget // 8' "$EPICS_FILE")"
 CAPACITY_CEILING="$(jq -r '.capacityCeiling // 10' "$EPICS_FILE")"
 
+# Normalize legacy "aborted" → "abandoned" before processing
+aborted_count="$(jq '[.epics[] | select(.status == "aborted")] | length' "$EPICS_FILE")"
+if [ "$aborted_count" -gt 0 ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
+    tmp="$(mktemp)"
+    jq '.epics = (.epics | map(if .status == "aborted" then .status = "abandoned" else . end))' \
+      "$EPICS_FILE" > "$tmp"
+    mv "$tmp" "$EPICS_FILE"
+  fi
+  log "Normalized $aborted_count epic(s): aborted → abandoned"
+fi
+
 log "Project: $SPRINT_PROJECT"
 log "Epics to migrate: $EPIC_COUNT"
 log ""

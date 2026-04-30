@@ -145,7 +145,7 @@ run_checks() {
     [ -z "$check" ] && continue
     check_num=$((check_num + 1))
     log "    check[$check_num]: $check"
-    if eval "$check" >/dev/null 2>&1; then
+    if (cd "$WORKSPACE_ROOT" && eval "$check") >/dev/null 2>&1; then
       log "    PASS"
     else
       log "    FAIL"
@@ -381,6 +381,24 @@ if [ $STORY_FAILED -eq 0 ]; then
       fi
     fi
     mark_story_done
+
+    # Sync stories.json: mark story done and clear activeStoryId
+    local active_sprint_file="$SCRIPT_DIR/.active-sprint"
+    if [ -f "$active_sprint_file" ]; then
+      local sprint stories_file stmp
+      sprint="$(awk 'NF {print; exit}' "$active_sprint_file")"
+      stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
+      if [ -f "$stories_file" ]; then
+        stmp="$(mktemp)"
+        jq --arg id "$STORY_ID" '
+          .stories = [.stories[] | if .id == $id then .status = "done" | .passes = true else . end]
+          | .activeStoryId = null
+        ' "$stories_file" > "$stmp"
+        mv "$stmp" "$stories_file"
+        log "Updated stories.json: $STORY_ID → done"
+      fi
+    fi
+
     log "=== Story $STORY_ID COMPLETE ==="
     exit 0
   fi

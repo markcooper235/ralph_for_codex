@@ -136,7 +136,6 @@ copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
 copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
-copy_file "$SOURCE_DIR/ralph-epic.sh" "$DEST_DIR_REL/ralph-epic.sh"
 copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
 copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
 copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
@@ -158,7 +157,6 @@ copy_file "$SOURCE_DIR/new-local-extension.sh.example" "$DEST_DIR_REL/new-local-
 copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.md"
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
 copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
-copy_file "$SOURCE_DIR/epics.json.example" "$DEST_DIR_REL/epics.json.example"
 copy_file "$SOURCE_DIR/story.json.example" "$DEST_DIR_REL/story.json.example"
 copy_file "$SOURCE_DIR/stories.json.example" "$DEST_DIR_REL/stories.json.example"
 chmod +x \
@@ -168,7 +166,6 @@ chmod +x \
   "$DEST_DIR_REL/ralph-archive.sh" \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-commit.sh" \
-  "$DEST_DIR_REL/ralph-epic.sh" \
   "$DEST_DIR_REL/ralph-roadmap.sh" \
   "$DEST_DIR_REL/ralph-prime.sh" \
   "$DEST_DIR_REL/ralph-spec-check.sh" \

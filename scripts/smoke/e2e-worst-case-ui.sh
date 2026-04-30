@@ -37,9 +37,9 @@ while [[ $# -gt 0 ]]; do
       cat <<'EOF'
 Usage: scripts/smoke/e2e-worst-case-ui.sh [--keep]
 
-Runs a heavier real-Codex UI epic smoke scenario with:
+Runs a heavier real-Codex UI sprint smoke scenario with:
 - multi-file implementation scope
-- multi-story epic planning
+- multi-task story-task execution
 - browser verification requirements
 - token and iteration reporting
 EOF
@@ -257,8 +257,8 @@ assert_runtime_ui_contract() {
 
   (
     cd "$repo"
-    npm run -s build > "$WORK_DIR/build-epic.log" 2>&1
-    npm test > "$WORK_DIR/test-epic.log" 2>&1
+    npm run -s build > "$WORK_DIR/build-sprint.log" 2>&1
+    npm test > "$WORK_DIR/test-sprint.log" 2>&1
     npm run -s browser:check -- "$headline" "$status" "$cta" "$state" > "$log_file" 2>&1
     if git ls-files --error-unmatch dist/index.js >/dev/null 2>&1; then
       git checkout -- dist/index.js
@@ -486,142 +486,139 @@ assert_contains "$WORK_DIR/install-skills.log" "Installed Codex skill: prd"
 echo "[worst-ui] install framework"
 HOME="$TMP_HOME" "$REPO_ROOT/install.sh" --project "$TEST_REPO" --no-example-prd > "$WORK_DIR/install-framework.log" 2>&1
 assert_file_exists "$TEST_REPO/scripts/ralph/doctor.sh"
-assert_file_exists "$TEST_REPO/scripts/ralph/ralph-epic.sh"
+assert_file_exists "$TEST_REPO/scripts/ralph/ralph-story.sh"
+assert_file_exists "$TEST_REPO/scripts/ralph/ralph-task.sh"
 commit_framework_baseline "$TEST_REPO" "chore: install ralph framework baseline"
 
-EPIC_REPO="$WORK_DIR/project-loop-epic"
-cp -a "$TEST_REPO" "$EPIC_REPO"
-echo "[worst-ui] isolated repo: epic=$EPIC_REPO"
+SPRINT_REPO="$WORK_DIR/project-loop-sprint"
+cp -a "$TEST_REPO" "$SPRINT_REPO"
+echo "[worst-ui] isolated repo: sprint=$SPRINT_REPO"
 
 expected_headline="Hello Sprint Ralph"
 expected_status="Ready for review"
 expected_cta="View release notes"
 expected_state="ready"
 
-  (
-    cd "$EPIC_REPO/scripts/ralph"
-    CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
-    ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
-    RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
-    cat > tasks/sprint-1/prd-epic-001.md <<'EOF'
-# Worst Case UI Multi-Story Epic
-
-## Summary
-
-Implement a bounded UI change for the existing page.
-
-## Scope
-
-- Update the existing release copy in `src/messages.ts`.
-- Update the current render contract in `src/render.ts` without changing the entrypoint flow from `src/index.ts`.
-- Keep browser-proof wiring inside existing verification assets such as tests, verifier scripts, and package scripts when that support scope is required.
-
-## Out of Scope
-
-- Layout, styling, markup shape, or element ID changes.
-- New components, routes, data sources, or state models.
-- Any work outside the existing single-page flow driven by `src/index.ts`.
-
-## Execution Model
-
-- Start with the first slice in the exact source and proof files needed for the copy update, then move to the render contract, then finish browser-proof wiring.
-- Keep support scope explicit per story so targeted verification can pass without reopening earlier slices.
-- Verification pressure is strict: every story must leave typecheck, lint, tests, and the required browser proof in a runnable state for that slice.
-
-## First Slice Expectations
-
-- Exact source entrypoint: `src/messages.ts`.
-- Destination workflow: update the canonical copy/state source, align its directly inferred proof file, then advance to render-contract and browser-proof follow-ups.
-- Caller path remains `src/index.ts -> src/render.ts`; do not migrate callers or introduce new entrypoints.
-- Commands to prove the first slice: `npm test`, `npm run typecheck`, and `npm run lint`.
-
-## Allowed Supporting Files
-
-- Test files under `tests/` are in scope when targeted verification or proof obligations naturally require them.
-- Verifier scripts under `scripts/` and package scripts in `package.json` are in scope when browser verification wiring must remain intact.
-- Build, lint, and verification workflow/config support may be touched only when required to keep the bounded UI proof path working.
-
-## Preserved Invariants
-
-- `src/messages.ts` remains the canonical copy/state source.
-- `src/index.ts` remains the only runtime entrypoint and the existing DOM hooks remain unchanged.
-- The change must preserve the current single-page workflow and keep the verification contract stable and intact outside the bounded slice.
-
-## User Stories
-
-### Story US-001: Update UI copy source
-As a user, I want the page copy updated so the new release message appears.
-
-Acceptance Criteria
-- Must update `src/messages.ts` so headline is `Hello Sprint Ralph`, status text is `Ready for review`, CTA label is `View release notes`, and state is `ready`.
-- Must update `tests/messages.test.mjs` in the same story so targeted verification for `src/messages.ts` remains honest and passing.
-- Must keep the first slice limited to the canonical copy source and its directly inferred proof file.
-- Must prove the slice with `npm test`, `npm run typecheck`, and `npm run lint`.
-
-### Story US-002: Update DOM rendering contract
-As a user, I want the rendered UI to expose the updated copy and state.
-
-Acceptance Criteria
-- Must update `src/render.ts` so `#status` renders the status text and exposes the state value while `#cta` gets a title that matches the CTA label/copy, not the status text.
-- Must update `tests/render.test.mjs` in the same story so the render-contract slice has passing targeted proof.
-- Must preserve the existing DOM hooks and caller path unchanged.
-- Must prove the slice with `npm test`, `npm run typecheck`, and `npm run lint`.
-
-### Story US-003: Update regression coverage and browser verification
-As a developer, I want the tests and browser check updated so the bounded UI change is verified.
-
-Acceptance Criteria
-- Must update `scripts/browser-check.mjs` or `package.json` only if browser verification wiring needs to rebuild or verify the current ready-state contract.
-- Must verify `#app`, `#status`, and `#cta` in the browser, including status text, status state, and CTA title matching the CTA label/copy.
-- Must keep support changes limited to the existing verifier script, package script wiring, and already-in-scope source/test files.
-- Must prove the final slice with `npm test`, `npm run typecheck`, `npm run lint`, and the browser verification command.
-
-## Refinement Checkpoints
-
-- Confirm each story owns the proof files that targeted verification will infer from its changed source files.
-- Keep browser-proof wiring in the final story unless earlier slices cannot pass without it.
-
-## Definition of Done
-
-- All stories pass with verification evidence recorded.
-- The bounded UI change remains inside the stated scope and preserved invariants.
-- The PRD is loop-ready without requiring strengthening before JSON conversion.
-EOF
-    ./ralph-epic.sh add \
-      --title "Worst Case UI Multi-Story Epic" \
-      --status planned \
-      --prd-path "scripts/ralph/tasks/sprint-1/prd-epic-001.md" \
-      > "$WORK_DIR/epic-add-epic.log" 2>&1
-    ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
-    : > prd.json
-    ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
-    commit_framework_baseline "$EPIC_REPO" "chore(worst-ui): pre-loop planning state"
-    epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-    run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph.sh "$MAX_ITERATIONS"
-    epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-    jq -e 'all(.userStories[]; .passes == true)' prd.json >/dev/null
-    assert_only_allowed_files_changed "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" \
-      "scripts/ralph/sprints/sprint-1/epics.json" "scripts/ralph/tasks/sprint-1/prd-epic-001.md" "src/messages.ts" "src/render.ts" "tests/messages.test.mjs" "tests/render.test.mjs" "scripts/browser-check.mjs" "package.json"
-  grep -qF "$expected_headline" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
-  grep -qF "$expected_status" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected status"
-  grep -qF "$expected_cta" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
-  grep -qF "$expected_state" "$EPIC_REPO/src/messages.ts" || fail "messages.ts missing expected state"
-  assert_runtime_ui_contract "$EPIC_REPO" "$expected_headline" "$expected_status" "$expected_cta" "$expected_state" "$WORK_DIR/runtime-epic.log"
+(
+  cd "$SPRINT_REPO/scripts/ralph"
+  CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-sprint.log" 2>&1
+  ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-sprint.log" 2>&1 || true
+  RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
+  ./ralph-story.sh add \
+    --title "Worst Case UI Multi-Task Story" \
+    --goal "Update UI copy, DOM rendering contract, and browser verification in a multi-task story." \
+    --prompt-context "Update src/messages.ts with new copy, update src/render.ts for data-state and title attributes, and verify browser." \
+    > "$WORK_DIR/story-add-sprint.log" 2>&1
+  mkdir -p "sprints/sprint-1/stories/S-001"
+  cat > "sprints/sprint-1/stories/S-001/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-001",
+  "title": "Worst Case UI Multi-Task Story",
+  "description": "Update UI copy in src/messages.ts, rendering contract in src/render.ts, and verify browser in a multi-task story.",
+  "branchName": "ralph/sprint-1/story-S-001",
+  "sprint": "sprint-1",
+  "priority": 1,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "src/messages.ts, src/render.ts, tests/messages.test.mjs, tests/render.test.mjs, scripts/browser-check.mjs",
+    "preserved_invariants": [
+      "src/messages.ts remains the canonical copy/state source",
+      "src/index.ts remains the only runtime entrypoint",
+      "Existing DOM hooks remain unchanged"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Update UI copy source in src/messages.ts and tests",
+      "context": "Update src/messages.ts: set headline to '$expected_headline', status to '$expected_status', cta to '$expected_cta', state to '$expected_state'. Update tests/messages.test.mjs to assert the new values. Commit.",
+      "scope": ["src/messages.ts", "tests/messages.test.mjs"],
+      "acceptance": "src/messages.ts has all 4 new values. tests/messages.test.mjs asserts them. Typecheck and tests pass.",
+      "checks": [
+        "grep -qF '$expected_headline' src/messages.ts",
+        "grep -qF '$expected_status' src/messages.ts",
+        "grep -qF '$expected_cta' src/messages.ts",
+        "grep -qF '$expected_state' src/messages.ts",
+        "npm run typecheck",
+        "npm test"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Update DOM rendering contract in src/render.ts and tests",
+      "context": "Update src/render.ts to: (1) set data-state attribute on the #status element from uiCopy.state, (2) set title attribute on the #cta element from uiCopy.cta. Update tests/render.test.mjs to assert data-state is set on #status and title is set on #cta. Commit.",
+      "scope": ["src/render.ts", "tests/render.test.mjs"],
+      "acceptance": "src/render.ts sets data-state on #status and title on #cta. tests/render.test.mjs verifies these attributes. Typecheck and tests pass.",
+      "checks": [
+        "grep -q 'data-state' src/render.ts",
+        "grep -q 'title' src/render.ts",
+        "npm run typecheck",
+        "npm test"
+      ],
+      "depends_on": ["T-01"],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-03",
+      "title": "Verify complete browser contract",
+      "context": "Build the project and run the complete browser verification that checks #app, #status (including data-state=$expected_state), and #cta (including title=$expected_cta). Update scripts/browser-check.mjs only if browser verification wiring needs changes. Commit.",
+      "scope": ["scripts/browser-check.mjs", "package.json"],
+      "acceptance": "Browser check passes for all 4 contract assertions: headline, status text, cta, and state.",
+      "checks": [
+        "npm run build",
+        "npm run -s browser:check -- '$expected_headline' '$expected_status' '$expected_cta' '$expected_state'"
+      ],
+      "depends_on": ["T-02"],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+  ./ralph-story.sh start-next > "$WORK_DIR/story-start-sprint.log" 2>&1
+  ./ralph-sprint.sh status > "$WORK_DIR/status-sprint-preloop.log" 2>&1 || true
+  commit_framework_baseline "$SPRINT_REPO" "chore(worst-ui): pre-loop planning state"
+  sprint_loop_start_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+  run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-sprint.log" "$SPRINT_REPO" timeout 600 env CODEX_BIN="$CODEX_BIN_VALUE" ./ralph-task.sh
+  sprint_loop_end_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+  jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-001/story.json" >/dev/null
+  jq -e '[.stories[] | select(.id == "S-001")] | .[0].status == "done" and .[0].passes == true' "sprints/sprint-1/stories.json" >/dev/null
+  assert_only_allowed_files_changed "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" \
+    "scripts/ralph/sprints/sprint-1/stories.json" \
+    "scripts/ralph/sprints/sprint-1/stories/S-001/story.json" \
+    "src/messages.ts" "src/render.ts" \
+    "tests/messages.test.mjs" "tests/render.test.mjs" \
+    "scripts/browser-check.mjs" "package.json"
+  grep -qF "$expected_headline" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected headline"
+  grep -qF "$expected_status" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected status"
+  grep -qF "$expected_cta" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected cta"
+  grep -qF "$expected_state" "$SPRINT_REPO/src/messages.ts" || fail "messages.ts missing expected state"
+  assert_runtime_ui_contract "$SPRINT_REPO" "$expected_headline" "$expected_status" "$expected_cta" "$expected_state" "$WORK_DIR/runtime-sprint.log"
+  ./ralph-sprint-commit.sh > "$WORK_DIR/sprint-commit-sprint.log" 2>&1
 )
 
-assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"
-assert_contains "$WORK_DIR/sprint-create-epic.log" "Created sprint: sprint-1"
-assert_contains "$WORK_DIR/epic-add-epic.log" "Added epic: EPIC-001"
-assert_contains "$WORK_DIR/status-epic-preloop.log" "Next action: run ./scripts/ralph/ralph.sh to auto-prime and start the next eligible epic."
-assert_contains "$WORK_DIR/loop-epic.log" "Iteration"
-assert_contains "$WORK_DIR/test-epic.log" "test ok"
-assert_contains "$WORK_DIR/runtime-epic.log" "browser ok: $expected_headline \| $expected_status \| $expected_cta \| $expected_state"
+assert_contains "$WORK_DIR/doctor-sprint.log" "OK: prerequisites present"
+assert_contains "$WORK_DIR/sprint-create-sprint.log" "Created sprint: sprint-1"
+assert_contains "$WORK_DIR/story-add-sprint.log" "Added story: S-001"
+assert_contains "$WORK_DIR/story-start-sprint.log" "Started story: S-001"
+assert_contains "$WORK_DIR/loop-sprint.log" "Task T-01"
+assert_contains "$WORK_DIR/loop-sprint.log" "Story S-001 COMPLETE"
+assert_contains "$WORK_DIR/test-sprint.log" "test ok"
+assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $expected_headline \| $expected_status \| $expected_cta \| $expected_state"
+assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
 
-planning_tokens="$(extract_preloop_tokens_from_log "$WORK_DIR/loop-epic.log")"
-loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-epic.log")"
-loop_tokens=$((loop_tokens - planning_tokens))
-iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-epic.log")"
-completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-epic.log")"
+planning_tokens=0
+loop_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-sprint.log")"
+iteration_count="$(extract_iteration_count_from_log "$WORK_DIR/loop-sprint.log")"
+completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-sprint.log")"
 total_tokens=$((planning_tokens + loop_tokens))
 
 echo "[worst-ui] token summary: planning=$planning_tokens loop=$loop_tokens total=$total_tokens"

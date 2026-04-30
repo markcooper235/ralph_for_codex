@@ -48,14 +48,14 @@ while [[ $# -gt 0 ]]; do
       LOOP_MODE="standalone"
       shift
       ;;
-    --with-loop-epic)
+    --with-loop-sprint)
       WITH_LOOP=1
-      LOOP_MODE="epic"
+      LOOP_MODE="sprint"
       shift
       ;;
     --loop-mode)
       [ $# -ge 2 ] || {
-        echo "Missing value for --loop-mode (expected: standalone|epic|both)" >&2
+        echo "Missing value for --loop-mode (expected: standalone|sprint|both)" >&2
         exit 1
       }
       LOOP_MODE="$2"
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<'USAGE'
-Usage: scripts/smoke/e2e-sanity.sh [--ci] [--keep] [--real-codex] [--mock-codex] [--with-loop] [--loop-mode standalone|epic|both] [--app-mode console|ui]
+Usage: scripts/smoke/e2e-sanity.sh [--ci] [--keep] [--real-codex] [--mock-codex] [--with-loop] [--loop-mode standalone|sprint|both] [--app-mode console|ui]
 
 Runs disposable install-repo E2E sanity checks.
 
@@ -81,10 +81,10 @@ Options:
   --keep        Keep temp repo for debugging
   --real-codex  Force real codex binary
   --mock-codex  Force mock codex binary
-  --with-loop   Run actual ralph.sh loops (mode defaults to both)
+  --with-loop   Run actual loops (mode defaults to both)
   --with-loop-standalone  Run only standalone loop benchmark
-  --with-loop-epic        Run only sprint-epic loop benchmark
-  --loop-mode   Loop mode: standalone, epic, or both (isolated repos per mode)
+  --with-loop-sprint      Run only sprint story-task loop benchmark
+  --loop-mode   Loop mode: standalone, sprint, or both (isolated repos per mode)
   --app-mode    App profile: console (default) or ui
 USAGE
       exit 0
@@ -163,12 +163,12 @@ append_benchmark_row() {
     "$LOOP_MODE" \
     "$standalone_planning_tokens" \
     "$((standalone_tokens-standalone_planning_tokens))" \
-    "$epic_planning_tokens" \
-    "$((epic_tokens-epic_planning_tokens))" \
+    "$sprint_planning_tokens" \
+    "$((sprint_tokens-sprint_planning_tokens))" \
     "$standalone_iterations" \
     "$standalone_completed_iteration" \
-    "$epic_iterations" \
-    "$epic_completed_iteration" \
+    "$sprint_iterations" \
+    "$sprint_completed_iteration" \
     >>"$BENCH_FILE"
 }
 
@@ -584,7 +584,8 @@ assert_file_exists "$TMP_HOME/.codex/skills/setup/SKILL.md"
 echo "[smoke] install framework"
 HOME="$TMP_HOME" "$REPO_ROOT/install.sh" --project "$TEST_REPO" --no-example-prd > "$WORK_DIR/install-framework.log" 2>&1
 assert_file_exists "$TEST_REPO/scripts/ralph/doctor.sh"
-assert_file_exists "$TEST_REPO/scripts/ralph/ralph-epic.sh"
+assert_file_exists "$TEST_REPO/scripts/ralph/ralph-story.sh"
+assert_file_exists "$TEST_REPO/scripts/ralph/ralph-task.sh"
 assert_file_exists "$TEST_REPO/scripts/ralph/ralph-prd.sh"
 commit_framework_baseline "$TEST_REPO" "chore: install ralph framework baseline"
 
@@ -602,35 +603,34 @@ fi
 
 if [ "$WITH_LOOP" -eq 1 ]; then
   case "$LOOP_MODE" in
-    standalone|epic|both) ;;
+    standalone|sprint|both) ;;
     *)
-      fail "Invalid loop mode '$LOOP_MODE' (expected standalone|epic|both)"
+      fail "Invalid loop mode '$LOOP_MODE' (expected standalone|sprint|both)"
       ;;
   esac
 
-  echo "[smoke] loop checks (standalone + sprint epic)"
+  echo "[smoke] loop checks (standalone + sprint story-task)"
   if [ "$CODEX_BIN_VALUE" != "codex" ]; then
     echo "[smoke] --with-loop requested with non-real codex; forcing real codex for loop phase"
   fi
   LOOP_CODEX_BIN="codex"
   LOOP_STANDALONE_MAX_ITERATIONS="$LOOP_TOTAL_MAX_ITERATIONS"
-  LOOP_EPIC_MAX_ITERATIONS="$LOOP_TOTAL_MAX_ITERATIONS"
   echo "[smoke] loop config: max_iterations=$LOOP_TOTAL_MAX_ITERATIONS retry_max=$LOOP_RETRY_MAX"
 
   STANDALONE_REPO="$WORK_DIR/project-loop-standalone"
-  EPIC_REPO="$WORK_DIR/project-loop-epic"
+  SPRINT_REPO="$WORK_DIR/project-loop-sprint"
   cp -a "$TEST_REPO" "$STANDALONE_REPO"
-  cp -a "$TEST_REPO" "$EPIC_REPO"
-  echo "[smoke] isolated repos: standalone=$STANDALONE_REPO epic=$EPIC_REPO"
+  cp -a "$TEST_REPO" "$SPRINT_REPO"
+  echo "[smoke] isolated repos: standalone=$STANDALONE_REPO sprint=$SPRINT_REPO"
 
   standalone_tokens=0
-  epic_tokens=0
+  sprint_tokens=0
   standalone_planning_tokens=0
-  epic_planning_tokens=0
+  sprint_planning_tokens=0
   standalone_iterations=0
-  epic_iterations=0
+  sprint_iterations=0
   standalone_completed_iteration=0
-  epic_completed_iteration=0
+  sprint_completed_iteration=0
 
   if [ "$LOOP_MODE" = "standalone" ] || [ "$LOOP_MODE" = "both" ]; then
     standalone_expected_target="$(resolve_default_base_branch "$STANDALONE_REPO")"
@@ -719,121 +719,142 @@ if [ "$WITH_LOOP" -eq 1 ]; then
     standalone_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-standalone.log")"
   fi
 
-  if [ "$LOOP_MODE" = "epic" ] || [ "$LOOP_MODE" = "both" ]; then
-    epic_expected_target="ralph/sprint/sprint-1"
-    epic_expected_msg="Hello Sprint Ralph"
+  if [ "$LOOP_MODE" = "sprint" ] || [ "$LOOP_MODE" = "both" ]; then
+    sprint_expected_target="ralph/sprint/sprint-1"
+    sprint_expected_msg="Hello Sprint Ralph"
     if [ "$APP_MODE" = "ui" ]; then
-      epic_prompt_context="Change UI output greeting to Hello Sprint Ralph in src/index.ts, update tests/hello.test.mjs assertion accordingly, and verify browser #app output."
-      epic_story_title="Update UI greeting string and unit test"
-      epic_story_desc="Update src/index.ts UI greeting output to exactly Hello Sprint Ralph and update tests/hello.test.mjs assertion accordingly."
-      epic_story_ac='["Update src/index.ts to set #app text to exactly Hello Sprint Ralph.","Update tests/hello.test.mjs assertion to verify Hello Sprint Ralph.","Verify browser #app output is Hello Sprint Ralph.","Typecheck passes","Lint passes","Unit tests pass"]'
+      sprint_story_title="Update UI greeting string and unit test"
+      sprint_task_t01_context="Update src/index.ts UI greeting constant to exactly Hello Sprint Ralph. The current value is Hello World. Change only the greeting string, keep all other code unchanged. Commit the change."
+      sprint_task_t01_acceptance="src/index.ts contains Hello Sprint Ralph as the greeting value. Typecheck passes."
+      sprint_task_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
+      sprint_task_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
     else
-      epic_prompt_context="Change output greeting to Hello Sprint Ralph in src/index.ts and update tests/hello.test.mjs assertion accordingly."
-      epic_story_title="Update greeting string and unit test"
-      epic_story_desc="Update src/index.ts greeting output to exactly Hello Sprint Ralph and update tests/hello.test.mjs assertion accordingly."
-      epic_story_ac='["Update src/index.ts to print exactly Hello Sprint Ralph.","Update tests/hello.test.mjs assertion to verify Hello Sprint Ralph.","Typecheck passes","Lint passes","Unit tests pass"]'
+      sprint_story_title="Update greeting string and unit test"
+      sprint_task_t01_context="Update src/index.ts to print exactly Hello Sprint Ralph instead of Hello World. Change only the greeting string in the console.log call. Commit the change."
+      sprint_task_t01_acceptance="src/index.ts contains Hello Sprint Ralph in the console.log statement. Typecheck passes."
+      sprint_task_t02_context="Update tests/hello.test.mjs assertion to expect Hello Sprint Ralph instead of Hello World. Change only the assertion string. Commit the change."
+      sprint_task_t02_acceptance="tests/hello.test.mjs asserts Hello Sprint Ralph. All tests pass."
     fi
     (
-      cd "$EPIC_REPO/scripts/ralph"
-      CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-epic.log" 2>&1
-      ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-epic.log" 2>&1 || true
-      RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-epic.log" 2>&1 </dev/null
-      cat > tasks/sprint-1/prd-epic-001.md <<EOF
-# Change Hello Message: Hello Sprint Ralph
-
-## Summary
-
-Update the app output to say exactly Hello Sprint Ralph and update the matching regression test.
-
-## User Stories
-
-### US-001 - Update greeting output
-- Update src/index.ts to print exactly Hello Sprint Ralph.
-- Update tests/hello.test.mjs to verify Hello Sprint Ralph.
-- Unit tests pass.
-- Typecheck passes.
-- Lint passes.
-EOF
-      ./ralph-epic.sh add \
-        --title "Change Hello Message: Hello Sprint Ralph" \
-        --status planned \
-        --prd-path "scripts/ralph/tasks/sprint-1/prd-epic-001.md" \
-        > "$WORK_DIR/epic-add-epic.log" 2>&1
-      ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use-loop.log" 2>&1
-      : > prd.json
-      ./ralph-sprint.sh status > "$WORK_DIR/status-epic-preloop.log" 2>&1 || true
-      commit_framework_baseline "$EPIC_REPO" "chore(smoke): pre-loop planning state (epic)"
-      epic_loop_start_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-epic.log" "$EPIC_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph.sh "$LOOP_EPIC_MAX_ITERATIONS"
-      epic_loop_end_head="$(git -C "$EPIC_REPO" rev-parse HEAD)"
-      [ ! -e .codex-last-message.txt ] || fail "epic loop should not leave legacy .codex-last-message.txt"
-      if find . -maxdepth 1 -name '.codex-last-message*' | grep -q .; then
-        fail "epic loop should not create legacy .codex-last-message artifacts"
-      fi
-      jq -e '.completionSignal == true and .status == "completed"' .iteration-handoff-latest.json >/dev/null
-      jq -e '.completionSignal == true and .status == "completed"' .completion-state.json >/dev/null
-      jq -e '.branchName | test("^ralph/.+/epic-[0-9]+$") or test("^ralph/epic-[0-9]+$")' prd.json >/dev/null
-      jq -e '([.userStories[] | select(.passes == true)] | length) >= 1' prd.json >/dev/null
-      assert_commit_range_small_and_simple "$EPIC_REPO" "$epic_loop_start_head" "$epic_loop_end_head" "epic loop" "scripts/ralph/sprints/sprint-1/epics.json" "src/index.ts" "tests/hello.test.mjs"
+      cd "$SPRINT_REPO/scripts/ralph"
+      CODEX_BIN="$CODEX_BIN_VALUE" ./doctor.sh > "$WORK_DIR/doctor-sprint.log" 2>&1
+      ./ralph-sprint.sh remove sprint-1 --yes --hard > "$WORK_DIR/sprint-reset-sprint.log" 2>&1 || true
+      RALPH_EDITOR=true ./ralph-sprint.sh create sprint-1 > "$WORK_DIR/sprint-create-sprint.log" 2>&1 </dev/null
+      ./ralph-story.sh add \
+        --title "$sprint_story_title" \
+        --goal "Update the app greeting to Hello Sprint Ralph and update tests accordingly." \
+        --prompt-context "Change the greeting string in src/index.ts and update the assertion in tests/hello.test.mjs." \
+        > "$WORK_DIR/story-add-sprint.log" 2>&1
+      mkdir -p "sprints/sprint-1/stories/S-001"
+      cat > "sprints/sprint-1/stories/S-001/story.json" <<STORYJSON
+{
+  "version": 1,
+  "project": "smoke",
+  "storyId": "S-001",
+  "title": "$sprint_story_title",
+  "description": "Update greeting in src/index.ts to Hello Sprint Ralph and update tests accordingly.",
+  "branchName": "ralph/sprint-1/story-S-001",
+  "sprint": "sprint-1",
+  "priority": 1,
+  "depends_on": [],
+  "status": "active",
+  "spec": {
+    "scope": "Update greeting string in src/index.ts and test assertion in tests/hello.test.mjs.",
+    "preserved_invariants": [
+      "All existing tests must pass after changes",
+      "TypeScript typecheck must pass"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Update greeting in src/index.ts",
+      "context": "$sprint_task_t01_context",
+      "scope": ["src/index.ts"],
+      "acceptance": "$sprint_task_t01_acceptance",
+      "checks": [
+        "grep -q 'Hello Sprint Ralph' src/index.ts",
+        "npm run typecheck"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    },
+    {
+      "id": "T-02",
+      "title": "Update test assertion in tests/hello.test.mjs",
+      "context": "$sprint_task_t02_context",
+      "scope": ["tests/hello.test.mjs"],
+      "acceptance": "$sprint_task_t02_acceptance",
+      "checks": [
+        "grep -q 'Hello Sprint Ralph' tests/hello.test.mjs",
+        "npm test"
+      ],
+      "depends_on": [],
+      "status": "pending",
+      "passes": false
+    }
+  ],
+  "passes": false
+}
+STORYJSON
+      ./ralph-story.sh start-next > "$WORK_DIR/story-start-sprint.log" 2>&1
+      ./ralph-sprint.sh status > "$WORK_DIR/status-sprint-preloop.log" 2>&1 || true
+      commit_framework_baseline "$SPRINT_REPO" "chore(smoke): pre-loop planning state (sprint)"
+      sprint_loop_start_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+      run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop-sprint.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" ./ralph-task.sh
+      sprint_loop_end_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
+      jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-001/story.json" >/dev/null
+      jq -e '[.stories[] | select(.id == "S-001")] | .[0].status == "done" and .[0].passes == true' "sprints/sprint-1/stories.json" >/dev/null
+      assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" "src/index.ts" "tests/hello.test.mjs"
       if [ "$APP_MODE" = "ui" ]; then
-        grep -qF "const greeting = \"$epic_expected_msg\";" "$EPIC_REPO/src/index.ts" || fail "epic src/index.ts does not contain expected UI greeting assignment: $epic_expected_msg"
+        grep -qF "const greeting = \"$sprint_expected_msg\";" "$SPRINT_REPO/src/index.ts" || fail "sprint src/index.ts does not contain expected UI greeting assignment: $sprint_expected_msg"
       else
-        grep -qF "console.log(\"$epic_expected_msg\");" "$EPIC_REPO/src/index.ts" || fail "epic src/index.ts does not contain expected greeting: $epic_expected_msg"
+        grep -qF "console.log(\"$sprint_expected_msg\");" "$SPRINT_REPO/src/index.ts" || fail "sprint src/index.ts does not contain expected greeting: $sprint_expected_msg"
       fi
-      grep -qF "$epic_expected_msg" "$EPIC_REPO/tests/hello.test.mjs" || fail "epic tests/hello.test.mjs missing expected greeting assertion text: $epic_expected_msg"
+      grep -qF "$sprint_expected_msg" "$SPRINT_REPO/tests/hello.test.mjs" || fail "sprint tests/hello.test.mjs missing expected greeting assertion text: $sprint_expected_msg"
       (
-        cd "$EPIC_REPO"
-        npm run -s build > "$WORK_DIR/build-epic.log" 2>&1
-        npm test > "$WORK_DIR/test-epic.log" 2>&1
+        cd "$SPRINT_REPO"
+        npm run -s build > "$WORK_DIR/build-sprint.log" 2>&1
+        npm test > "$WORK_DIR/test-sprint.log" 2>&1
         if [ "$APP_MODE" = "ui" ]; then
-          npm run -s browser:check -- "$epic_expected_msg" > "$WORK_DIR/runtime-epic.log" 2>&1
+          npm run -s browser:check -- "$sprint_expected_msg" > "$WORK_DIR/runtime-sprint.log" 2>&1
         else
-          node dist/index.js > "$WORK_DIR/runtime-epic.log" 2>&1
+          node dist/index.js > "$WORK_DIR/runtime-sprint.log" 2>&1
         fi
         if git ls-files --error-unmatch dist/index.js >/dev/null 2>&1; then
           git checkout -- dist/index.js
         fi
       )
-      ./ralph-commit.sh --dry-run > "$WORK_DIR/commit-plan-epic-default.log" 2>&1
-      ./ralph-commit.sh --dry-run --target "$epic_expected_target" > "$WORK_DIR/commit-plan-epic-target.log" 2>&1
-      ./ralph-commit.sh > "$WORK_DIR/commit-epic.log" 2>&1
-      [ ! -s prd.json ] || fail "epic post-commit prd.json should be emptied by archive flow"
-      git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/prd.json >/dev/null 2>&1 && fail "epic post-commit prd.json must be untracked"
-      git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/progress.txt >/dev/null 2>&1 && fail "epic post-commit progress.txt must be untracked"
-      git -C "$EPIC_REPO" ls-files --error-unmatch scripts/ralph/.completion-state.json >/dev/null 2>&1 && fail "epic post-commit .completion-state.json must be untracked"
-      ./ralph-sprint-commit.sh > "$WORK_DIR/sprint-commit-epic.log" 2>&1
+      ./ralph-sprint-commit.sh > "$WORK_DIR/sprint-commit-sprint.log" 2>&1
     )
-    assert_contains "$WORK_DIR/doctor-epic.log" "OK: prerequisites present"
-    assert_contains "$WORK_DIR/sprint-create-epic.log" "Created sprint: sprint-1"
-    assert_contains "$WORK_DIR/epic-add-epic.log" "Added epic: EPIC-001"
-    assert_contains "$WORK_DIR/status-epic-preloop.log" "Next action: run ./scripts/ralph/ralph.sh to auto-prime and start the next eligible epic."
-    assert_contains "$WORK_DIR/loop-epic.log" "Iteration"
-    assert_not_contains "$WORK_DIR/loop-epic.log" "node: bad option: --runInBand"
+    assert_contains "$WORK_DIR/doctor-sprint.log" "OK: prerequisites present"
+    assert_contains "$WORK_DIR/sprint-create-sprint.log" "Created sprint: sprint-1"
+    assert_contains "$WORK_DIR/story-add-sprint.log" "Added story: S-001"
+    assert_contains "$WORK_DIR/story-start-sprint.log" "Started story: S-001"
+    assert_contains "$WORK_DIR/loop-sprint.log" "Task T-01"
+    assert_contains "$WORK_DIR/loop-sprint.log" "Story S-001 COMPLETE"
+    assert_not_contains "$WORK_DIR/loop-sprint.log" "node: bad option: --runInBand"
     if [ "$APP_MODE" = "ui" ]; then
-      assert_contains "$WORK_DIR/runtime-epic.log" "browser ok: $epic_expected_msg"
+      assert_contains "$WORK_DIR/runtime-sprint.log" "browser ok: $sprint_expected_msg"
     else
-      assert_contains "$WORK_DIR/runtime-epic.log" "^$epic_expected_msg$"
+      assert_contains "$WORK_DIR/runtime-sprint.log" "^$sprint_expected_msg$"
     fi
-    assert_contains "$WORK_DIR/test-epic.log" "test ok"
-    epic_planning_tokens="$(extract_preloop_tokens_from_log "$WORK_DIR/loop-epic.log")"
-    assert_contains "$WORK_DIR/commit-plan-epic-default.log" "target branch:  $epic_expected_target"
-    assert_contains "$WORK_DIR/commit-plan-epic-target.log" "target branch:  $epic_expected_target"
-    assert_contains "$WORK_DIR/commit-plan-epic-default.log" "prd mode:       epic"
-    assert_contains "$WORK_DIR/commit-plan-epic-default.log" "prd base:       $epic_expected_target"
-    assert_contains "$WORK_DIR/commit-epic.log" "Deleted source branch:"
-    epic_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-epic.log")"
-    epic_tokens=$((epic_tokens + 0))
-    epic_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-epic.log")"
-    epic_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-epic.log")"
+    assert_contains "$WORK_DIR/test-sprint.log" "test ok"
+    assert_contains "$WORK_DIR/sprint-commit-sprint.log" "Deleted source sprint branch:"
+    sprint_tokens="$(extract_tokens_from_log "$WORK_DIR/loop-sprint.log")"
+    sprint_planning_tokens=0
+    sprint_iterations="$(extract_iteration_count_from_log "$WORK_DIR/loop-sprint.log")"
+    sprint_completed_iteration="$(extract_completed_iteration_from_log "$WORK_DIR/loop-sprint.log")"
   fi
 
-  total_tokens=$((standalone_tokens + epic_tokens))
-  if [ "$standalone_tokens" -eq 0 ] && [ "$epic_tokens" -eq 0 ]; then
+  total_tokens=$((standalone_tokens + sprint_tokens))
+  if [ "$standalone_tokens" -eq 0 ] && [ "$sprint_tokens" -eq 0 ]; then
     echo "[smoke] token summary: unavailable (no 'tokens used' markers emitted by codex output)"
   else
-    echo "[smoke] token summary (planning+loop): app_mode=$APP_MODE mode=$LOOP_MODE standalone=$standalone_tokens epic=$epic_tokens total=$total_tokens"
-    echo "[smoke] token detail: standalone_planning=$standalone_planning_tokens standalone_loop=$((standalone_tokens-standalone_planning_tokens)) epic_planning=$epic_planning_tokens epic_loop=$((epic_tokens-epic_planning_tokens))"
-    echo "[smoke] loop detail: standalone_iterations=$standalone_iterations standalone_completed_iteration=$standalone_completed_iteration epic_iterations=$epic_iterations epic_completed_iteration=$epic_completed_iteration"
+    echo "[smoke] token summary (planning+loop): app_mode=$APP_MODE mode=$LOOP_MODE standalone=$standalone_tokens sprint=$sprint_tokens total=$total_tokens"
+    echo "[smoke] token detail: standalone_planning=$standalone_planning_tokens standalone_loop=$((standalone_tokens-standalone_planning_tokens)) sprint_planning=$sprint_planning_tokens sprint_loop=$((sprint_tokens-sprint_planning_tokens))"
+    echo "[smoke] loop detail: standalone_iterations=$standalone_iterations standalone_completed_iteration=$standalone_completed_iteration sprint_iterations=$sprint_iterations sprint_completed_iteration=$sprint_completed_iteration"
     append_benchmark_row "pass"
   fi
 fi
