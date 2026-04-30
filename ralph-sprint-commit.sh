@@ -216,6 +216,9 @@ if [ -e "$ARCHIVE_PATH" ]; then
 fi
 mkdir -p "$ARCHIVE_PATH"
 cp "$STORIES_FILE" "$ARCHIVE_PATH/stories.json"
+if [ -d "$SPRINTS_DIR/$ACTIVE_SPRINT/stories" ]; then
+  cp -r "$SPRINTS_DIR/$ACTIVE_SPRINT/stories" "$ARCHIVE_PATH/stories"
+fi
 [ -f "$ACTIVE_SPRINT_FILE" ] && cp "$ACTIVE_SPRINT_FILE" "$ARCHIVE_PATH/.active-sprint"
 [ -f "$ACTIVE_PRD_FILE" ] && cp "$ACTIVE_PRD_FILE" "$ARCHIVE_PATH/.active-prd"
 [ -f "$LAST_BRANCH_FILE" ] && cp "$LAST_BRANCH_FILE" "$ARCHIVE_PATH/.last-branch"

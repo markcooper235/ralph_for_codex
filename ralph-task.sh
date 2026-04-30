@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+source "$SCRIPT_DIR/lib/codex-exec.sh"
 LOCK_DIR="$SCRIPT_DIR/.workflow-lock"
 
 STORY_FILE=""
@@ -303,10 +304,6 @@ run_codex_session() {
   prompt="$(build_task_prompt "$task_id")"
 
   local log_file="$STORY_DIR/.task-log-$task_id.txt"
-  local profile_flag=""
-  if [ -n "${RALPH_CODEX_PROFILE:-}" ]; then
-    profile_flag="--profile $RALPH_CODEX_PROFILE"
-  fi
 
   if [ "$DRY_RUN" -eq 1 ]; then
     log "[DRY RUN] Would run codex session for $task_id"
@@ -317,8 +314,7 @@ run_codex_session() {
   fi
 
   log "  Running Codex session for $task_id..."
-  # shellcheck disable=SC2086
-  "$CODEX_BIN" exec $profile_flag --quiet "$prompt" 2>&1 | tee "$log_file"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" --quiet 2>&1 | tee "$log_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -480,6 +476,28 @@ Total changed: ${_story_total_diff}"
         ' "$stories_file" > "$stmp"
         mv "$stmp" "$stories_file"
         log "Updated stories.json: $STORY_ID → done"
+      fi
+    fi
+
+    # Merge story branch back to sprint branch, then delete it
+    local _story_branch _sprint _sprint_branch
+    _story_branch="$(jq -r '.branchName // ""' "$STORY_FILE" 2>/dev/null || true)"
+    _sprint=""
+    [ -f "$SCRIPT_DIR/.active-sprint" ] && _sprint="$(awk 'NF {print; exit}' "$SCRIPT_DIR/.active-sprint")"
+    if [ -n "$_story_branch" ] && [ -n "$_sprint" ]; then
+      _sprint_branch="ralph/sprint/$_sprint"
+      if git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$_sprint_branch" 2>/dev/null; then
+        log "--- Merging $STORY_ID → sprint branch ---"
+        git -C "$WORKSPACE_ROOT" checkout "$_sprint_branch"
+        if git -C "$WORKSPACE_ROOT" -c merge.renames=false merge --no-ff "$_story_branch" \
+              -m "merge: $STORY_ID — $(jq -r '.title // ""' "$STORY_FILE")"; then
+          git -C "$WORKSPACE_ROOT" branch -d "$_story_branch" 2>/dev/null \
+            || git -C "$WORKSPACE_ROOT" branch -D "$_story_branch" 2>/dev/null \
+            || true
+          log "Merged and deleted story branch: $_story_branch"
+        else
+          log "WARN: Merge conflict merging $_story_branch → $_sprint_branch. Resolve manually then delete $_story_branch."
+        fi
       fi
     fi
 

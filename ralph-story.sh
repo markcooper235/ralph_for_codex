@@ -15,6 +15,7 @@ ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 STORIES_FILE="${RALPH_STORIES_FILE:-}"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+source "$SCRIPT_DIR/lib/codex-exec.sh"
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
 
@@ -67,11 +68,11 @@ Commands:
   abandon <ID> [REASON]      Mark story abandoned
   health [ID]                Validate story tasks: dead deps, duplicate checks, missing fields
   specify <ID>               Run SpecKit analysis then generate story.json (primary path)
-  specify-all [--force]      Run SpecKit for all pending stories (skips fully prepared ones)
+  specify-all [--force] [--jobs N]  Run SpecKit for all pending stories (default: serial)
   generate <ID>              Generate story.json (uses SpecKit artifacts when present)
-  generate-all [--force]     Generate story.json for all stories that have SpecKit artifacts
+  generate-all [--force] [--jobs N] Generate story.json for all stories with SpecKit artifacts
   health-all                 Run health checks on all stories
-  prepare-all [--force]      specify-all + generate-all + health (full sprint prep)
+  prepare-all [--force] [--jobs N]  specify-all + generate-all + health (full sprint prep)
   import-prd [PATH]          Import prd.json userStories into sprint backlog
   add [options]              Add a story non-interactively
 
@@ -253,6 +254,25 @@ cmd_start_next() {
   mv "$tmp" "$STORIES_FILE"
 
   echo "Started story: $next_id"
+
+  # Checkout or create story branch from sprint branch
+  local story_branch active_sprint sprint_branch
+  story_branch="$(jq -r '.branchName // ""' "$story_path" 2>/dev/null || true)"
+  if [ -n "$story_branch" ]; then
+    active_sprint="$(get_active_sprint 2>/dev/null || echo "")"
+    sprint_branch=""
+    [ -n "$active_sprint" ] && sprint_branch="ralph/sprint/$active_sprint"
+    if git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$story_branch" 2>/dev/null; then
+      git -C "$WORKSPACE_ROOT" checkout "$story_branch"
+      echo "Checked out story branch: $story_branch"
+    elif [ -n "$sprint_branch" ] && git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$sprint_branch" 2>/dev/null; then
+      git -C "$WORKSPACE_ROOT" checkout -b "$story_branch" "$sprint_branch"
+      echo "Created story branch: $story_branch (from $sprint_branch)"
+    else
+      git -C "$WORKSPACE_ROOT" checkout -b "$story_branch"
+      echo "Created story branch: $story_branch (from current HEAD)"
+    fi
+  fi
 
   # Warn if any dependency has no done_note (downstream task context will be thin)
   while IFS= read -r dep_id; do
@@ -561,7 +581,8 @@ cmd_add() {
   # Determine active sprint for story_path
   local active_sprint
   active_sprint="$(get_active_sprint)" || fail "No active sprint."
-  local story_path="scripts/ralph/sprints/$active_sprint/stories/$new_id/story.json"
+  local dest_rel="${SCRIPT_DIR#${WORKSPACE_ROOT}/}"
+  local story_path="$dest_rel/sprints/$active_sprint/stories/$new_id/story.json"
 
   local tmp
   tmp="$(mktemp)"
@@ -726,11 +747,7 @@ GENPROMPT
   echo "Generating story.json for $story_id..."
   mkdir -p "$(dirname "$story_path_abs")"
 
-  local profile_flag=""
-  [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
-
-  # shellcheck disable=SC2086
-  "$CODEX_BIN" exec $profile_flag "$prompt"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT"
 
   if [ ! -f "$story_path_abs" ]; then
     fail "Codex did not write story.json to: $story_path_abs"
@@ -793,8 +810,8 @@ cmd_import_prd() {
     done < <(jq -r '.stories[].id' "$STORIES_FILE")
     local new_id
     new_id="$(printf 'S-%03d' $((max_n + 1)))"
-
-    local story_path="scripts/ralph/sprints/$active_sprint/stories/$new_id/story.json"
+    local dest_rel="${SCRIPT_DIR#${WORKSPACE_ROOT}/}"
+    local story_path="$dest_rel/sprints/$active_sprint/stories/$new_id/story.json"
 
     local tmp
     tmp="$(mktemp)"
@@ -969,9 +986,6 @@ SPECIN
     echo "WARN: input.md is thin ($word_count words) — consider adding more detail to story goal and promptContext."
   fi
 
-  local profile_flag=""
-  [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
-
   local speckit_prompt
   speckit_prompt="$(cat <<SKPROMPT
 Run the SpecKit specification workflow for this story. No human approval gates — proceed automatically through all three phases in sequence.
@@ -995,8 +1009,7 @@ SKPROMPT
 )"
 
   echo "Running SpecKit analysis for $story_id (phases: specify → plan → tasks)..."
-  # shellcheck disable=SC2086
-  "$CODEX_BIN" exec $profile_flag "$speckit_prompt"
+  codex_exec_prompt "$speckit_prompt" "$WORKSPACE_ROOT"
 
   # Validate artifacts
   local missing=0
@@ -1023,37 +1036,70 @@ SKPROMPT
 
 cmd_specify_all() {
   resolve_stories_file
-  local force=0
+  local force=0 jobs=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force=1; shift ;;
+      --jobs)  jobs="${2:-1}"; shift 2 ;;
       *) fail "Unknown specify-all option: $1" ;;
     esac
   done
+  [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail "--jobs must be a positive integer"
 
-  local count=0 failed=0 skipped=0
+  local force_flag=()
+  [ "$force" -eq 1 ] && force_flag+=(--force)
+
+  local pending=() skipped=0
   while IFS= read -r sid; do
     local raw_path story_path_abs specify_dir
     raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
     [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
     specify_dir="$(dirname "$story_path_abs")/.specify"
-
     if [ -f "$story_path_abs" ] && [ -f "$specify_dir/spec.md" ] && [ "$force" -eq 0 ]; then
-      echo "SKIP $sid: fully prepared (story.json + .specify/ exist)"
+      echo "SKIP $sid: fully prepared"
       skipped=$((skipped + 1))
       continue
     fi
-
-    echo "=== specify $sid ==="
-    local force_flag=()
-    [ "$force" -eq 1 ] && force_flag+=(--force)
-    if cmd_specify "$sid" "${force_flag[@]}"; then
-      count=$((count + 1))
-    else
-      echo "WARN: specify failed for $sid"
-      failed=$((failed + 1))
-    fi
+    pending+=("$sid")
   done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | .id' "$STORIES_FILE")
+
+  local count=0 failed=0 total="${#pending[@]}"
+  if [ "$total" -eq 0 ]; then
+    echo "specify-all: nothing to do ($skipped skipped)."; return 0
+  fi
+
+  local i=0
+  while [ "$i" -lt "$total" ]; do
+    local batch_end=$(( i + jobs ))
+    [ "$batch_end" -gt "$total" ] && batch_end="$total"
+    local batch=("${pending[@]:$i:$(( batch_end - i ))}")
+
+    if [ "$jobs" -le 1 ]; then
+      local sid="${batch[0]}"
+      echo "=== specify $sid ==="
+      if cmd_specify "$sid" "${force_flag[@]}"; then
+        count=$((count + 1))
+      else
+        echo "WARN: specify failed for $sid"; failed=$((failed + 1))
+      fi
+    else
+      local pids=() logs=() sids=()
+      for sid in "${batch[@]}"; do
+        local logf; logf="$(mktemp)"
+        ( cmd_specify "$sid" "${force_flag[@]}" ) > "$logf" 2>&1 &
+        pids+=($!); logs+=("$logf"); sids+=("$sid")
+      done
+      local j rc
+      for j in "${!pids[@]}"; do
+        wait "${pids[$j]}" && rc=0 || rc=$?
+        echo "=== specify ${sids[$j]} ==="
+        cat "${logs[$j]}"; rm -f "${logs[$j]}"
+        [ "$rc" -eq 0 ] && count=$((count + 1)) \
+          || { echo "WARN: specify failed for ${sids[$j]}"; failed=$((failed + 1)); }
+      done
+    fi
+    i="$batch_end"
+  done
 
   echo ""
   echo "specify-all: $count processed, $skipped skipped, $failed failed."
@@ -1062,15 +1108,20 @@ cmd_specify_all() {
 
 cmd_generate_all() {
   resolve_stories_file
-  local force=0
+  local force=0 jobs=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force=1; shift ;;
+      --jobs)  jobs="${2:-1}"; shift 2 ;;
       *) fail "Unknown generate-all option: $1" ;;
     esac
   done
+  [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail "--jobs must be a positive integer"
 
-  local count=0 failed=0 skipped=0
+  local force_flag=()
+  [ "$force" -eq 1 ] && force_flag+=(--force)
+
+  local pending=() skipped=0
   while IFS= read -r sid; do
     local raw_path story_path_abs specify_dir
     raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
@@ -1089,16 +1140,58 @@ cmd_generate_all() {
       continue
     fi
 
-    echo "=== generate $sid ==="
-    local force_flag=()
-    [ "$force" -eq 1 ] && force_flag+=(--force)
-    if cmd_generate "$sid" "${force_flag[@]}"; then
-      count=$((count + 1))
-    else
-      echo "WARN: generate failed for $sid"
-      failed=$((failed + 1))
-    fi
+    pending+=("$sid")
   done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | .id' "$STORIES_FILE")
+
+  local count=0 failed=0 total="${#pending[@]}"
+  if [ "$total" -eq 0 ]; then
+    echo "generate-all: nothing to do ($skipped skipped)."
+    return 0
+  fi
+
+  local i=0
+  while [ "$i" -lt "$total" ]; do
+    local batch_end=$(( i + jobs ))
+    [ "$batch_end" -gt "$total" ] && batch_end="$total"
+    local batch=("${pending[@]:$i:$(( batch_end - i ))}")
+
+    if [ "$jobs" -le 1 ]; then
+      local sid="${batch[0]}"
+      echo "=== generate $sid ==="
+      if cmd_generate "$sid" "${force_flag[@]}"; then
+        count=$((count + 1))
+      else
+        echo "WARN: generate failed for $sid"
+        failed=$((failed + 1))
+      fi
+    else
+      local pids=() logs=() sids=()
+      for sid in "${batch[@]}"; do
+        local logf
+        logf="$(mktemp)"
+        ( cmd_generate "$sid" "${force_flag[@]}" ) > "$logf" 2>&1 &
+        pids+=($!)
+        logs+=("$logf")
+        sids+=("$sid")
+      done
+      local j=0
+      for pid in "${pids[@]}"; do
+        local sid="${sids[$j]}" logf="${logs[$j]}"
+        echo "=== generate ${sid} ==="
+        if wait "$pid"; then
+          count=$((count + 1))
+        else
+          echo "WARN: generate failed for ${sid}"
+          failed=$((failed + 1))
+        fi
+        cat "$logf"
+        rm -f "$logf"
+        j=$((j + 1))
+      done
+    fi
+
+    i="$batch_end"
+  done
 
   echo ""
   echo "generate-all: $count generated, $skipped skipped, $failed failed."
@@ -1106,19 +1199,20 @@ cmd_generate_all() {
 }
 
 cmd_prepare_all() {
-  local force_flag=()
+  local force_flag=() jobs=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force_flag+=(--force); shift ;;
+      --jobs)  jobs="${2:-1}"; shift 2 ;;
       *) fail "Unknown prepare-all option: $1" ;;
     esac
   done
 
   echo "=== prepare-all: specify ==="
-  cmd_specify_all "${force_flag[@]}" || true
+  cmd_specify_all "${force_flag[@]}" --jobs "$jobs" || true
   echo ""
   echo "=== prepare-all: generate ==="
-  cmd_generate_all "${force_flag[@]}" || true
+  cmd_generate_all "${force_flag[@]}" --jobs "$jobs" || true
   echo ""
   echo "=== prepare-all: health ==="
   cmd_health

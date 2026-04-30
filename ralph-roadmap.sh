@@ -504,7 +504,7 @@ reconcile_sprint_backlog() {
       upsert_story_metadata "$stories_file" "$story_json"
     else
       depends_json="$(printf '%s\n' "$story_json" | jq -c '(.dependsOn // [])')"
-      story_path="scripts/ralph/sprints/$sprint_name/stories/$story_id/story.json"
+      story_path="${SCRIPT_DIR#${WORKSPACE_ROOT}/}/sprints/$sprint_name/stories/$story_id/story.json"
       tmp_file="$(mktemp)"
       jq \
         --argjson story "$story_json" \
