@@ -223,9 +223,9 @@ sprint_is_unfinished() {
   fi
 
   jq -e --argjson historic "$historic_for_auto_selection" '
-    (.stories | type) == "array" and (
+    (.stories | type) == "array" and
+    (.stories | length > 0) and (
       (.activeStoryId // null) != null
-      or (.stories | length == 0)
       or any(
         .stories[]?;
         (.status // "planned") as $s

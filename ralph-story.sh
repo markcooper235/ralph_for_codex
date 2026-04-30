@@ -519,7 +519,7 @@ cmd_health() {
   local any_issues=0
   while IFS= read -r sid; do
     _health_story "$sid" || any_issues=1
-  done < <(jq -r '.stories[].id' "$STORIES_FILE")
+  done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | .id' "$STORIES_FILE")
 
   echo ""
   if [ "$any_issues" -eq 0 ]; then
@@ -1061,8 +1061,8 @@ cmd_specify_all() {
     raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
     [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
     specify_dir="$(dirname "$story_path_abs")/.specify"
-    if [ -f "$story_path_abs" ] && [ -f "$specify_dir/spec.md" ] && [ "$force" -eq 0 ]; then
-      echo "SKIP $sid: fully prepared"
+    if [ -f "$story_path_abs" ] && [ "$force" -eq 0 ]; then
+      echo "SKIP $sid: story.json exists"
       skipped=$((skipped + 1))
       continue
     fi
@@ -1222,6 +1222,27 @@ cmd_prepare_all() {
   echo ""
   echo "=== prepare-all: health ==="
   cmd_health
+
+  # Promote planned stories with a valid story.json that pass health to ready
+  resolve_stories_file
+  local promoted=0
+  while IFS= read -r sid; do
+    local raw_path story_path_abs
+    raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
+    [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
+    [ -f "$story_path_abs" ] || continue
+    jq -e '.tasks | length > 0' "$story_path_abs" >/dev/null 2>&1 || continue
+    local tmp
+    tmp="$(mktemp)"
+    jq --arg id "$sid" '(.stories[] | select(.id == $id) | .status) = "ready"' "$STORIES_FILE" > "$tmp"
+    mv "$tmp" "$STORIES_FILE"
+    promoted=$((promoted + 1))
+  done < <(jq -r '.stories[] | select(.status == "planned") | .id' "$STORIES_FILE")
+
+  if [ "$promoted" -gt 0 ]; then
+    echo ""
+    echo "Promoted $promoted story/stories to ready."
+  fi
 }
 
 # ---------------------------------------------------------------------------

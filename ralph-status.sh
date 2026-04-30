@@ -9,7 +9,6 @@ if [ -z "$WORKSPACE_ROOT" ]; then
 fi
 
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
-ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
 
@@ -147,17 +146,6 @@ latest_story_commit_line() {
   fi
 }
 
-active_prd_mode_line() {
-  if [ -f "$ACTIVE_PRD_FILE" ]; then
-    local mode source
-    mode="$(jq -r '.mode // empty' "$ACTIVE_PRD_FILE" 2>/dev/null || true)"
-    source="$(jq -r '.source // empty' "$ACTIVE_PRD_FILE" 2>/dev/null || true)"
-    if [ -n "$mode" ] || [ -n "$source" ]; then
-      printf 'Active PRD: mode=%s source=%s\n' "${mode:-unknown}" "${source:-unknown}"
-    fi
-  fi
-}
-
 next_action_line() {
   local sprint_story_id="$1"
   local stories_file="$2"
@@ -235,7 +223,6 @@ main() {
   echo "Current branch: ${current_branch:-'(detached)'}"
   echo "Loop: $loop_state"
   echo "Worktree: $worktree_state"
-  active_prd_mode_line
   if [ -f "$stories_file" ]; then
     if [ -n "$sprint_story_id" ]; then
       active_sprint_story_line "$stories_file" "$sprint_story_id"

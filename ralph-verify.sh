@@ -2,9 +2,9 @@
 set -euo pipefail
 
 MODE="targeted"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-RALPH_DIR="$WORKSPACE_ROOT/scripts/ralph"
-IGNORE_FILE="$RALPH_DIR/known-test-baseline-failures.txt"
+IGNORE_FILE="$SCRIPT_DIR/known-test-baseline-failures.txt"
 DEFAULT_FULL_IGNORE_PATTERNS=(
   "<rootDir>/tests/playwright/"
 )

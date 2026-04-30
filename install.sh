@@ -147,8 +147,6 @@ copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
 copy_file "$SOURCE_DIR/ralph-status.sh" "$DEST_DIR_REL/ralph-status.sh"
 copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
-copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
-copy_file "$SOURCE_DIR/ralph-spec-strengthen.sh" "$DEST_DIR_REL/ralph-spec-strengthen.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-test.sh.example" "$DEST_DIR_REL/ralph-sprint-test.sh.example"
 copy_file "$SOURCE_DIR/lib/codex-exec.sh" "$DEST_DIR_REL/lib/codex-exec.sh"
 copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
@@ -171,8 +169,6 @@ chmod +x \
   "$DEST_DIR_REL/ralph-status.sh" \
   "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
-  "$DEST_DIR_REL/ralph-spec-check.sh" \
-  "$DEST_DIR_REL/ralph-spec-strengthen.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
@@ -216,8 +212,7 @@ fi
 mkdir -p \
   "$DEST_DIR_REL/sprints/sprint-1/stories" \
   "$DEST_DIR_REL/tasks/sprint-1" \
-  "$DEST_DIR_REL/tasks/prds" \
-  "$DEST_DIR_REL/tasks/archive/sprint-1" \
+  "$DEST_DIR_REL/tasks/archive/sprints" \
   "$DEST_DIR_REL/tasks/archive/prds"
 
 if [ ! -f "$DEST_DIR_REL/sprints/sprint-1/stories.json" ] || [ "$FORCE" -eq 1 ]; then
