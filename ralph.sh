@@ -91,9 +91,9 @@ get_active_sprint() {
 ACTIVE_SPRINT="$(get_active_sprint || true)"
 
 if [ -z "$ACTIVE_SPRINT" ]; then
-  echo "No active sprint — auto-selecting next unfinished sprint..."
+  echo "No active sprint — auto-selecting next ready sprint..."
   if ! "$SCRIPT_DIR/ralph-sprint.sh" next --activate; then
-    fail "No unfinished sprint found. Create one with: ./scripts/ralph/ralph-sprint.sh create <name>"
+    fail "No ready sprint found. Mark one ready with: ./scripts/ralph/ralph-sprint.sh mark-ready <name>"
   fi
   ACTIVE_SPRINT="$(get_active_sprint || true)"
   [ -n "$ACTIVE_SPRINT" ] || fail "Sprint activation succeeded but .active-sprint is still empty."

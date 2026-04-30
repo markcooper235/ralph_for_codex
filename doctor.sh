@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
-PRD_FILE="$SCRIPT_DIR/prd.json"
+ROADMAP_FILE="$SCRIPT_DIR/roadmap.json"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 LEGACY_ARCHIVE_DIR="$SCRIPT_DIR/archive"
@@ -57,9 +57,9 @@ else
   Or:      bash install.sh --install-speckit"
 fi
 
-if [ ! -f "$PRD_FILE" ]; then
-  echo "WARN: Missing $PRD_FILE"
-  echo "      Create it (or use ralph-story.sh add) before running ralph.sh."
+if [ ! -f "$ROADMAP_FILE" ]; then
+  echo "WARN: Missing $ROADMAP_FILE"
+  echo "      Run: ./$SCRIPT_DIR/ralph-roadmap.sh to define your product roadmap."
 fi
 
 if [ -f "$ACTIVE_SPRINT_FILE" ]; then

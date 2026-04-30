@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+source "$SCRIPT_DIR/lib/codex-exec.sh"
 ROADMAP_JSON="$SCRIPT_DIR/roadmap.json"
 ROADMAP_MD="$SCRIPT_DIR/roadmap.md"
 ROADMAP_SOURCE="$SCRIPT_DIR/roadmap-source.md"
@@ -101,26 +102,6 @@ setup_work_paths() {
   trap 'rm -rf "$ROADMAP_WORK_DIR" >/dev/null 2>&1 || true' EXIT
 }
 
-supports_codex_yolo() {
-  local out
-  out="$($CODEX_BIN --yolo exec --help 2>&1 || true)"
-  if echo "$out" | grep -qi "unexpected argument '--yolo'"; then
-    return 1
-  fi
-  if echo "$out" | grep -qi "Run Codex non-interactively"; then
-    return 0
-  fi
-  return 1
-}
-
-build_codex_exec_args() {
-  local -n out_args_ref="$1"
-  if supports_codex_yolo; then
-    out_args_ref=(--yolo exec -C "$WORKSPACE_ROOT" -)
-  else
-    out_args_ref=(exec --dangerously-bypass-approvals-and-sandbox -C "$WORKSPACE_ROOT" -)
-  fi
-}
 
 ensure_clean_worktree() {
   git diff --quiet || fail "Working tree has unstaged changes. Commit or stash them before roadmap planning."
@@ -226,7 +207,7 @@ write_roadmap_source() {
 }
 
 plan_roadmap_json() {
-  local prompt codex_args=()
+  local prompt
   local source_hint refine_hint current_plan_hint backlog_hint
   source_hint="Create the first roadmap plan from the durable source inputs."
   refine_hint=""
@@ -270,8 +251,8 @@ $backlog_hint
 
 Requirements:
 1. Output JSON with keys: project, visionSummary, constraintsSummary, capacityTarget, capacityCeiling, sprints.
-2. Create exactly $SPRINT_COUNT sprints named \`sprint-1\` through \`sprint-$SPRINT_COUNT\`.
-3. Each sprint object must contain: name, goal, capacityTarget, capacityCeiling, stories.
+2. Create exactly $SPRINT_COUNT sprints. Name each sprint with a short descriptive kebab-case feature slug prefixed with "sprint-" (e.g. sprint-user-auth, sprint-data-model, sprint-api-layer). Names must match ^sprint-[a-z0-9-]+$.
+3. Each sprint object must contain: name, title, goal, capacityTarget, capacityCeiling, stories. The "title" is a short human-readable label (e.g. "User Authentication"); "goal" is a one-sentence description of the sprint objective.
 4. Each story must contain: id, title, priority, effort, dependsOn, goal, promptContext.
 5. Story IDs must use the format S-NNN (e.g., S-001, S-002), unique across all sprints.
 6. Story effort must be one of: 1, 2, 3, 5.
@@ -288,8 +269,7 @@ Return only a short summary after writing the file.
 EOF
   )
 
-  build_codex_exec_args codex_args
-  printf '%s\n' "$prompt" | "$CODEX_BIN" "${codex_args[@]}"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT"
 }
 
 validate_roadmap_json() {
@@ -305,7 +285,8 @@ validate_roadmap_json() {
     (.sprints | type == "array") and
     (.sprints | length == $sprintCount) and
     all(.sprints[];
-      .name and .goal and
+      .name and (.name | test("^sprint-[a-z0-9-]+$")) and
+      .title and .goal and
       .capacityTarget == $target and
       .capacityCeiling == $ceiling and
       (.stories | type == "array") and
@@ -361,7 +342,7 @@ render_roadmap_markdown() {
     (
       .sprints
       | map(
-          "## " + .name + "\n\n" +
+          "## " + .title + " (" + .name + ")\n\n" +
           "Goal: " + .goal + "\n\n" +
           "Planned effort: " + (([.stories[]?.effort] | add // 0) | tostring) + "/" + (.capacityCeiling | tostring) + "\n\n" +
           (
@@ -430,6 +411,7 @@ ensure_sprint_structure_local() {
         "version": 1,
         "project": $project,
         "sprint": $sprint,
+        "status": "planned",
         "capacityTarget": $target,
         "capacityCeiling": $ceiling,
         "activeStoryId": null,
@@ -440,11 +422,14 @@ ensure_sprint_structure_local() {
 
 write_sprint_capacity_metadata() {
   local sprint="$1"
+  local sprint_title="$2"
   local stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
   local tmp_file
   tmp_file="$(mktemp)"
-  jq --arg sprint "$sprint" --argjson target "$CAPACITY_TARGET" --argjson ceiling "$CAPACITY_CEILING" '
+  jq --arg sprint "$sprint" --arg title "$sprint_title" \
+     --argjson target "$CAPACITY_TARGET" --argjson ceiling "$CAPACITY_CEILING" '
     .sprint = $sprint
+    | .title = $title
     | .capacityTarget = $target
     | .capacityCeiling = $ceiling
   ' "$stories_file" > "$tmp_file"
@@ -537,7 +522,7 @@ apply_roadmap_to_sprints() {
   sprint_count="$(jq '.sprints | length' "$ROADMAP_JSON_WORK")"
   [ "$sprint_count" -gt 0 ] || fail "Roadmap has no sprints to apply."
 
-  while IFS=$'\t' read -r sprint_name sprint_goal; do
+  while IFS=$'\t' read -r sprint_name sprint_title; do
     [ -n "$sprint_name" ] || continue
     if [ -z "$first_sprint" ]; then
       first_sprint="$sprint_name"
@@ -555,13 +540,15 @@ apply_roadmap_to_sprints() {
       ensure_sprint_structure_local "$sprint_name"
     fi
     ensure_sprint_structure_local "$sprint_name"
-    "$SPRINT_CLI" branch "$sprint_name" >/dev/null
-    write_sprint_capacity_metadata "$sprint_name"
+    write_sprint_capacity_metadata "$sprint_name" "$sprint_title"
     reconcile_sprint_backlog "$sprint_name"
-  done < <(jq -r '.sprints[] | [.name, .goal] | @tsv' "$ROADMAP_JSON_WORK")
+  done < <(jq -r '.sprints[] | [.name, .title] | @tsv' "$ROADMAP_JSON_WORK")
 
   if [ -n "$first_sprint" ]; then
     printf '%s\n' "$first_sprint" > "$ACTIVE_SPRINT_FILE"
+    log "Active sprint set to: $first_sprint"
+    log "Run: ./ralph-sprint.sh mark-ready $first_sprint   (after prepare-all)"
+    log "Then: ./ralph-sprint.sh use $first_sprint         (creates branch + activates)"
   fi
 }
 

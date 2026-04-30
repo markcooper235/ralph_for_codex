@@ -208,20 +208,12 @@ Started: $(date)
 EOF
 fi
 
-# Sprint-aware bootstrap directories and default active sprint.
+# Sprint-aware bootstrap directories (sprints and tasks created by ralph-roadmap.sh).
 mkdir -p \
-  "$DEST_DIR_REL/sprints/sprint-1/stories" \
-  "$DEST_DIR_REL/tasks/sprint-1" \
+  "$DEST_DIR_REL/sprints" \
+  "$DEST_DIR_REL/tasks" \
   "$DEST_DIR_REL/tasks/archive/sprints" \
   "$DEST_DIR_REL/tasks/archive/prds"
-
-if [ ! -f "$DEST_DIR_REL/sprints/sprint-1/stories.json" ] || [ "$FORCE" -eq 1 ]; then
-  cp "$DEST_DIR_REL/stories.json.example" "$DEST_DIR_REL/sprints/sprint-1/stories.json"
-fi
-
-if [ ! -f "$DEST_DIR_REL/.active-sprint" ] || [ "$FORCE" -eq 1 ]; then
-  printf 'sprint-1\n' > "$DEST_DIR_REL/.active-sprint"
-fi
 
 # Keep generated files out of git noise.
 GITIGNORE_SOURCE="$SOURCE_DIR/.gitignore"
@@ -290,11 +282,15 @@ echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
 echo ""
-echo "  Sprint setup:"
-echo "    ./$DEST_DIR_REL/ralph-sprint.sh create sprint-1"
-echo "    ./$DEST_DIR_REL/ralph-story.sh add --title '<story title>'"
+echo "  Define your product roadmap (creates sprints + stories):"
+echo "    ./$DEST_DIR_REL/ralph-roadmap.sh"
+echo ""
+echo "  Per-sprint preparation (after roadmap creates a sprint):"
 echo "    ./$DEST_DIR_REL/ralph-story.sh prepare-all --jobs 2"
-echo "    ./$DEST_DIR_REL/ralph-story.sh health-all"
+echo "    ./$DEST_DIR_REL/ralph-sprint.sh mark-ready <sprint-name>"
+echo ""
+echo "  Sprint activation (previous sprint must be closed):"
+echo "    ./$DEST_DIR_REL/ralph-sprint.sh use <sprint-name>"
 echo ""
 echo "  Sprint execution (runs all stories automatically):"
 echo "    ./$DEST_DIR_REL/ralph.sh"

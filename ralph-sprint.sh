@@ -22,8 +22,9 @@ Commands:
   list                              List available sprints
   create <sprint-name>              Create sprint structure and stories.json scaffold
   remove <sprint-name> [options]    Remove sprint (archive by default)
-  use <sprint-name>                 Set active sprint
-  next [--activate]                 Show the next unfinished sprint, optionally activate it
+  use <sprint-name>                 Activate sprint (requires status=ready, previous=closed)
+  mark-ready <sprint-name>          Mark sprint ready for activation (all stories must be ready)
+  next [--activate]                 Show the next ready sprint, optionally activate it
   branch <sprint-name>              Ensure sprint branch exists (ralph/sprint/<sprint-name>)
   status                            Show active sprint + story readiness
   -h, --help                        Show this help
@@ -121,12 +122,32 @@ ensure_sprint_structure() {
         "version": $version,
         "project": $project,
         "sprint": $sprint,
+        "status": "planned",
         "capacityTarget": 8,
         "capacityCeiling": 10,
         "activeStoryId": null,
         "stories": []
       }' > "$stories_file"
   fi
+}
+
+get_sprint_status() {
+  local sprint="$1"
+  local sf
+  sf="$(sprint_stories_file "$sprint")"
+  [ -f "$sf" ] || { echo "planned"; return 0; }
+  jq -r '.status // "planned"' "$sf"
+}
+
+set_sprint_status() {
+  local sprint="$1"
+  local new_status="$2"
+  local sf tmp
+  sf="$(sprint_stories_file "$sprint")"
+  [ -f "$sf" ] || fail "Sprint stories file not found: $sf"
+  tmp="$(mktemp)"
+  jq --arg s "$new_status" '.status = $s' "$sf" > "$tmp"
+  mv "$tmp" "$sf"
 }
 
 get_active_sprint() {
@@ -150,7 +171,31 @@ set_active_sprint() {
 activate_sprint() {
   local sprint="$1"
   [ -f "$(sprint_stories_file "$sprint")" ] || fail "Sprint does not exist: $sprint"
+
+  # Gate: sprint must be marked ready before activation
+  local sprint_status
+  sprint_status="$(get_sprint_status "$sprint")"
+  if [ "$sprint_status" != "ready" ]; then
+    fail "Sprint '$sprint' is not ready (status: $sprint_status). Run: ./ralph-sprint.sh mark-ready $sprint"
+  fi
+
+  # Gate: previous sprint (by sorted order) must be closed
+  local prev_sprint=""
+  while IFS= read -r s; do
+    [ "$s" = "$sprint" ] && break
+    prev_sprint="$s"
+  done < <(sorted_sprints)
+
+  if [ -n "$prev_sprint" ]; then
+    local prev_status
+    prev_status="$(get_sprint_status "$prev_sprint")"
+    if [ "$prev_status" != "closed" ]; then
+      fail "Previous sprint '$prev_sprint' is not closed (status: $prev_status). Run: ./ralph-sprint-commit.sh first."
+    fi
+  fi
+
   ensure_sprint_branch_exists "$sprint"
+  set_sprint_status "$sprint" "active"
   set_active_sprint "$sprint"
   echo "Active sprint set to: $sprint"
   checkout_sprint_branch "$sprint"
@@ -243,6 +288,9 @@ find_next_sprint() {
   local sprint
   while IFS= read -r sprint; do
     [ -n "$sprint" ] || continue
+    local status
+    status="$(get_sprint_status "$sprint")"
+    [ "$status" = "ready" ] || continue
     if sprint_is_unfinished "$sprint"; then
       printf '%s\n' "$sprint"
       return 0
@@ -338,6 +386,7 @@ cmd_create() {
   [ -n "$sprint" ] || fail "Invalid sprint name."
 
   ensure_sprint_structure "$sprint"
+  set_sprint_status "$sprint" "active"
   ensure_sprint_branch_exists "$sprint"
   set_active_sprint "$sprint"
   echo "Created sprint: $sprint"
@@ -345,6 +394,37 @@ cmd_create() {
   checkout_sprint_branch "$sprint"
   echo ""
   echo "Add stories with: ./ralph-story.sh add --title '<title>' [options]"
+}
+
+cmd_mark_ready() {
+  local sprint
+
+  [ $# -eq 1 ] || fail "Usage: mark-ready <sprint-name>"
+  sprint="$(normalize_sprint_name "$1")"
+  [ -n "$sprint" ] || fail "Invalid sprint name."
+
+  local sf
+  sf="$(sprint_stories_file "$sprint")"
+  [ -f "$sf" ] || fail "Sprint does not exist: $sprint"
+
+  local cur_status
+  cur_status="$(get_sprint_status "$sprint")"
+  if [ "$cur_status" = "active" ] || [ "$cur_status" = "closed" ]; then
+    fail "Sprint '$sprint' is already $cur_status — cannot mark ready."
+  fi
+
+  # Validate all non-done/abandoned stories are ready
+  local not_ready
+  not_ready="$(jq -r '.stories[] | select((.status != "done") and (.status != "abandoned") and (.status != "ready")) | "\(.id)\t\(.status // "planned")"' "$sf")"
+  if [ -n "$not_ready" ]; then
+    echo "Sprint has stories not yet ready:" >&2
+    printf '%s\n' "$not_ready" >&2
+    fail "All active stories must be 'ready' before marking the sprint ready. Run: ./ralph-story.sh prepare-all"
+  fi
+
+  set_sprint_status "$sprint" "ready"
+  echo "Sprint '$sprint' marked ready."
+  echo "To activate: ./ralph-sprint.sh use $sprint"
 }
 
 # ---------------------------------------------------------------------------
@@ -481,6 +561,10 @@ main() {
       local sprint
       sprint="$(normalize_sprint_name "$2")"
       activate_sprint "$sprint"
+      ;;
+    mark-ready)
+      shift
+      cmd_mark_ready "$@"
       ;;
     next)
       shift
