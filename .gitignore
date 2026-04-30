@@ -10,6 +10,9 @@ scripts/ralph/progress.txt
 prd.json
 progress.txt
 
+# Dependencies
+node_modules/
+
 # Temporary folders
 tmp/
 temp/
