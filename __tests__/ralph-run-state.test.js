@@ -1,19 +1,27 @@
+'use strict'
+
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
-const { execFileSync } = require('node:child_process')
+const { execFileSync, spawnSync } = require('node:child_process')
 
 const REPO_ROOT = path.resolve(__dirname, '..')
 
 function run(cmd, args, { cwd, env } = {}) {
   return execFileSync(cmd, args, {
     cwd,
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+    stdio: 'pipe',
+  })
+}
+
+function tryRun(cmd, args, { cwd, env } = {}) {
+  return spawnSync(cmd, args, {
+    cwd,
+    env: { ...process.env, ...env },
     encoding: 'utf8',
     stdio: 'pipe',
   })
@@ -24,475 +32,31 @@ function writeFile(targetPath, contents) {
   fs.writeFileSync(targetPath, contents)
 }
 
-function buildLoopHandoff({ status = 'completed', completionSignal = true, storyId = 'US-001', storyTitle = 'Stub story' } = {}) {
-  return [
-    '<ralph_handoff>',
-    JSON.stringify({
-      status,
-      story: {
-        id: storyId,
-        title: storyTitle,
-      },
-      summary: 'Stub loop completed.',
-      errors: [],
-      directionChanges: [],
-      verification: ['Stub verification passed.'],
-      filesChanged: ['src/allowed.ts'],
-      assumptions: [],
-      nextLoopAdvice: [],
-      completionSignal,
-    }),
-    '</ralph_handoff>',
-    '',
-  ].join('\n')
-}
-
-function buildLoopReadyMarkdownFixture(title = 'Stub story') {
-  return [
-    '# PRD',
-    '',
-    '## Scope',
-    '- Deliver the requested stub workflow without broadening into unrelated framework changes.',
-    '',
-    '## Out of Scope',
-    '- No unrelated cleanup or roadmap reshaping.',
-    '',
-    '## Execution Model',
-    '- Start with the first slice in the exact source file path named below, keep support scope limited, and verify the slice before widening.',
-    '- Verification must prove the slice through typecheck, lint, and tests before Ralph advances.',
-    '',
-    '## First Slice Expectations',
-    '- Exact source entrypoint: scripts/ralph/tasks/stub-input.md.',
-    '- Destination workflow: update the generated PRD markdown and then convert it into scripts/ralph/prd.json.',
-    '- Commands to prove the slice: run typecheck, lint, and tests for the changed workflow.',
-    '',
-    '## Allowed Supporting Files',
-    '- package.json test and lint scripts are in scope when verification wiring needs to remain intact.',
-    '- Verification scripts, config files, and workflow helpers under scripts/ are allowed when they are required by the slice.',
-    '',
-    '## Preserved Invariants',
-    '- Existing Ralph workflow contracts remain stable and unchanged outside the requested slice.',
-    '- The generated plan must preserve canonical branch naming and intact verification expectations.',
-    '',
-    '## User Stories',
-    '',
-    '### Story US-001: ' + title,
-    'Acceptance Criteria',
-    '- Must update the exact source slice with execution-ready detail.',
-    '- Must preserve the required support-file workflow and verification commands.',
-    '- Must prove the result with typecheck, lint, and tests.',
-    '',
-    '## Refinement Checkpoints',
-    '- Confirm the first slice stays inside the named workflow and support scope.',
-    '',
-    '## Definition of Done',
-    '- Verification remains intact and the PRD is ready for Ralph loop execution.',
-    '',
-  ].join('\n')
-}
-
 function chmodScripts(rootDir) {
   const stack = [rootDir]
   while (stack.length > 0) {
     const current = stack.pop()
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const fullPath = path.join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(fullPath)
-        continue
-      }
-      if (entry.name.endsWith('.sh')) {
-        fs.chmodSync(fullPath, 0o755)
-      }
+      if (entry.isDirectory()) { stack.push(fullPath); continue }
+      if (entry.name.endsWith('.sh')) fs.chmodSync(fullPath, 0o755)
     }
   }
 }
 
-function removeIfExists(targetPath) {
-  fs.rmSync(targetPath, { recursive: true, force: true })
-}
-
-function resetCopiedRalphRuntimeArtifacts(repoDir) {
-  const ralphDir = path.join(repoDir, 'scripts/ralph')
-
-  for (const entry of fs.readdirSync(ralphDir)) {
-    if (
-      /^\.iteration-log(?:-iter-[0-9]+|-latest)?\.txt$/.test(entry) ||
-      /^\.iteration-handoff(?:-iter-[0-9]+|-latest)?\.json$/.test(entry)
-    ) {
-      removeIfExists(path.join(ralphDir, entry))
-    }
-  }
-
-  ;[
-    '.completion-state.json',
-    '.active-prd',
-    '.active-sprint',
-    '.last-branch',
-    '.workflow-lock',
-    'prd.json',
-    'progress.txt',
-  ].forEach(entry => removeIfExists(path.join(ralphDir, entry)))
-
-  removeIfExists(path.join(repoDir, '.playwright-cli'))
-}
-
-function installCodexStub(repoDir) {
-  const binDir = path.join(repoDir, 'bin')
-  const stubPath = path.join(binDir, 'codex')
-  fs.mkdirSync(binDir, { recursive: true })
-  writeFile(
-    stubPath,
-    `#!/usr/bin/env node
-const fs = require('fs');
-const path = require('path');
-const args = process.argv.slice(2);
-function buildLoopReadyMarkdown(title = 'Stub story') {
-  return [
-    '# PRD',
-    '',
-    '## Scope',
-    '- Deliver the requested stub workflow without broadening into unrelated framework changes.',
-    '',
-    '## Out of Scope',
-    '- No unrelated cleanup or roadmap reshaping.',
-    '',
-    '## Execution Model',
-    '- Start with the first slice in the exact source file path named below, keep support scope limited, and verify the slice before widening.',
-    '- Verification must prove the slice through typecheck, lint, and tests before Ralph advances.',
-    '',
-    '## First Slice Expectations',
-    '- Exact source entrypoint: scripts/ralph/tasks/stub-input.md.',
-    '- Destination workflow: update the generated PRD markdown and then convert it into scripts/ralph/prd.json.',
-    '- Commands to prove the slice: run typecheck, lint, and tests for the changed workflow.',
-    '',
-    '## Allowed Supporting Files',
-    '- package.json test and lint scripts are in scope when verification wiring needs to remain intact.',
-    '- Verification scripts, config files, and workflow helpers under scripts/ are allowed when they are required by the slice.',
-    '',
-    '## Preserved Invariants',
-    '- Existing Ralph workflow contracts remain stable and unchanged outside the requested slice.',
-    '- The generated plan must preserve canonical branch naming and intact verification expectations.',
-    '',
-    '## User Stories',
-    '',
-    '### Story US-001: ' + title,
-    'Acceptance Criteria',
-    '- Must update the exact source slice with execution-ready detail.',
-    '- Must preserve the required support-file workflow and verification commands.',
-    '- Must prove the result with typecheck, lint, and tests.',
-    '',
-    '## Refinement Checkpoints',
-    '- Confirm the first slice stays inside the named workflow and support scope.',
-    '',
-    '## Definition of Done',
-    '- Verification remains intact and the PRD is ready for Ralph loop execution.',
-    '',
-  ].join('\\n');
-}
-if (args.includes('--help')) {
-  process.stdout.write('Run Codex non-interactively\\n');
-  process.exit(0);
-}
-const cwd = process.cwd();
-const loopMode = process.env.RALPH_TEST_LOOP_MODE || '';
-const input = fs.readFileSync(0, 'utf8');
-  if (input.includes('You are the coding agent for one Ralph loop iteration.') && loopMode) {
-  const prdPath = path.join(cwd, 'scripts/ralph/prd.json');
-  const progressPath = path.join(cwd, 'scripts/ralph/progress.txt');
-  if (loopMode === 'codex-fail') {
-    process.stderr.write('codex stub failure\\n');
-    process.exit(17);
-  }
-  if (loopMode === 'scope-valid') {
-    fs.writeFileSync(path.join(cwd, 'src/allowed.ts'), 'export const allowed = "updated";\\n');
-    fs.mkdirSync(path.join(cwd, 'tests'), { recursive: true });
-    fs.writeFileSync(path.join(cwd, 'tests/browser.test.mjs'), 'console.log("browser ok");\\n');
-    require('child_process').execFileSync('git', ['add', 'src/allowed.ts', 'tests/browser.test.mjs'], { cwd, stdio: 'pipe' });
-    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped valid change'], { cwd, stdio: 'pipe' });
-  } else if (loopMode === 'scope-helper-invalid') {
-    fs.mkdirSync(path.join(cwd, 'scripts'), { recursive: true });
-    fs.writeFileSync(path.join(cwd, 'scripts/browser-check.mjs'), 'console.log("helper tweak");\\n');
-    require('child_process').execFileSync('git', ['add', 'scripts/browser-check.mjs'], { cwd, stdio: 'pipe' });
-    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Helper edit'], { cwd, stdio: 'pipe' });
-  } else if (loopMode === 'scope-uncommitted') {
-    fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
-  } else if (loopMode === 'scope-invalid') {
-    fs.writeFileSync(path.join(cwd, 'src/disallowed.ts'), 'export const disallowed = "oops";\\n');
-    require('child_process').execFileSync('git', ['add', 'src/disallowed.ts'], { cwd, stdio: 'pipe' });
-    require('child_process').execFileSync('git', ['commit', '-m', 'feat: [US-001] - Scoped invalid change'], { cwd, stdio: 'pipe' });
-  }
-
-  if (fs.existsSync(prdPath) && loopMode !== 'invalid-handoff' && loopMode !== 'blocked-targeted-test-scope') {
-    const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
-    if (Array.isArray(prd.userStories) && prd.userStories[0]) {
-      prd.userStories[0].passes = true;
-    }
-    fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-  }
-  fs.appendFileSync(
-    progressPath,
-    '\\n## 2026-03-22 17:30:00 EDT - US-001\\n- Implemented: Stub loop change\\n---\\n'
-  );
-  if (loopMode === 'missing-handoff-complete') {
-    fs.appendFileSync(
-      progressPath,
-      '\\n## 2026-03-22 17:30:01 EDT - Completion\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
-    );
-  } else if (loopMode === 'strict-complete-no-note') {
-    fs.appendFileSync(
-      progressPath,
-      '- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n'
-    );
-    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
-  } else if (loopMode === 'invalid-handoff') {
-    process.stdout.write('<ralph_handoff>\\n{"status":"completed","completionSignal":true}\\n</ralph_handoff>\\n');
-  } else if (loopMode === 'multi-handoff') {
-    fs.appendFileSync(
-      progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
-    );
-    process.stdout.write('<ralph_handoff>\\n{"status":"no_change","story":{"id":"US-000","title":"Example"},"summary":"Prompt example.","errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[],"completionSignal":false}\\n</ralph_handoff>\\n');
-    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
-  } else if (loopMode === 'invalid-completion-schema') {
-    if (fs.existsSync(prdPath)) {
-      const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
-      if (Array.isArray(prd.userStories)) {
-        for (const story of prd.userStories) story.passes = true;
-        fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-      }
-    }
-    fs.appendFileSync(
-      progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - [US-002]\\n- Implemented: Completed second story\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
-    );
-    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
-      status: 'completed',
-      story: { id: 'US-002', title: 'Second story' },
-      summary: 'Completed the second story.',
-      errors: [],
-      directionChanges: [],
-      verification: ['targeted passed', 'browser passed', 'full passed', 'post-check passed'],
-      filesChanged: ['src/render.ts'],
-      assumptions: [],
-      nextLoopAdvice: [],
-      completionSignal: true,
-    }) + '\\n</ralph_handoff>\\n');
-  } else if (loopMode === 'four-verification-completion') {
-    if (fs.existsSync(prdPath)) {
-      const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
-      if (Array.isArray(prd.userStories)) {
-        for (const story of prd.userStories) story.passes = true;
-        fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-      }
-    }
-    fs.appendFileSync(
-      progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - [US-002]\\n- Implemented: Completed second story\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
-    );
-    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
-      status: 'completed',
-      story: { id: 'US-002', title: 'Second story' },
-      summary: 'Completed the second story.',
-      errors: [],
-      directionChanges: [],
-      verification: ['targeted passed', 'tests passed', 'browser passed', 'full passed'],
-      filesChanged: ['src/render.ts'],
-      assumptions: [],
-      nextLoopAdvice: [],
-      completionSignal: true,
-    }) + '\\n</ralph_handoff>\\n');
-  } else if (loopMode === 'blocked-targeted-test-scope') {
-    process.stdout.write('<ralph_handoff>\\n' + JSON.stringify({
-      status: 'blocked',
-      story: { id: 'US-001', title: 'Blocked story' },
-      summary: 'Targeted verification pulled in tests/messages.test.mjs.',
-      errors: ['./scripts/ralph/ralph-verify.sh --targeted fails in tests/messages.test.mjs because it still expects old copy.'],
-      directionChanges: ['US-001 needs tests/messages.test.mjs in scope.'],
-      verification: [],
-      filesChanged: ['src/messages.ts', 'src/render.ts'],
-      assumptions: [],
-      nextLoopAdvice: ['Allow tests/messages.test.mjs so targeted verification can pass.'],
-      completionSignal: false,
-    }) + '\\n</ralph_handoff>\\n');
-  } else {
-    fs.appendFileSync(
-      progressPath,
-      '\\n## [2026-03-22 17:30:01 EDT] - COMPLETE\\n- Full verification: ./scripts/ralph/ralph-verify.sh --full passed\\n---\\n'
-    );
-    process.stdout.write(${JSON.stringify(buildLoopHandoff())});
-  }
-}
-if (input.includes('Convert this PRD markdown file into Ralph JSON')) {
-  if (process.env.RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE === '1') {
-    if (!input.includes('include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths')) {
-      process.stderr.write('missing inferred proof-scope conversion rule\\n');
-      process.exit(20);
-    }
-  }
-  const destination = (input.match(/Destination: \`([^\\\`]+)\`/) || [null, 'scripts/ralph/prd.json'])[1];
-  const branchName = (input.match(/Set \`branchName\` to: \`([^\\\`]+)\`/) || [null, 'ralph/test/epic-001'])[1];
-  const output = {
-    project: 'tmp-ralph-test',
-    branchName,
-    description: 'Generated by codex stub',
-    userStories: [
-      {
-        id: 'US-001',
-        title: 'Stub story',
-        description: 'Stub story',
-        acceptanceCriteria: ['Tests pass'],
-        priority: 1,
-        passes: false,
-        notes: ''
-      }
-    ]
-  };
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.writeFileSync(destination, JSON.stringify(output, null, 2));
-}
-if (input.includes('Generate a complete PRD markdown from this epic context and write it to:')) {
-  const destination = (input.match(/write it to:\\n\`([^\\\`]+)\`/) || [null, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'])[1];
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.writeFileSync(destination, buildLoopReadyMarkdown('Stub story'));
-}
-if (input.includes('Strengthen this existing PRD markdown in place so it becomes loop-ready for Ralph:')) {
-  const destination = (input.match(/Ralph:\\n\`([^\\\`]+)\`/) || [null, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'])[1];
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.writeFileSync(destination, buildLoopReadyMarkdown('Strengthened stub story'));
-  process.stdout.write('Status: strengthened\\nReason: Added loop-ready execution details.\\n');
-}
-if (input.includes('Create a complete Ralph planning package') || input.includes('Create a compact Ralph planning package')) {
-  if (process.env.RALPH_TEST_ASSERT_INFERRED_PROOF_SCOPE === '1') {
-    if (!input.includes('include in that same story any tests or verification files that Ralph targeted verification will naturally infer from those source paths')) {
-      process.stderr.write('missing inferred proof-scope planning rule\\n');
-      process.exit(19);
-    }
-  }
-  if (process.env.RALPH_TEST_EXPECT_COMPACT_PROMPT === '1') {
-    if (!input.includes('Create a compact Ralph planning package for a tightly scoped change.')) {
-      process.stderr.write('expected compact planning prompt\\n');
-      process.exit(21);
-    }
-    if (input.includes('Additional guidance for this request:')) {
-      process.stderr.write('compact prompt should not include normal-mode UI guidance\\n');
-      process.exit(22);
-    }
-  }
-  if (process.env.RALPH_TEST_EXPECT_NORMAL_PROMPT === '1') {
-    if (!input.includes('Create a complete Ralph planning package from this feature concept.')) {
-      process.stderr.write('expected normal planning prompt\\n');
-      process.exit(23);
-    }
-    if (input.includes('Create a compact Ralph planning package for a tightly scoped change.')) {
-      process.stderr.write('normal prompt should not use compact planning text\\n');
-      process.exit(24);
-    }
-  }
-  if (process.env.RALPH_TEST_EXPECT_NORMAL_UI_HINT === '1') {
-    if (!input.includes('Additional guidance for this request:') || !input.includes('keep them in one story')) {
-      process.stderr.write('expected normal-mode UI single-slice guidance\\n');
-      process.exit(25);
-    }
-  }
-  const markdownPath = 'scripts/ralph/tasks/prds/prd-stub-feature.md';
-  const jsonPath = 'scripts/ralph/prd.json';
-  fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
-  fs.writeFileSync(markdownPath, buildLoopReadyMarkdown('Stub story'));
-  fs.mkdirSync(path.dirname(jsonPath), { recursive: true });
-  fs.writeFileSync(jsonPath, JSON.stringify({
-    project: 'tmp-ralph-test',
-    branchName: 'ralph/test/standalone',
-    description: 'Generated by codex stub',
-    userStories: [
-      {
-        id: 'US-001',
-        title: 'Stub story',
-        description: 'Stub story',
-        acceptanceCriteria: ['Typecheck passes', 'Lint passes', 'Tests pass'],
-        priority: 1,
-        passes: false,
-        notes: ''
-      }
-    ]
-  }, null, 2));
-}
-`
-  )
-  fs.chmodSync(stubPath, 0o755)
-  return `${binDir}:${process.env.PATH}`
-}
-
-function installCodexCleanupResidueStub(repoDir) {
-  const binDir = path.join(repoDir, 'bin')
-  const stubPath = path.join(binDir, 'codex')
-  fs.mkdirSync(binDir, { recursive: true })
-  writeFile(
-    stubPath,
-    `#!/usr/bin/env node
-const fs = require('fs');
-const path = require('path');
-const args = process.argv.slice(2);
-if (args.includes('--help')) {
-  process.stdout.write('Run Codex non-interactively\\n');
-  process.exit(0);
-}
-const cwdIndex = args.indexOf('-C');
-const repoRoot = cwdIndex !== -1 ? args[cwdIndex + 1] : process.cwd();
-const prdPath = path.join(repoRoot, 'scripts/ralph/prd.json');
-const dirtyPath = path.join(repoRoot, 'src/story-file.ts');
-const prd = JSON.parse(fs.readFileSync(prdPath, 'utf8'));
-prd.userStories = (prd.userStories || []).map(story => ({ ...story, passes: true }));
-fs.writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-fs.appendFileSync(dirtyPath, '\\n// dirty cleanup residue\\n');
-process.stdout.write('<ralph_handoff>\\n');
-process.stdout.write(JSON.stringify({
-  status: 'progressed',
-  story: { id: 'US-001', title: 'Cleanup story' },
-  summary: 'Marked the story passed but left a scoped dirty file behind.',
-  errors: [],
-  directionChanges: [],
-  verification: [],
-  filesChanged: ['src/story-file.ts'],
-  assumptions: [],
-  nextLoopAdvice: ['Clean up remaining scoped worktree changes before completion.'],
-  completionSignal: false
-}) + '\\n');
-process.stdout.write('</ralph_handoff>\\n');
-`
-  )
-  fs.chmodSync(stubPath, 0o755)
-  return `${binDir}:${process.env.PATH}`
-}
-
-function initTempRepo() {
-  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-run-state-'))
+function initTempRepo({ branch = 'master' } = {}) {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-test-'))
   const frameworkRoot = path.join(repoDir, 'scripts', 'ralph')
   fs.mkdirSync(path.dirname(frameworkRoot), { recursive: true })
   fs.cpSync(REPO_ROOT, frameworkRoot, {
     recursive: true,
-    filter: (sourcePath) => !sourcePath.includes(`${path.sep}.git${path.sep}`) && !sourcePath.endsWith(`${path.sep}.git`),
+    filter: (src) =>
+      !src.includes(`${path.sep}.git${path.sep}`) &&
+      !src.endsWith(`${path.sep}.git`),
   })
   chmodScripts(frameworkRoot)
-  resetCopiedRalphRuntimeArtifacts(repoDir)
 
-  writeFile(
-    path.join(repoDir, '.gitignore'),
-    [
-      'scripts/ralph/.last-branch',
-      'scripts/ralph/.active-sprint',
-      'scripts/ralph/.active-prd',
-      'scripts/ralph/prd.json',
-      'scripts/ralph/progress.txt',
-      'scripts/ralph/.completion-state.json',
-      'scripts/ralph/.iteration-log*.txt',
-      'scripts/ralph/.iteration-handoff*.json',
-      '.playwright-cli/',
-      'bin/',
-    ].join('\n') + '\n'
-  )
-
-  run('git', ['init', '-b', 'master'], { cwd: repoDir })
+  run('git', ['init', '-b', branch], { cwd: repoDir })
   run('git', ['config', 'user.name', 'Ralph Test'], { cwd: repoDir })
   run('git', ['config', 'user.email', 'ralph-test@example.com'], { cwd: repoDir })
   run('git', ['add', '.'], { cwd: repoDir })
@@ -500,198 +64,82 @@ function initTempRepo() {
   return repoDir
 }
 
-test('ralph-prime resets stale progress and run artifacts for a new epic', () => {
-  const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
-
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'EPIC Test',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001.md'],
-            goal: 'Test goal',
-          },
-        ],
-      },
-      null,
-      2
-    )
+function storiesJson(sprint, { status = 'planned', stories = [], activeStoryId = null } = {}) {
+  return JSON.stringify(
+    {
+      version: 1,
+      project: 'tmp-ralph-test',
+      sprint,
+      status,
+      capacityTarget: 8,
+      capacityCeiling: 10,
+      activeStoryId,
+      stories,
+    },
+    null,
+    2
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
-  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE PROGRESS\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/stale","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  fs.mkdirSync(path.join(repoDir, '.playwright-cli'), { recursive: true })
+}
 
-  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
+function storyRecord(id, { title = 'Test story', status = 'ready', storyPath = null } = {}) {
+  const entry = { id, title, priority: 1, effort: 1, status }
+  if (storyPath) entry.story_path = storyPath
+  return entry
+}
 
-  const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
-  assert.match(progress, /# Ralph Progress Log/)
-  assert.ok(!progress.includes('STALE PROGRESS'))
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, '.playwright-cli')), false)
+// ---------------------------------------------------------------------------
+// ralph-sprint next — sprint selection
+// ---------------------------------------------------------------------------
 
-  const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
-  assert.equal(primed.branchName, 'ralph/sprint-test/epic-001')
-})
-
-test('ralph-sprint next returns the lowest-numbered unfinished sprint', () => {
+test('ralph-sprint next returns the first ready sprint in sorted order', () => {
   const repoDir = initTempRepo()
 
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-1',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Finished epic',
-            priority: 1,
-            status: 'done',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
-            goal: 'Done',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'closed',
+      stories: [storyRecord('S-001', { status: 'done' })],
+    })
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-2',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Planned epic',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-2/prd-epic-001.md'],
-            goal: 'Next',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/stories.json'),
+    storiesJson('sprint-2', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-10/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-10',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Later epic',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-10/prd-epic-001.md'],
-            goal: 'Later',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-10/stories.json'),
+    storiesJson('sprint-10', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
 
   const output = run('./scripts/ralph/ralph-sprint.sh', ['next'], { cwd: repoDir })
   assert.equal(output.trim(), 'sprint-2')
 })
 
-test('ralph-sprint next --activate selects and activates the next unfinished sprint', () => {
+test('ralph-sprint next skips planned and closed sprints, returning only ready ones', () => {
   const repoDir = initTempRepo()
 
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-1',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Finished epic',
-            priority: 1,
-            status: 'done',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
-            goal: 'Done',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'planned',
+      stories: [storyRecord('S-001', { status: 'planned' })],
+    })
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-2',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Active sprint epic',
-            priority: 1,
-            status: 'ready',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-2/prd-epic-001.md'],
-            goal: 'Activate',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/stories.json'),
+    storiesJson('sprint-2', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
 
-  const output = run('./scripts/ralph/ralph-sprint.sh', ['next', '--activate'], { cwd: repoDir })
-  assert.match(output, /^sprint-2$/m)
-  assert.match(output, /Active sprint set to: sprint-2/)
-  assert.match(output, /Checked out sprint branch: ralph\/sprint\/sprint-2/)
-  assert.equal(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'utf8'), 'sprint-2\n')
-  assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-2')
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['next'], { cwd: repoDir })
+  assert.equal(output.trim(), 'sprint-2')
 })
 
 test('ralph-sprint next skips historic blocked-only sprints before the roadmap baseline', () => {
@@ -699,1473 +147,218 @@ test('ralph-sprint next skips historic blocked-only sprints before the roadmap b
 
   writeFile(
     path.join(repoDir, 'scripts/ralph/roadmap.json'),
-    JSON.stringify(
-      {
-        sprints: [
-          { name: 'sprint-3' },
-          { name: 'sprint-4' },
-        ],
-      },
-      null,
-      2
-    )
+    JSON.stringify({ sprints: [{ name: 'sprint-3' }, { name: 'sprint-4' }] }, null, 2)
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-1',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Historic blocked epic',
-            priority: 1,
-            status: 'blocked',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-1/prd-epic-001.md'],
-            goal: 'Blocked historic work',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'planned',
+      stories: [storyRecord('S-001', { status: 'blocked' })],
+    })
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-3/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        sprint: 'sprint-3',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Baseline sprint epic',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-3/prd-epic-001.md'],
-            goal: 'Current roadmap work',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-3/stories.json'),
+    storiesJson('sprint-3', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
 
   const output = run('./scripts/ralph/ralph-sprint.sh', ['next'], { cwd: repoDir })
   assert.equal(output.trim(), 'sprint-3')
 })
 
-test('ralph-archive clears local run artifacts after archiving a completed run', () => {
+// ---------------------------------------------------------------------------
+// ralph-sprint next --activate — activation via find_next_sprint
+// ---------------------------------------------------------------------------
+
+test('ralph-sprint next --activate activates the next ready sprint and checks out its branch', () => {
   const repoDir = initTempRepo()
 
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
   writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'epic',
-        epicId: 'EPIC-001',
-        baseBranch: 'ralph/sprint/sprint-test',
-        sourcePath: 'scripts/ralph/tasks/sprint-test/prd-epic-001.md',
-        activatedAt: '2026-03-19T00:00:00-04:00',
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'closed',
+      stories: [storyRecord('S-001', { status: 'done' })],
+    })
   )
   writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/sprint-test/epic-001',
-        description: 'Archive test',
-        userStories: [],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/stories.json'),
+    storiesJson('sprint-2', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/sprint-test/epic-001","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'ITER1 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"completed","summary":"done","completionSignal":true,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-001\n')
-  fs.mkdirSync(path.join(repoDir, '.playwright-cli'), { recursive: true })
 
-  run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
-
-  const archiveRoot = path.join(repoDir, 'scripts/ralph/tasks/archive/sprint-test')
-  const archivedFolders = fs.readdirSync(archiveRoot)
-  assert.equal(archivedFolders.length, 1)
-  const archivedDir = path.join(archiveRoot, archivedFolders[0])
-  assert.equal(fs.existsSync(path.join(archivedDir, 'prd.json')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, 'progress.txt')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.completion-state.json')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-latest.txt')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-log-iter-1.txt')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-latest.json')), true)
-  assert.equal(fs.existsSync(path.join(archivedDir, '.iteration-handoff-iter-1.json')), true)
-
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/progress.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json')), false)
-  assert.equal(fs.existsSync(path.join(repoDir, '.playwright-cli')), false)
-  assert.equal(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'), '')
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['next', '--activate'], { cwd: repoDir })
+  assert.match(output, /^sprint-2$/m)
+  assert.match(output, /Active sprint set to: sprint-2/)
+  assert.match(output, /Checked out sprint branch: ralph\/sprint\/sprint-2/)
+  assert.equal(
+    fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'utf8'),
+    'sprint-2\n'
+  )
+  assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-2')
 })
 
-test('ralph.sh resets stale progress when the previous branch was already archived', () => {
-  const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
+// ---------------------------------------------------------------------------
+// ralph-sprint mark-ready — sprint readiness gate
+// ---------------------------------------------------------------------------
 
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
+test('ralph-sprint mark-ready fails when stories are not ready', () => {
+  const repoDir = initTempRepo()
+
   writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'epic',
-        epicId: 'EPIC-001',
-        baseBranch: 'ralph/sprint/sprint-test',
-        sourcePath: 'scripts/ralph/tasks/sprint-test/prd-epic-001.md',
-        activatedAt: '2026-03-19T00:00:00-04:00',
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-user-auth/stories.json'),
+    storiesJson('sprint-user-auth', {
+      status: 'planned',
+      stories: [
+        storyRecord('S-001', { status: 'ready' }),
+        storyRecord('S-002', { status: 'planned' }),
+      ],
+    })
   )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: 'EPIC-001',
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'EPIC Test',
-            priority: 1,
-            status: 'active',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001.md'],
-            goal: 'Test goal',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
-  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], {
+
+  const result = tryRun('./scripts/ralph/ralph-sprint.sh', ['mark-ready', 'sprint-user-auth'], {
     cwd: repoDir,
   })
-  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/sprint-test/epic-001',
-        description: 'Loop test',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'In-progress story',
-            description: 'In-progress story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'STALE LOOP PROGRESS\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.completion-state.json'), '{"status":"completed","completionSignal":true,"iteration":1,"branch":"ralph/sprint-test/epic-000","recordedAt":"2026-03-22T17:30:00-04:00"}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'STALE TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'STALE ITER TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"stale","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-000\n')
-
-  const archivedDir = path.join(
-    repoDir,
-    'scripts/ralph/tasks/archive/sprint-test/2026-03-19-sprint-test-epic-000'
-  )
-  writeFile(
-    path.join(archivedDir, 'archive-manifest.txt'),
-    [
-      'archive_time=2026-03-19T00:00:00-04:00',
-      'source_branch=ralph/sprint-test/epic-000',
-      'source_iteration_transcripts=1',
-      'archived_iteration_transcripts=1',
-      'source_iteration_handoffs=1',
-      'archived_iteration_handoffs=1',
-      'source_playwright_cli_present=0',
-      'archived_playwright_cli_present=0',
-    ].join('\n') + '\n'
-  )
-
-  run('git', ['checkout', '-b', 'ralph/sprint/sprint-test'], { cwd: repoDir })
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  assert.match(runError.stdout + runError.stderr, /Ralph reached max iterations \(1\) without completing all tasks\./)
-
-  const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
-  assert.match(progress, /# Ralph Progress Log/)
-  assert.ok(!progress.includes('STALE LOOP PROGRESS'))
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/.completion-state.json')), false)
-  assert.equal(run('git', ['branch', '--list', 'ralph/sprint/sprint-test'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-test')
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.completionSignal, false)
-  assert.equal(latestHandoff.status, 'no_change')
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /S-002/)
 })
 
-test('ralph.sh cold-start primes the next epic before requiring a populated prd.json', () => {
+test('ralph-sprint mark-ready succeeds when all active stories are ready', () => {
   const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
 
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
+  const sprintFile = path.join(repoDir, 'scripts/ralph/sprints/sprint-user-auth/stories.json')
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'EPIC Test',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001.md'],
-            goal: 'Test goal',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    sprintFile,
+    storiesJson('sprint-user-auth', {
+      status: 'planned',
+      stories: [
+        storyRecord('S-001', { status: 'ready' }),
+        storyRecord('S-002', { status: 'done' }),
+        storyRecord('S-003', { status: 'abandoned' }),
+      ],
+    })
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Test PRD'))
-  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '')
-  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], {
+
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['mark-ready', 'sprint-user-auth'], {
     cwd: repoDir,
   })
-  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
-  run('git', ['checkout', '-b', 'ralph/sprint/sprint-test'], { cwd: repoDir })
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  assert.match(runError.stdout, /Primed scripts\/ralph\/prd\.json with 1 remaining stories from EPIC-001\./)
-
-  const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
-  assert.equal(primed.branchName, 'ralph/sprint-test/epic-001')
-  assert.match(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-prd'), 'utf8'), /"epicId": "EPIC-001"/)
+  assert.match(output, /marked ready/)
+  const data = JSON.parse(fs.readFileSync(sprintFile, 'utf8'))
+  assert.equal(data.status, 'ready')
 })
 
-test('completion transient matcher ignores generated prompt-context epic markdown', () => {
+test('ralph-sprint mark-ready rejects already-active or closed sprints', () => {
   const repoDir = initTempRepo()
 
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated.md'), '# Generated PRD\n')
-
-  const statusOutput = run('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: repoDir })
-  const filtered = execFileSync(
-    'bash',
-    [
-      '-lc',
-      [
-        'printf "%s\\n" "$STATUS_OUTPUT" | awk \'{',
-        'path = substr($0, 4);',
-        'if (path ~ /^scripts\\/ralph\\/prd\\.json$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/progress\\.txt$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/\\.active-prd$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/\\.last-branch$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/\\.codex-last-message(\\-iter-[0-9]+|-prd-bootstrap)?\\.txt$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/tasks(\\/[^/]+)?\\/?$/) next;',
-        'if (path ~ /^scripts\\/ralph\\/tasks\\/[^/]+\\/prd-epic-[^/]+\\.md$/) next;',
-        'if (path ~ /^\\.playwright-cli(\\/|$)/) next;',
-        'if (path ~ /^scripts\\/ralph\\/\\.playwright-cli(\\/|$)/) next;',
-        'print',
-        '}\'',
-      ].join(' '),
-    ],
-    {
-      cwd: repoDir,
-      env: {
-        ...process.env,
-        STATUS_OUTPUT: statusOutput,
-      },
-      encoding: 'utf8',
-      stdio: 'pipe',
-    }
-  ).trim()
-
-  assert.equal(statusOutput.trim(), '?? scripts/ralph/tasks/sprint-test/prd-epic-001-generated.md')
-  assert.equal(filtered, '')
-})
-
-test('ralph-prime and archive treat EPIC-R sprint branches as epic-mode runs', () => {
-  const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
-
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-R1',
-            title: 'EPIC R Test',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-r1.md'],
-            goal: 'Test goal',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-user-auth/stories.json'),
+    storiesJson('sprint-user-auth', {
+      status: 'active',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
   )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'), buildLoopReadyMarkdownFixture('EPIC R Test PRD'))
-  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-r1.md'], {
+
+  const result = tryRun('./scripts/ralph/ralph-sprint.sh', ['mark-ready', 'sprint-user-auth'], {
     cwd: repoDir,
   })
-  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
-
-  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
-
-  const primed = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
-  assert.equal(primed.branchName, 'ralph/sprint-test/epic-r1')
-
-  const activePrd = fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-prd'), 'utf8')
-  assert.match(activePrd, /"mode": "epic"/)
-  assert.match(activePrd, /"epicId": "EPIC-R1"/)
-
-  writeFile(path.join(repoDir, 'scripts/ralph/.last-branch'), 'ralph/sprint-test/epic-r1\n')
-  run(
-    'bash',
-    [
-      '-lc',
-      'git add -A && (git diff --cached --quiet || git commit -m "sync Ralph tracked state")',
-    ],
-    { cwd: repoDir }
-  )
-
-  run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
-
-  const archiveRoot = path.join(repoDir, 'scripts/ralph/tasks/archive/sprint-test')
-  const archivedFolders = fs.readdirSync(archiveRoot)
-  assert.equal(archivedFolders.length, 1)
-  assert.match(archivedFolders[0], /sprint-test-epic-r1/)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /already active/)
 })
 
-test('ralph-prime auto-commit persists generated epic markdown when promptContext creates it', () => {
+// ---------------------------------------------------------------------------
+// ralph-sprint use — activation gate
+// ---------------------------------------------------------------------------
+
+test('ralph-sprint use fails when sprint status is not ready', () => {
   const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
 
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
   writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'Generated EPIC Test',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md'],
-            goal: 'Test goal',
-            promptContext: 'Generate the PRD from prompt context.',
-          },
-        ],
-      },
-      null,
-      2
-    )
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-user-auth/stories.json'),
+    storiesJson('sprint-user-auth', {
+      status: 'planned',
+      stories: [storyRecord('S-001', { status: 'planned' })],
+    })
   )
-  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add sprint backlog without generated prd'], { cwd: repoDir })
 
-  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
-
-  const generatedPath = path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md')
-  assert.equal(fs.existsSync(generatedPath), true)
-  assert.match(run('git', ['ls-files', '--', 'scripts/ralph/tasks/sprint-test/prd-epic-001-generated-epic-test.md'], { cwd: repoDir }), /prd-epic-001-generated-epic-test\.md/)
-
-  const lastCommit = run('git', ['log', '-1', '--pretty=%s'], { cwd: repoDir }).trim()
-  assert.equal(lastCommit, 'chore(ralph): prime EPIC-001 active for loop startup')
+  const result = tryRun('./scripts/ralph/ralph-sprint.sh', ['use', 'sprint-user-auth'], {
+    cwd: repoDir,
+  })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not ready/)
 })
 
-test('ralph-prd persists generated standalone markdown while keeping prd.json transient', () => {
+test('ralph-sprint use fails when previous sprint is not closed', () => {
   const repoDir = initTempRepo()
-  const env = { PATH: installCodexStub(repoDir) }
 
-  run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'active',
+      stories: [storyRecord('S-001', { status: 'done' })],
+    })
+  )
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-2/stories.json'),
+    storiesJson('sprint-2', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
+  )
 
-  const markdownPath = path.join(repoDir, 'scripts/ralph/tasks/prds/prd-stub-feature.md')
-  assert.equal(fs.existsSync(markdownPath), true)
-  assert.match(run('git', ['ls-files', '--', 'scripts/ralph/tasks/prds/prd-stub-feature.md'], { cwd: repoDir }), /prd-stub-feature\.md/)
-  assert.equal(run('git', ['log', '-1', '--pretty=%s'], { cwd: repoDir }).trim(), 'chore(ralph): add standalone PRD spec')
-
-  let trackedPrdJson = true
-  try {
-    run('git', ['ls-files', '--error-unmatch', 'scripts/ralph/prd.json'], { cwd: repoDir })
-  } catch {
-    trackedPrdJson = false
-  }
-  assert.equal(trackedPrdJson, false)
+  const result = tryRun('./scripts/ralph/ralph-sprint.sh', ['use', 'sprint-2'], {
+    cwd: repoDir,
+  })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not closed/)
 })
 
-test('ralph-prd prompt requires inferred proof files to stay in the same story scope', () => {
+test('ralph-sprint use succeeds when sprint is ready and previous sprint is closed', () => {
   const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_ASSERT_INFERRED_PROOF_SCOPE: '1',
-  }
 
-  run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
+  const sprint2File = path.join(repoDir, 'scripts/ralph/sprints/sprint-2/stories.json')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'closed',
+      stories: [storyRecord('S-001', { status: 'done' })],
+    })
+  )
+  writeFile(
+    sprint2File,
+    storiesJson('sprint-2', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
+  )
+
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['use', 'sprint-2'], { cwd: repoDir })
+  assert.match(output, /Active sprint set to: sprint-2/)
+  assert.equal(
+    fs.readFileSync(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'utf8'),
+    'sprint-2\n'
+  )
+  assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-2')
+  const data = JSON.parse(fs.readFileSync(sprint2File, 'utf8'))
+  assert.equal(data.status, 'active')
 })
 
-test('ralph-prd auto-selects compact mode for tightly scoped simple tasks', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_EXPECT_COMPACT_PROMPT: '1',
-  }
-
-  run(
-    './scripts/ralph/ralph-prd.sh',
-    [
-      '--feature',
-      'Change greeting text',
-      '--constraints',
-      'Keep changes limited to src/index.ts and tests/hello.test.mjs only.',
-      '--no-questions',
-    ],
-    { cwd: repoDir, env }
-  )
-
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
-})
-
-test('ralph-prd keeps normal mode for scoped UI tasks and adds single-slice guidance', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_EXPECT_NORMAL_PROMPT: '1',
-    RALPH_TEST_EXPECT_NORMAL_UI_HINT: '1',
-  }
-
-  run(
-    './scripts/ralph/ralph-prd.sh',
-    [
-      '--feature',
-      'Change UI output greeting to Hello PRD Ralph in src/index.ts and verify rendered #app output.',
-      '--constraints',
-      'Keep changes limited to src/index.ts and tests/hello.test.mjs only. Verify browser output.',
-      '--no-questions',
-    ],
-    { cwd: repoDir, env }
-  )
-
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
-})
-
-test('ralph-prd markdown conversion prompt requires inferred proof files to stay in the same story scope', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE: '1',
-  }
-
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/prds/prd-stub-feature.md'), '# Stub PRD\n')
-  run('./scripts/ralph/ralph-prd.sh', ['--feature', 'Stub feature', '--no-questions'], { cwd: repoDir, env })
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
-})
-
-test('ralph-prime markdown conversion prompt requires inferred proof files to stay in the same story scope', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_ASSERT_CONVERT_INFERRED_PROOF_SCOPE: '1',
-  }
-
-  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-test\n')
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/sprints/sprint-test/epics.json'),
-    JSON.stringify(
-      {
-        version: 1,
-        project: 'tmp-ralph-test',
-        activeEpicId: null,
-        epics: [
-          {
-            id: 'EPIC-001',
-            title: 'EPIC Test',
-            priority: 1,
-            status: 'planned',
-            dependsOn: [],
-            prdPaths: ['scripts/ralph/tasks/sprint-test/prd-epic-001.md'],
-            goal: 'Test goal',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-  writeFile(path.join(repoDir, 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'), buildLoopReadyMarkdownFixture('Prime stub story'))
-  run('git', ['add', 'scripts/ralph/sprints/sprint-test/epics.json', 'scripts/ralph/tasks/sprint-test/prd-epic-001.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add sprint backlog fixture'], { cwd: repoDir })
-
-  run('./scripts/ralph/ralph-prime.sh', ['--auto'], { cwd: repoDir, env })
-  assert.equal(fs.existsSync(path.join(repoDir, 'scripts/ralph/prd.json')), true)
-})
-
-test('ralph.sh auto-expands story scope with verification files from a blocked handoff', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'blocked-targeted-test-scope',
-  }
-
-  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Auto-scope blocked verifier test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Blocked story',
-            description: 'Blocked story',
-            scopePaths: ['src/messages.ts', 'src/render.ts'],
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-
-  const prd = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
-  assert.deepEqual(prd.userStories[0].scopePaths, ['src/messages.ts', 'src/render.ts', 'tests/messages.test.mjs'])
-})
-
-test('ralph.sh explicit-scope validator allows verification-only test expansion', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'scope-valid',
-  }
-  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
-
-  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
-  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
-    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
-  )
-  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Keep source changes limited to src/allowed.ts.',
-        scopePaths: ['src/allowed.ts'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Scoped valid story',
-            description: 'Scoped valid story',
-            scopePaths: ['src/allowed.ts'],
-            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  const lastCommitStat = run('git', ['show', '--stat', '--oneline', '-1'], { cwd: repoDir })
-  assert.match(output, /Ralph completed all tasks!/)
-  assert.match(lastCommitStat, /src\/allowed\.ts/)
-  assert.match(lastCommitStat, /tests\/browser\.test\.mjs/)
-  assert.equal(fs.existsSync(path.join(repoDir, 'tests/browser.test.mjs')), true)
-})
-
-test('ralph.sh explicit-scope validator blocks out-of-scope source edits', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'scope-invalid',
-  }
-  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
-
-  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
-  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
-    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
-  )
-  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Keep source changes limited to src/allowed.ts.',
-        scopePaths: ['src/allowed.ts'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Scoped invalid story',
-            description: 'Scoped invalid story',
-            scopePaths: ['src/allowed.ts'],
-            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  assert.match(runError.stdout + runError.stderr, /outside explicit scoped implementation paths/)
-  assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
-})
-
-test('ralph.sh explicit-scope validator blocks uncommitted out-of-scope edits', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'scope-uncommitted',
-  }
-
-  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
-  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add scoped source fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-scope-test.md'),
-    '# Scope PRD\n\nKeep source changes limited to src/allowed.ts.\n'
-  )
-  run('git', ['add', 'scripts/ralph/tasks/prds/prd-scope-test.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add standalone scope prd fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/tasks/prds/prd-scope-test.md',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Keep source changes limited to src/allowed.ts.',
-        scopePaths: ['src/allowed.ts'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Scoped uncommitted invalid story',
-            description: 'Scoped uncommitted invalid story',
-            scopePaths: ['src/allowed.ts'],
-            acceptanceCriteria: ['Keep source changes limited to src/allowed.ts.', 'Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  assert.match(runError.stdout + runError.stderr, /uncommitted files outside explicit scoped implementation paths/)
-  assert.match(runError.stdout + runError.stderr, /src\/disallowed\.ts/)
-})
-
-test('ralph.sh structured scopePaths validator works without text scope hints', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'scope-valid',
-  }
-  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
-
-  writeFile(path.join(repoDir, 'src/allowed.ts'), 'export const allowed = "baseline";\n')
-  run('git', ['add', 'src/allowed.ts'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add structured scope fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-structured-scope.md'),
-    '# Scope PRD\n\nUpdate the greeting implementation and matching test.\n'
-  )
-  run('git', ['add', 'scripts/ralph/tasks/prds/prd-structured-scope.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add structured scope prd fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/tasks/prds/prd-structured-scope.md',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Structured scope paths only.',
-        scopePaths: ['src/allowed.ts'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Structured scope story',
-            description: 'Structured scope story',
-            scopePaths: ['src/allowed.ts'],
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const lastCommitStat = run('git', ['show', '--stat', '--oneline', '-1'], { cwd: repoDir })
-  assert.match(lastCommitStat, /src\/allowed\.ts/)
-  assert.match(lastCommitStat, /tests\/browser\.test\.mjs/)
-})
-
-test('ralph.sh blocks helper-script edits unless explicitly scoped', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'scope-helper-invalid',
-  }
-  run('git', ['add', '-f', 'bin/codex'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add codex stub fixture'], { cwd: repoDir })
-
-  writeFile(path.join(repoDir, 'scripts/browser-check.mjs'), 'console.log("baseline");\n')
-  run('git', ['add', 'scripts/browser-check.mjs'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add helper fixture'], { cwd: repoDir })
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/tasks/prds/prd-helper-scope.md'),
-    '# Scope PRD\n\nUpdate UI greeting and matching test only.\n'
-  )
-  run('git', ['add', 'scripts/ralph/tasks/prds/prd-helper-scope.md'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add helper scope prd fixture'], { cwd: repoDir })
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/tasks/prds/prd-helper-scope.md',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Do not touch helper scripts.',
-        scopePaths: ['src/allowed.ts', 'tests/browser.test.mjs'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Helper scope block story',
-            description: 'Helper scope block story',
-            scopePaths: ['src/allowed.ts', 'tests/browser.test.mjs'],
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  assert.match(runError.stdout + runError.stderr, /helper\/config\/build files without explicit scope approval/)
-  assert.match(runError.stdout + runError.stderr, /scripts\/browser-check\.mjs/)
-})
-
-test('ralph.sh synthesizes a completed handoff when completion evidence exists but no handoff is emitted', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'missing-handoff-complete',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Completion synthesis test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Synthesized completion story',
-            description: 'Synthesized completion story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.completionSignal, true)
-  assert.equal(latestHandoff.status, 'completed')
-  const completionState = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.completion-state.json'), 'utf8'))
-  assert.equal(completionState.completionSignal, true)
-  assert.equal(completionState.status, 'completed')
-})
-
-test('ralph.sh finalizes completion without a model-written completion note when strict evidence is present', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'strict-complete-no-note',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Wrapper-owned completion finalization test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Strict completion story',
-            description: 'Strict completion story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const progress = fs.readFileSync(path.join(repoDir, 'scripts/ralph/progress.txt'), 'utf8')
-  assert.match(progress, /## \[.*\] - Completion/)
-  assert.match(progress, /Ralph finalized completion after strict validation/)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.completionSignal, true)
-  assert.equal(latestHandoff.status, 'completed')
-  assert.match(latestHandoff.summary, /Completion finalized by Ralph/)
-  const completionState = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.completion-state.json'), 'utf8'))
-  assert.equal(completionState.completionSignal, true)
-  assert.equal(completionState.status, 'completed')
-})
-
-test('ralph.sh records a blocked handoff when the codex command fails', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'codex-fail',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Codex failure test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Codex failure story',
-            description: 'Codex failure story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.status, 'blocked')
-  assert.equal(latestHandoff.completionSignal, false)
-  assert.match(latestHandoff.errors[0], /Codex exited with status 17/)
-})
-
-test('ralph.sh falls back to a blocked handoff when the emitted handoff is invalid', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'invalid-handoff',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Invalid handoff test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Invalid handoff story',
-            description: 'Invalid handoff story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.status, 'blocked')
-  assert.equal(latestHandoff.completionSignal, false)
-  assert.match(latestHandoff.errors[0], /Invalid handoff schema emitted/)
-})
-
-test('ralph.sh extracts the last handoff block from the transcript', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'multi-handoff',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Last handoff wins test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Last handoff story',
-            description: 'Last handoff story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.story.id, 'US-001')
-  assert.equal(latestHandoff.status, 'completed')
-  assert.equal(latestHandoff.completionSignal, true)
-})
-
-test('ralph.sh preserves the model story when completion fallback follows an invalid handoff schema', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'invalid-completion-schema',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Fallback story preservation test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'First story',
-            description: 'First story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-          {
-            id: 'US-002',
-            title: 'Second story',
-            description: 'Second story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 2,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.story.id, 'US-002')
-  assert.equal(latestHandoff.story.title, 'Second story')
-  assert.equal(latestHandoff.status, 'completed')
-  assert.equal(latestHandoff.completionSignal, true)
-})
-
-test('ralph.sh accepts completion handoffs with four verification entries', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexStub(repoDir),
-    RALPH_TEST_LOOP_MODE: 'four-verification-completion',
-  }
-
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/.active-prd'),
-    JSON.stringify(
-      {
-        mode: 'standalone',
-        baseBranch: 'master',
-        sourcePath: 'scripts/ralph/prd.json',
-        activatedAt: '2026-03-22T17:30:00-04:00',
-      },
-      null,
-      2
-    )
-  )
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test/standalone',
-        description: 'Four verification entries test.',
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'First story',
-            description: 'First story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-          },
-          {
-            id: 'US-002',
-            title: 'Second story',
-            description: 'Second story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 2,
-            passes: false,
-            notes: '',
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-
-  const output = run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  assert.match(output, /Ralph completed all tasks!/)
-  const latestHandoff = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), 'utf8'))
-  assert.equal(latestHandoff.story.id, 'US-002')
-  assert.equal(latestHandoff.story.title, 'Second story')
-  assert.doesNotMatch(latestHandoff.summary, /invalid handoff schema/i)
-  assert.equal(latestHandoff.status, 'completed')
-  assert.equal(latestHandoff.completionSignal, true)
-})
-
-test('ralph.sh reopens the latest passed story when all stories pass but scoped dirty changes remain', () => {
-  const repoDir = initTempRepo()
-  const env = {
-    PATH: installCodexCleanupResidueStub(repoDir),
-  }
-
-  writeFile(path.join(repoDir, 'src/story-file.ts'), 'export const storyFile = true\n')
-  writeFile(
-    path.join(repoDir, 'scripts/ralph/prd.json'),
-    JSON.stringify(
-      {
-        project: 'tmp-ralph-test',
-        branchName: 'ralph/test-cleanup',
-        description: 'Standalone cleanup test.',
-        scopePaths: ['src/story-file.ts'],
-        userStories: [
-          {
-            id: 'US-001',
-            title: 'Cleanup story',
-            description: 'Cleanup story',
-            acceptanceCriteria: ['Tests pass'],
-            priority: 1,
-            passes: false,
-            notes: '',
-            scopePaths: ['src/story-file.ts'],
-          },
-        ],
-      },
-      null,
-      2
-    )
-  )
-  run('git', ['add', 'src/story-file.ts'], { cwd: repoDir })
-  run('git', ['commit', '-m', 'add scoped story file'], { cwd: repoDir })
-
-  let runError = null
-  try {
-    run('./scripts/ralph/ralph.sh', ['1'], { cwd: repoDir, env })
-  } catch (error) {
-    runError = error
-  }
-
-  assert.ok(runError)
-  assert.equal(runError.status, 1)
-
-  const prd = JSON.parse(fs.readFileSync(path.join(repoDir, 'scripts/ralph/prd.json'), 'utf8'))
-  assert.equal(prd.userStories[0].passes, false)
-  assert.match(run('git', ['status', '--short'], { cwd: repoDir }), / M src\/story-file\.ts/)
-})
-
-test('ralph-archive rejects unpaired transcript and handoff artifacts', () => {
+test('ralph-sprint use succeeds for the first sprint with no previous sprint', () => {
   const repoDir = initTempRepo()
 
-  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-2.json'), '{"status":"no_change","summary":"mismatch","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-user-auth/stories.json'),
+    storiesJson('sprint-user-auth', {
+      status: 'ready',
+      stories: [storyRecord('S-001', { status: 'ready' })],
+    })
+  )
 
-  let archiveError = null
-  try {
-    run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
-  } catch (error) {
-    archiveError = error
-  }
-
-  assert.ok(archiveError)
-  assert.match(archiveError.stderr, /iteration transcript\/handoff files are not paired/)
-})
-
-test('ralph-archive rejects stale latest artifact pointers', () => {
-  const repoDir = initTempRepo()
-
-  writeFile(path.join(repoDir, 'scripts/ralph/prd.json'), '{}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/progress.txt'), 'ARCHIVE ME\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-1.txt'), 'ITER1 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-iter-2.txt'), 'ITER2 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-log-latest.txt'), 'ITER1 TRANSCRIPT\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-1.json'), '{"status":"no_change","summary":"iter1","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-iter-2.json'), '{"status":"no_change","summary":"iter2","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-  writeFile(path.join(repoDir, 'scripts/ralph/.iteration-handoff-latest.json'), '{"status":"no_change","summary":"iter1","completionSignal":false,"errors":[],"directionChanges":[],"verification":[],"filesChanged":[],"assumptions":[],"nextLoopAdvice":[]}\n')
-
-  let archiveError = null
-  try {
-    run('./scripts/ralph/ralph-archive.sh', [], { cwd: repoDir })
-  } catch (error) {
-    archiveError = error
-  }
-
-  assert.ok(archiveError)
-  assert.match(archiveError.stderr, /latest transcript file does not match the highest iteration transcript|latest handoff file does not match the highest iteration handoff/)
+  const output = run('./scripts/ralph/ralph-sprint.sh', ['use', 'sprint-user-auth'], {
+    cwd: repoDir,
+  })
+  assert.match(output, /Active sprint set to: sprint-user-auth/)
+  assert.equal(run('git', ['branch', '--show-current'], { cwd: repoDir }).trim(), 'ralph/sprint/sprint-user-auth')
 })
