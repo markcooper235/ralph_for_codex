@@ -77,28 +77,36 @@ Expected:
 ./scripts/ralph/ralph.sh 10
 ```
 
-## Epic Sequencing
+## Sprint Story Sequencing
 
 ```bash
-./scripts/ralph/ralph-epic.sh list
-./scripts/ralph/ralph-epic.sh next
-./scripts/ralph/ralph-epic.sh start-next
-./scripts/ralph/ralph-epic.sh add --title "My Epic" --depends-on EPIC-001 --prompt-context "Context for PRD generation"
-./scripts/ralph/ralph-prime.sh
+# Create a sprint and add stories
+./scripts/ralph/ralph-sprint.sh create sprint-1
+./scripts/ralph/ralph-story.sh add --title "My Story" --goal "..." --prompt-context "..."
+
+# Start each story and run its tasks
+./scripts/ralph/ralph-story.sh start-next
+./scripts/ralph/ralph-task.sh
+
+# Repeat start-next + ralph-task.sh for each story
 ```
 
-After epic completion:
-
-```bash
-./scripts/ralph/ralph-commit.sh
-# use --keep to retain merged feature branch
-```
-
-After sprint completion:
+After all stories complete:
 
 ```bash
 ./scripts/ralph/ralph-sprint-commit.sh
 # use --keep to retain merged sprint branch
+# use --skip-regression to bypass pre-merge regression gate
+```
+
+Standalone PRD flow (single feature, no sprint):
+
+```bash
+./scripts/ralph/ralph-prd.sh
+./scripts/ralph/ralph-prime.sh
+./scripts/ralph/ralph.sh 10
+./scripts/ralph/ralph-commit.sh
+# use --keep to retain merged feature branch
 ```
 
 ## Notes
