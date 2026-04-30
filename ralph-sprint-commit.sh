@@ -191,7 +191,14 @@ fi
 ensure_clean_worktree
 
 # Pre-merge regression gate
-if [ "$SKIP_REGRESSION" != "true" ] && [ -f "$SCRIPT_DIR/ralph-sprint-test.sh" ]; then
+if [ "$SKIP_REGRESSION" = "true" ]; then
+  echo "WARN: Sprint regression gate skipped (--skip-regression)"
+elif [ ! -f "$SCRIPT_DIR/ralph-sprint-test.sh" ]; then
+  fail "ralph-sprint-test.sh not found — regression gate is required before sprint commit.
+  Create it from the template: cp $SCRIPT_DIR/ralph-sprint-test.sh.example $SCRIPT_DIR/ralph-sprint-test.sh
+  Then add your project's build/test commands and re-run.
+  To bypass: pass --skip-regression (not recommended)."
+else
   echo "--- Sprint regression gate ---"
   if ! "$SCRIPT_DIR/ralph-sprint-test.sh"; then
     fail "Sprint regression failed — correct failures before sprint commit. Use --skip-regression to bypass."

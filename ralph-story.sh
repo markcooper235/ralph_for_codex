@@ -67,7 +67,11 @@ Commands:
   abandon <ID> [REASON]      Mark story abandoned
   health [ID]                Validate story tasks: dead deps, duplicate checks, missing fields
   specify <ID>               Run SpecKit analysis then generate story.json (primary path)
+  specify-all [--force]      Run SpecKit for all pending stories (skips fully prepared ones)
   generate <ID>              Generate story.json (uses SpecKit artifacts when present)
+  generate-all [--force]     Generate story.json for all stories that have SpecKit artifacts
+  health-all                 Run health checks on all stories
+  prepare-all [--force]      specify-all + generate-all + health (full sprint prep)
   import-prd [PATH]          Import prd.json userStories into sprint backlog
   add [options]              Add a story non-interactively
 
@@ -249,6 +253,20 @@ cmd_start_next() {
   mv "$tmp" "$STORIES_FILE"
 
   echo "Started story: $next_id"
+
+  # Warn if any dependency has no done_note (downstream task context will be thin)
+  while IFS= read -r dep_id; do
+    [ -z "$dep_id" ] && continue
+    local dep_raw dep_abs dep_note
+    dep_raw="$(jq -r --arg d "$dep_id" '.stories[] | select(.id == $d) | .story_path // ""' "$STORIES_FILE" 2>/dev/null || true)"
+    [ -n "$dep_raw" ] || continue
+    [[ "$dep_raw" != /* ]] && dep_abs="$WORKSPACE_ROOT/$dep_raw" || dep_abs="$dep_raw"
+    [ -f "$dep_abs" ] || continue
+    dep_note="$(jq -r '.done_note // ""' "$dep_abs" 2>/dev/null || true)"
+    if [ -z "$dep_note" ]; then
+      echo "WARN: Dependency $dep_id has no done_note — task context for this story will be thin."
+    fi
+  done < <(jq -r --arg id "$next_id" '.stories[] | select(.id == $id) | .depends_on[]?' "$STORIES_FILE" 2>/dev/null || true)
 }
 
 # ---------------------------------------------------------------------------
@@ -334,6 +352,21 @@ _health_story() {
   if [ ! -f "$story_path" ]; then
     echo "  [MISSING] story.json not found: $story_path"
     return 1
+  fi
+
+  # Validate SpecKit artifacts if .specify/ exists (catches partial SpecKit runs)
+  local specify_dir
+  specify_dir="$(dirname "$story_path")/.specify"
+  if [ -d "$specify_dir" ]; then
+    for artifact in spec.md plan.md tasks.md; do
+      if [ ! -f "$specify_dir/$artifact" ]; then
+        echo "  [SPECKIT] Missing artifact: $artifact (partial run — re-run specify with --force)"
+        issues=$((issues + 1))
+      elif [ ! -s "$specify_dir/$artifact" ]; then
+        echo "  [SPECKIT] Empty artifact: $artifact"
+        issues=$((issues + 1))
+      fi
+    done
   fi
 
   local task_count
@@ -844,9 +877,13 @@ cmd_specify() {
   if [ -f "$specify_dir/spec.md" ] && [ -f "$specify_dir/tasks.md" ] && [ "$force" -eq 0 ]; then
     echo "SpecKit artifacts already exist for $story_id (use --force to regenerate)"
     if [ "$no_generate" -eq 0 ]; then
-      local gen_args=()
-      [ "$dry_run" -eq 1 ] && gen_args+=(--dry-run)
-      cmd_generate "$story_id" "${gen_args[@]}"
+      if [ ! -f "$story_path_abs" ]; then
+        local gen_args=()
+        [ "$dry_run" -eq 1 ] && gen_args+=(--dry-run)
+        cmd_generate "$story_id" "${gen_args[@]}"
+      else
+        echo "story.json already exists for $story_id — skipping generate."
+      fi
     fi
     return 0
   fi
@@ -862,21 +899,29 @@ cmd_specify() {
   priority="$(printf '%s' "$story_meta" | jq -r '.priority // 1')"
   depends_on_arr="$(printf '%s' "$story_meta" | jq -c '.depends_on // []')"
 
-  # Pull dependency done_notes for context
+  # Pull dependency context (spec fields + done_notes) for SpecKit input
   local dep_context=""
   while IFS= read -r dep_id; do
     [ -z "$dep_id" ] && continue
-    local dep_raw_path dep_abs_path dep_title dep_note
+    local dep_raw_path dep_abs_path dep_title dep_scope dep_invariants dep_files dep_note dep_entry
     dep_raw_path="$(jq -r --arg d "$dep_id" '.stories[] | select(.id == $d) | .story_path // ""' "$STORIES_FILE" 2>/dev/null || true)"
     [ -n "$dep_raw_path" ] || continue
     [[ "$dep_raw_path" != /* ]] && dep_abs_path="$WORKSPACE_ROOT/$dep_raw_path" || dep_abs_path="$dep_raw_path"
     [ -f "$dep_abs_path" ] || continue
     dep_title="$(jq -r '.title // ""' "$dep_abs_path" 2>/dev/null || true)"
+    dep_scope="$(jq -r '.spec.scope // ""' "$dep_abs_path" 2>/dev/null || true)"
+    dep_invariants="$(jq -r '(.spec.preserved_invariants // []) | join("; ")' "$dep_abs_path" 2>/dev/null || true)"
+    dep_files="$(jq -r '([.tasks[].scope[]?] | unique | join(", "))' "$dep_abs_path" 2>/dev/null || true)"
     dep_note="$(jq -r '.done_note // ""' "$dep_abs_path" 2>/dev/null || true)"
-    [ -n "$dep_note" ] || continue
+    dep_entry=""
+    if [ -n "$dep_scope" ]; then dep_entry="${dep_entry}  Scope: $dep_scope"$'\n'; fi
+    if [ -n "$dep_files" ]; then dep_entry="${dep_entry}  Files changed: $dep_files"$'\n'; fi
+    if [ -n "$dep_invariants" ]; then dep_entry="${dep_entry}  Preserved invariants: $dep_invariants"$'\n'; fi
+    if [ -n "$dep_note" ]; then dep_entry="${dep_entry}  Completion summary: $dep_note"$'\n'; fi
+    [ -n "$dep_entry" ] || continue
     dep_context="${dep_context}
 Prior story $dep_id ($dep_title):
-$dep_note"
+$dep_entry"
   done < <(printf '%s' "$story_meta" | jq -r '.depends_on[]?' 2>/dev/null)
 
   if [ "$dry_run" -eq 1 ]; then
@@ -886,6 +931,12 @@ $dep_note"
     echo "Title:       $title"
     echo "Goal:        $goal"
     return 0
+  fi
+
+  # Clear existing artifacts when --force is set
+  if [ "$force" -eq 1 ] && [ -d "$specify_dir" ]; then
+    rm -rf "$specify_dir"
+    echo "Cleared existing SpecKit artifacts for $story_id"
   fi
 
   mkdir -p "$specify_dir"
@@ -912,8 +963,11 @@ SPECIN
     printf '\n## Prior Story Results\n%s\n' "$dep_context" >> "$specify_dir/input.md"
   fi
 
-  # Ensure SpecKit Codex integration is configured
-  $specify_bin integration install claude-code >/dev/null 2>&1 || true
+  local word_count
+  word_count=$(wc -w < "$specify_dir/input.md")
+  if [ "$word_count" -lt 30 ]; then
+    echo "WARN: input.md is thin ($word_count words) — consider adding more detail to story goal and promptContext."
+  fi
 
   local profile_flag=""
   [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
@@ -964,6 +1018,113 @@ SKPROMPT
 }
 
 # ---------------------------------------------------------------------------
+# specify-all / generate-all / health-all / prepare-all
+# ---------------------------------------------------------------------------
+
+cmd_specify_all() {
+  resolve_stories_file
+  local force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      *) fail "Unknown specify-all option: $1" ;;
+    esac
+  done
+
+  local count=0 failed=0 skipped=0
+  while IFS= read -r sid; do
+    local raw_path story_path_abs specify_dir
+    raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
+    [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
+    specify_dir="$(dirname "$story_path_abs")/.specify"
+
+    if [ -f "$story_path_abs" ] && [ -f "$specify_dir/spec.md" ] && [ "$force" -eq 0 ]; then
+      echo "SKIP $sid: fully prepared (story.json + .specify/ exist)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    echo "=== specify $sid ==="
+    local force_flag=()
+    [ "$force" -eq 1 ] && force_flag+=(--force)
+    if cmd_specify "$sid" "${force_flag[@]}"; then
+      count=$((count + 1))
+    else
+      echo "WARN: specify failed for $sid"
+      failed=$((failed + 1))
+    fi
+  done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | .id' "$STORIES_FILE")
+
+  echo ""
+  echo "specify-all: $count processed, $skipped skipped, $failed failed."
+  [ "$failed" -eq 0 ] || return 1
+}
+
+cmd_generate_all() {
+  resolve_stories_file
+  local force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      *) fail "Unknown generate-all option: $1" ;;
+    esac
+  done
+
+  local count=0 failed=0 skipped=0
+  while IFS= read -r sid; do
+    local raw_path story_path_abs specify_dir
+    raw_path="$(jq -r --arg id "$sid" '.stories[] | select(.id == $id) | .story_path // ""' "$STORIES_FILE")"
+    [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
+    specify_dir="$(dirname "$story_path_abs")/.specify"
+
+    if [ ! -f "$specify_dir/spec.md" ]; then
+      echo "SKIP $sid: no SpecKit artifacts (run specify-all first)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    if [ -f "$story_path_abs" ] && [ "$force" -eq 0 ]; then
+      echo "SKIP $sid: story.json exists (use --force to overwrite)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    echo "=== generate $sid ==="
+    local force_flag=()
+    [ "$force" -eq 1 ] && force_flag+=(--force)
+    if cmd_generate "$sid" "${force_flag[@]}"; then
+      count=$((count + 1))
+    else
+      echo "WARN: generate failed for $sid"
+      failed=$((failed + 1))
+    fi
+  done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | .id' "$STORIES_FILE")
+
+  echo ""
+  echo "generate-all: $count generated, $skipped skipped, $failed failed."
+  [ "$failed" -eq 0 ] || return 1
+}
+
+cmd_prepare_all() {
+  local force_flag=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force) force_flag+=(--force); shift ;;
+      *) fail "Unknown prepare-all option: $1" ;;
+    esac
+  done
+
+  echo "=== prepare-all: specify ==="
+  cmd_specify_all "${force_flag[@]}" || true
+  echo ""
+  echo "=== prepare-all: generate ==="
+  cmd_generate_all "${force_flag[@]}" || true
+  echo ""
+  echo "=== prepare-all: health ==="
+  cmd_health
+}
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -982,7 +1143,11 @@ case "$CMD" in
   abandon)      cmd_abandon "$@" ;;
   health)       cmd_health "$@" ;;
   specify)      cmd_specify "$@" ;;
+  specify-all)  cmd_specify_all "$@" ;;
   generate)     cmd_generate "$@" ;;
+  generate-all) cmd_generate_all "$@" ;;
+  health-all)   cmd_health ;;
+  prepare-all)  cmd_prepare_all "$@" ;;
   import-prd)   cmd_import_prd "$@" ;;
   add)          cmd_add "$@" ;;
   -h|--help|"") usage; exit 0 ;;

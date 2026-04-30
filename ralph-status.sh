@@ -62,6 +62,48 @@ loop_status() {
   fi
 }
 
+story_readiness() {
+  local story_id="$1" stories_file="$2" workspace_root="$3"
+  local status
+  status="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | .status // "planned"' "$stories_file" 2>/dev/null || true)"
+  case "$status" in
+    done|abandoned|active) echo "$status"; return ;;
+  esac
+
+  local raw_path story_path_abs specify_dir
+  raw_path="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | .story_path // ""' "$stories_file" 2>/dev/null || true)"
+  if [ -z "$raw_path" ]; then echo "stub"; return; fi
+  [[ "$raw_path" != /* ]] && story_path_abs="$workspace_root/$raw_path" || story_path_abs="$raw_path"
+  specify_dir="$(dirname "$story_path_abs")/.specify"
+
+  if [ -f "$story_path_abs" ]; then
+    echo "ready"
+  elif [ -f "$specify_dir/spec.md" ] && [ -f "$specify_dir/tasks.md" ]; then
+    echo "specked"
+  else
+    echo "stub"
+  fi
+}
+
+sprint_stories_table() {
+  local stories_file="$1" workspace_root="$2"
+  local active_id
+  active_id="$(jq -r '.activeStoryId // ""' "$stories_file" 2>/dev/null || true)"
+
+  printf '\n%-3s %-10s %-6s %-6s %-10s %-12s %s\n' "" "ID" "PRI" "EFF" "READY" "STATUS" "TITLE"
+  printf '%-3s %-10s %-6s %-6s %-10s %-12s %s\n' "---" "----------" "------" "------" "----------" "------------" "-----"
+
+  jq -r '.stories | sort_by(.priority) | .[] | [.id, (.priority|tostring), (.effort|tostring), .status, .title] | @tsv' \
+    "$stories_file" 2>/dev/null \
+  | while IFS=$'\t' read -r sid pri eff st title; do
+      local marker readiness
+      marker="   "
+      [ "$sid" = "$active_id" ] && marker="-> "
+      readiness="$(story_readiness "$sid" "$stories_file" "$workspace_root")"
+      printf '%s %-10s %-6s %-6s %-10s %-12s %s\n' "$marker" "$sid" "$pri" "$eff" "$readiness" "$st" "$title"
+    done
+}
+
 stories_file_for_sprint() {
   local sprint="$1"
   printf '%s/%s/stories.json\n' "$SPRINTS_DIR" "$sprint"
@@ -204,6 +246,9 @@ main() {
   else
     echo "Active story: (no stories.json found)"
     echo "Next eligible story: (none)"
+  fi
+  if [ -f "$stories_file" ]; then
+    sprint_stories_table "$stories_file" "$WORKSPACE_ROOT"
   fi
   latest_story_commit_line
   next_action_line "$sprint_story_id" "$stories_file" "$loop_state"

@@ -43,8 +43,17 @@ fi
 
 SPRINT_TEST_FILE="$SCRIPT_DIR/ralph-sprint-test.sh"
 if [ ! -f "$SPRINT_TEST_FILE" ]; then
-  echo "WARN: ralph-sprint-test.sh not found — sprint regression gate will be skipped at commit time."
+  echo "WARN: ralph-sprint-test.sh not found — ralph-sprint-commit.sh will fail without it."
   echo "      Copy $SCRIPT_DIR/ralph-sprint-test.sh.example to ralph-sprint-test.sh and customize."
+fi
+
+# SpecKit artifacts should be committed with the sprint, not gitignored
+SAMPLE_SPECIFY_PATH="$SCRIPT_DIR/sprints/sprint-1/stories/S-001/.specify/spec.md"
+if git check-ignore -q "$SAMPLE_SPECIFY_PATH" 2>/dev/null; then
+  echo "WARN: SpecKit .specify/ artifacts appear to be gitignored — spec files will not be committed."
+  echo "      Check .gitignore for patterns matching '.specify' and remove them."
+else
+  echo "OK: .specify/ artifacts are not gitignored"
 fi
 
 if command -v specify >/dev/null 2>&1; then
