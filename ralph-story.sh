@@ -1036,7 +1036,7 @@ SKPROMPT
 
 cmd_specify_all() {
   resolve_stories_file
-  local force=0 jobs=1
+  local force=0 jobs=2
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force=1; shift ;;
@@ -1108,7 +1108,7 @@ cmd_specify_all() {
 
 cmd_generate_all() {
   resolve_stories_file
-  local force=0 jobs=1
+  local force=0 jobs=2
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force=1; shift ;;
@@ -1199,7 +1199,7 @@ cmd_generate_all() {
 }
 
 cmd_prepare_all() {
-  local force_flag=() jobs=1
+  local force_flag=() jobs=2
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --force) force_flag+=(--force); shift ;;
