@@ -220,14 +220,14 @@ fi
 
 # Sprint-aware bootstrap directories and default active sprint.
 mkdir -p \
-  "$DEST_DIR_REL/sprints/sprint-1" \
+  "$DEST_DIR_REL/sprints/sprint-1/stories" \
   "$DEST_DIR_REL/tasks/sprint-1" \
   "$DEST_DIR_REL/tasks/prds" \
   "$DEST_DIR_REL/tasks/archive/sprint-1" \
   "$DEST_DIR_REL/tasks/archive/prds"
 
-if [ ! -f "$DEST_DIR_REL/sprints/sprint-1/epics.json" ] || [ "$FORCE" -eq 1 ]; then
-  cp "$DEST_DIR_REL/epics.json.example" "$DEST_DIR_REL/sprints/sprint-1/epics.json"
+if [ ! -f "$DEST_DIR_REL/sprints/sprint-1/stories.json" ] || [ "$FORCE" -eq 1 ]; then
+  cp "$DEST_DIR_REL/stories.json.example" "$DEST_DIR_REL/sprints/sprint-1/stories.json"
 fi
 
 if [ ! -f "$DEST_DIR_REL/.active-sprint" ] || [ "$FORCE" -eq 1 ]; then
