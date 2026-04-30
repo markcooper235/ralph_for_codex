@@ -15,7 +15,6 @@ PROJECT_DIR="$(pwd)"
 DEST_DIR_REL="scripts/ralph"
 DEST_PARENT_REL="$(dirname "$DEST_DIR_REL")"
 FORCE=0
-WITH_EXAMPLE_PRD=1
 INSTALL_SKILLS=0
 INSTALL_PROMPTS=0
 INSTALL_SPECKIT=0
@@ -28,8 +27,7 @@ Install Ralph into a target project.
 Options:
   --project DIR         Project directory (default: current directory)
   --dest RELDIR         Install path relative to project (default: scripts/ralph)
-  --force               Overwrite existing prd.json and progress.txt (runner files always overwritten)
-  --no-example-prd      Do not create prd.json if missing
+  --force               Force overwrite of existing files
   --install-skills      Copy skills into ~/.codex/skills
   --install-prompts     Copy /command prompts to Global prompts directory
   --install-speckit     Install the SpecKit CLI (specify) via uv, pip, or npx
@@ -62,8 +60,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --force)
       FORCE=1; shift;;
-    --no-example-prd)
-      WITH_EXAMPLE_PRD=0; shift;;
     --install-skills)
       INSTALL_SKILLS=1; shift;;
       --install-prompts)
@@ -171,42 +167,6 @@ chmod +x \
   "$DEST_DIR_REL/ralph-verify.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 
-if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
-  if [ ! -f "$DEST_DIR_REL/prd.json" ] || [ "$FORCE" -eq 1 ]; then
-    cat > "$DEST_DIR_REL/prd.json" <<'JSON'
-{
-  "project": "YourProject",
-  "branchName": "ralph/smoke",
-  "description": "Smoke test - verify Ralph + Codex loop works end-to-end",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Create smoke marker file",
-      "description": "As a developer, I want a smoke marker file so I can confirm Ralph executed.",
-      "acceptanceCriteria": [
-        "Create a new file at repo root named RALPH_SMOKE.txt with exactly: ok\\n",
-        "Commit the change",
-        "Update scripts/ralph/prd.json to set passes: true for US-001",
-        "Append a short entry to scripts/ralph/progress.txt",
-        "Typecheck passes"
-      ],
-      "priority": 1,
-      "passes": false,
-      "notes": "If this repo has no typecheck, treat this as: no build errors, and keep git status clean after commit."
-    }
-  ]
-}
-JSON
-  fi
-fi
-
-if [ ! -f "$DEST_DIR_REL/progress.txt" ] || [ "$FORCE" -eq 1 ]; then
-  cat > "$DEST_DIR_REL/progress.txt" <<EOF
-# Ralph Progress Log
-Started: $(date)
----
-EOF
-fi
 
 # Sprint-aware bootstrap directories (sprints and tasks created by ralph-roadmap.sh).
 mkdir -p \
