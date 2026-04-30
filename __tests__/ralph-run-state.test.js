@@ -290,7 +290,7 @@ test('ralph-sprint use fails when sprint status is not ready', () => {
   assert.match(result.stderr, /not ready/)
 })
 
-test('ralph-sprint use fails when previous sprint is not closed', () => {
+test('ralph-sprint use fails when another sprint is still active', () => {
   const repoDir = initTempRepo()
 
   writeFile(
@@ -312,7 +312,7 @@ test('ralph-sprint use fails when previous sprint is not closed', () => {
     cwd: repoDir,
   })
   assert.equal(result.status, 1)
-  assert.match(result.stderr, /not closed/)
+  assert.match(result.stderr, /still active/)
 })
 
 test('ralph-sprint use succeeds when sprint is ready and previous sprint is closed', () => {

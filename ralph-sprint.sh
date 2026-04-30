@@ -179,20 +179,17 @@ activate_sprint() {
     fail "Sprint '$sprint' is not ready (status: $sprint_status). Run: ./ralph-sprint.sh mark-ready $sprint"
   fi
 
-  # Gate: previous sprint (by sorted order) must be closed
-  local prev_sprint=""
-  while IFS= read -r s; do
-    [ "$s" = "$sprint" ] && break
-    prev_sprint="$s"
-  done < <(sorted_sprints)
-
-  if [ -n "$prev_sprint" ]; then
-    local prev_status
-    prev_status="$(get_sprint_status "$prev_sprint")"
-    if [ "$prev_status" != "closed" ]; then
-      fail "Previous sprint '$prev_sprint' is not closed (status: $prev_status). Run: ./ralph-sprint-commit.sh first."
+  # Gate: no other sprint can be active (enforces sequential sprint flow)
+  local other_sprint
+  while IFS= read -r other_sprint; do
+    [ -n "$other_sprint" ] || continue
+    [ "$other_sprint" = "$sprint" ] && continue
+    local other_status
+    other_status="$(get_sprint_status "$other_sprint")"
+    if [ "$other_status" = "active" ]; then
+      fail "Sprint '$other_sprint' is still active. Run: ./ralph-sprint-commit.sh to close it first."
     fi
-  fi
+  done < <(sorted_sprints)
 
   ensure_sprint_branch_exists "$sprint"
   set_sprint_status "$sprint" "active"
@@ -411,6 +408,13 @@ cmd_mark_ready() {
   cur_status="$(get_sprint_status "$sprint")"
   if [ "$cur_status" = "active" ] || [ "$cur_status" = "closed" ]; then
     fail "Sprint '$sprint' is already $cur_status — cannot mark ready."
+  fi
+
+  # Require at least one story
+  local story_count
+  story_count="$(jq '.stories | length' "$sf")"
+  if [ "$story_count" -eq 0 ]; then
+    fail "Sprint '$sprint' has no stories. Add stories with: ./ralph-story.sh add --title '<title>'"
   fi
 
   # Validate all non-done/abandoned stories are ready
