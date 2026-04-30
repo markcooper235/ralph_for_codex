@@ -20,6 +20,7 @@ TARGET_TASK_ID=""
 MAX_RETRIES=2
 DRY_RUN=0
 QUIET=0
+SKIP_FALLOW=0
 
 usage() {
   cat <<'EOF'
@@ -34,6 +35,7 @@ Options:
   --max-retries N     Retry count per task on check failure (default: 2)
   --dry-run           Print plan without executing Codex sessions
   --quiet             Suppress verbose output
+  --skip-fallow       Skip the fallow code-quality gate (bypass for debugging)
   -h, --help          Show help
 
 Environment:
@@ -47,12 +49,13 @@ log()  { [ "$QUIET" -eq 0 ] && echo "$1"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --story)    STORY_FILE="${2:-}"; shift 2 ;;
-    --task-id)  TARGET_TASK_ID="${2:-}"; shift 2 ;;
+    --story)       STORY_FILE="${2:-}"; shift 2 ;;
+    --task-id)     TARGET_TASK_ID="${2:-}"; shift 2 ;;
     --max-retries) MAX_RETRIES="${2:-2}"; shift 2 ;;
-    --dry-run)  DRY_RUN=1; shift ;;
-    --quiet)    QUIET=1; shift ;;
-    -h|--help)  usage; exit 0 ;;
+    --dry-run)     DRY_RUN=1; shift ;;
+    --quiet)       QUIET=1; shift ;;
+    --skip-fallow) SKIP_FALLOW=1; shift ;;
+    -h|--help)     usage; exit 0 ;;
     *) fail "Unknown argument: $1" ;;
   esac
 done
@@ -365,6 +368,18 @@ if [ $STORY_FAILED -eq 0 ]; then
   done < <(jq -r '.tasks[].passes' "$STORY_FILE")
 
   if [ "$all_pass" = "true" ]; then
+    # Run fallow code-quality gate (skippable for debugging)
+    if [ "$SKIP_FALLOW" -eq 0 ] && [ -f "$SCRIPT_DIR/ralph-fallow.sh" ]; then
+      log ""
+      log "--- Fallow: code-quality gate ---"
+      local_fallow_args=(--story "$STORY_FILE")
+      [ "$DRY_RUN" -eq 1 ] && local_fallow_args+=(--dry-run)
+      [ "$QUIET" -eq 1 ]   && local_fallow_args+=(--quiet)
+      if ! "$SCRIPT_DIR/ralph-fallow.sh" "${local_fallow_args[@]}"; then
+        log "=== Story $STORY_ID: fallow gate failed — manual correction required ==="
+        exit 1
+      fi
+    fi
     mark_story_done
     log "=== Story $STORY_ID COMPLETE ==="
     exit 0
