@@ -199,6 +199,17 @@ mark_story_done() {
   mv "$tmp" "$STORY_FILE"
 }
 
+set_story_field() {
+  local field="$1"
+  local value="$2"
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg field "$field" --argjson val "$value" \
+    '.[$field] = $val' \
+    "$STORY_FILE" > "$tmp"
+  mv "$tmp" "$STORY_FILE"
+}
+
 # ---------------------------------------------------------------------------
 # Codex session builder
 # ---------------------------------------------------------------------------
@@ -212,18 +223,67 @@ build_task_prompt() {
   scope_list="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .scope[]?' "$STORY_FILE" | paste -sd ', ' -)"
   acceptance="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .acceptance' "$STORY_FILE")"
 
-  local story_title story_spec_scope preserved_invariants
+  local story_title story_description story_spec_scope preserved_invariants
   story_title="$(jq -r '.title' "$STORY_FILE")"
+  story_description="$(jq -r '.description // ""' "$STORY_FILE")"
   story_spec_scope="$(jq -r '.spec.scope // ""' "$STORY_FILE")"
   preserved_invariants="$(jq -r '.spec.preserved_invariants[]?' "$STORY_FILE" | awk '{print "- "$0}')"
+
+  # ---- Task dependency notes (only fetched if depends_on is non-empty) ----
+  local task_dep_block=""
+  local _dep_id _dep_title _dep_note
+  while IFS= read -r _dep_id; do
+    [ -z "$_dep_id" ] && continue
+    _dep_title="$(jq -r --arg id "$_dep_id" '.tasks[] | select(.id == $id) | .title // ""' "$STORY_FILE")"
+    _dep_note="$(jq -r --arg id "$_dep_id" '.tasks[] | select(.id == $id) | .done_note // ""' "$STORY_FILE")"
+    [ -n "$_dep_note" ] || continue
+    task_dep_block="${task_dep_block}- ${_dep_id} (${_dep_title}):
+$(printf '%s' "$_dep_note" | sed 's/^/  /')
+"
+  done < <(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .depends_on[]?' "$STORY_FILE" 2>/dev/null)
+
+  # ---- Story dependency notes (only fetched if story depends_on is non-empty) ----
+  local story_dep_block=""
+  local _sprint _stories_file _dep_sid _dep_spath _dep_stitle _dep_snote
+  _sprint=""
+  [ -f "$SCRIPT_DIR/.active-sprint" ] && _sprint="$(awk 'NF {print; exit}' "$SCRIPT_DIR/.active-sprint")"
+  _stories_file="$SCRIPT_DIR/sprints/${_sprint}/stories.json"
+  while IFS= read -r _dep_sid; do
+    [ -z "$_dep_sid" ] && continue
+    [ -n "$_sprint" ] && [ -f "$_stories_file" ] || continue
+    _dep_spath="$(jq -r --arg id "$_dep_sid" '.stories[] | select(.id == $id) | .story_path // ""' "$_stories_file" 2>/dev/null)"
+    [ -n "$_dep_spath" ] || continue
+    [[ "$_dep_spath" != /* ]] && _dep_spath="$WORKSPACE_ROOT/$_dep_spath"
+    [ -f "$_dep_spath" ] || continue
+    _dep_stitle="$(jq -r '.title // ""' "$_dep_spath" 2>/dev/null)"
+    _dep_snote="$(jq -r '.done_note // ""' "$_dep_spath" 2>/dev/null)"
+    [ -n "$_dep_snote" ] || continue
+    story_dep_block="${story_dep_block}- ${_dep_sid} (${_dep_stitle}):
+$(printf '%s' "$_dep_snote" | sed 's/^/  /')
+"
+  done < <(jq -r '.depends_on[]?' "$STORY_FILE" 2>/dev/null)
+
+  # ---- Assemble optional dependency sections ----
+  local dep_sections=""
+  if [ -n "$story_dep_block" ]; then
+    dep_sections="${dep_sections}**Prior story results (dependencies):**
+${story_dep_block}
+"
+  fi
+  if [ -n "$task_dep_block" ]; then
+    dep_sections="${dep_sections}**Prior task results (dependencies):**
+${task_dep_block}
+"
+  fi
 
   cat <<PROMPT
 ## Task: $title
 
 **Story:** $story_title
+**Goal:** $story_description
 **Story scope:** $story_spec_scope
 
-**Task context:**
+${dep_sections}**Task context:**
 $context
 
 **File scope:** $scope_list
@@ -278,6 +338,8 @@ acquire_lock() {
 
 acquire_lock
 
+STORY_START_HEAD="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
+
 # ---------------------------------------------------------------------------
 # Main execution loop
 # ---------------------------------------------------------------------------
@@ -325,6 +387,7 @@ for task_id in "${TASK_IDS[@]}"; do
   fi
 
   set_task_field "$task_id" "status" '"running"'
+  task_start_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
 
   attempt=0
   task_passed=0
@@ -338,6 +401,16 @@ for task_id in "${TASK_IDS[@]}"; do
     if run_checks "$task_id"; then
       log "  PASS — all checks green"
       mark_task_done "$task_id"
+      _task_end_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
+      _task_acceptance="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .acceptance // ""' "$STORY_FILE")"
+      if [ -n "$task_start_head" ] && [ "$task_start_head" != "$_task_end_head" ]; then
+        _task_diff="$(git -C "$WORKSPACE_ROOT" diff --stat "${task_start_head}..${_task_end_head}" 2>/dev/null | tail -1 | sed 's/^ *//')"
+      else
+        _task_diff="no new commits"
+      fi
+      _done_note="Acceptance met: ${_task_acceptance}
+Changed: ${_task_diff}"
+      set_task_field "$task_id" "done_note" "$(printf '%s' "$_done_note" | jq -Rs .)"
       task_passed=1
       break
     else
@@ -380,6 +453,17 @@ if [ $STORY_FAILED -eq 0 ]; then
         exit 1
       fi
     fi
+    _story_end_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
+    if [ -n "$STORY_START_HEAD" ] && [ "$STORY_START_HEAD" != "$_story_end_head" ]; then
+      _story_total_diff="$(git -C "$WORKSPACE_ROOT" diff --stat "${STORY_START_HEAD}..${_story_end_head}" 2>/dev/null | tail -1 | sed 's/^ *//')"
+    else
+      _story_total_diff="no new commits"
+    fi
+    _story_task_notes="$(jq -r '.tasks[] | select(.passes == true) | "  \(.id) (\(.title)): Acceptance met: \(.acceptance)"' "$STORY_FILE")"
+    _story_done_note="${_story_task_notes}
+Total changed: ${_story_total_diff}"
+    set_story_field "done_note" "$(printf '%s' "$_story_done_note" | jq -Rs .)"
+
     mark_story_done
 
     # Sync stories.json: mark story done and clear activeStoryId
