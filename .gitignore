@@ -41,5 +41,9 @@ lerna-debug.log*
 # Archive is optional to commit
 # archive/
 
+# Fallow analysis artifacts (transient, tool-generated)
+.fallow/
+.fallow-report.json
+
 # OS files
 .DS_Store
