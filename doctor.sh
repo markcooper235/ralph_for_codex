@@ -37,6 +37,16 @@ if [ ! -f "$PROMPT_FILE" ]; then
   fail "Missing $PROMPT_FILE"
 fi
 
+if grep -q '{{PRD_FILE}}' "$PROMPT_FILE" 2>/dev/null; then
+  echo "WARN: prompt.md still contains unfilled placeholders ({{PRD_FILE}})"
+fi
+
+SPRINT_TEST_FILE="$SCRIPT_DIR/ralph-sprint-test.sh"
+if [ ! -f "$SPRINT_TEST_FILE" ]; then
+  echo "WARN: ralph-sprint-test.sh not found — sprint regression gate will be skipped at commit time."
+  echo "      Copy $SCRIPT_DIR/ralph-sprint-test.sh.example to ralph-sprint-test.sh and customize."
+fi
+
 if [ ! -f "$PRD_FILE" ]; then
   echo "WARN: Missing $PRD_FILE"
   echo "      Create it (or copy from prd.json.example) before running ralph.sh."

@@ -14,6 +14,7 @@ SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 STORIES_FILE="${RALPH_STORIES_FILE:-}"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+CODEX_BIN="${CODEX_BIN:-codex}"
 
 fail() { echo "ERROR: $1" >&2; exit 1; }
 
@@ -53,12 +54,21 @@ Commands:
   set-status <ID> <STATUS>   Set story status (planned|ready|active|done|abandoned|blocked)
   abandon <ID> [REASON]      Mark story abandoned
   health [ID]                Validate story tasks: dead deps, duplicate checks, missing fields
+  generate <ID>              Generate story.json task container via Codex
+  import-prd [PATH]          Import prd.json userStories into sprint backlog
   add [options]              Add a story non-interactively
 
 Eligibility for "next":
   - status is ready or planned
   - all depends_on stories are done
   - lowest priority wins, then ID
+
+Generate options:
+  --dry-run                  Print the Codex prompt without running
+  --force                    Overwrite existing story.json
+
+Import-prd options:
+  PATH                       Path to prd.json (default: scripts/ralph/prd.json)
 
 Add options:
   --id S-XXX                 Explicit story ID (default: next sequential)
@@ -184,6 +194,11 @@ cmd_use() {
   exists="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | .id' "$STORIES_FILE")"
   [ -n "$exists" ] || fail "Story $story_id not found."
 
+  local story_path
+  story_path="$(resolve_story_path "$story_id")"
+  [ -f "$story_path" ] || fail "story.json not found for $story_id: $story_path
+  Run: ./ralph-story.sh generate $story_id"
+
   local tmp
   tmp="$(mktemp)"
   jq --arg id "$story_id" '.activeStoryId = $id' "$STORIES_FILE" > "$tmp"
@@ -201,6 +216,11 @@ cmd_start_next() {
   local next_id
   next_id="$(cmd_next_id)"
   [ -n "$next_id" ] || fail "No eligible story to start."
+
+  local story_path
+  story_path="$(resolve_story_path "$next_id")"
+  [ -f "$story_path" ] || fail "story.json not found for $next_id: $story_path
+  Run: ./ralph-story.sh generate $next_id"
 
   local tmp
   tmp="$(mktemp)"
@@ -375,6 +395,33 @@ _health_story() {
     fi
   done < <(jq -r '.tasks[].id' "$story_path")
 
+  # Validate checks[] syntax and command reachability
+  while IFS= read -r tid; do
+    local cnum=0
+    while IFS= read -r chk; do
+      [ -z "$chk" ] && continue
+      cnum=$((cnum + 1))
+      if ! bash -n -c "$chk" 2>/dev/null; then
+        echo "  [SYNTAX] $tid check[$cnum]: syntax error: $chk"
+        issues=$((issues + 1))
+      else
+        local first_word
+        first_word="$(printf '%s' "$chk" | awk '{print $1}')"
+        case "$first_word" in
+          test|'['|echo|true|false|printf|:) ;;
+          grep|find|cat|ls|mkdir|rm|cp|mv|sed|awk|sort|head|tail|wc|cut|tr) ;;
+          git|bash|sh|cd|source|.) ;;
+          *)
+            if ! command -v "$first_word" >/dev/null 2>&1; then
+              echo "  [CMD?]  $tid check[$cnum]: '$first_word' not on PATH: $chk"
+              issues=$((issues + 1))
+            fi
+            ;;
+        esac
+      fi
+    done < <(jq -r --arg id "$tid" '.tasks[] | select(.id == $id) | .checks[]?' "$story_path")
+  done < <(jq -r '.tasks[].id' "$story_path")
+
   if [ "$issues" -eq 0 ]; then
     echo "  OK"
     return 0
@@ -496,6 +543,228 @@ cmd_add() {
 }
 
 # ---------------------------------------------------------------------------
+# generate
+# ---------------------------------------------------------------------------
+
+cmd_generate() {
+  local story_id="${1:-}"
+  [ -n "$story_id" ] || fail "Usage: ralph-story.sh generate <ID> [--dry-run] [--force]"
+  shift || true
+  local dry_run=0
+  local force=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=1; shift ;;
+      --force)   force=1;   shift ;;
+      *) fail "Unknown generate option: $1" ;;
+    esac
+  done
+
+  resolve_stories_file
+
+  local story_meta
+  story_meta="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id)' "$STORIES_FILE")"
+  [ -n "$story_meta" ] || fail "Story $story_id not found in $STORIES_FILE"
+
+  local raw_path
+  raw_path="$(printf '%s' "$story_meta" | jq -r '.story_path // empty')"
+  [ -n "$raw_path" ] || fail "story_path not set for $story_id in $STORIES_FILE"
+
+  local story_path_abs
+  if [[ "$raw_path" != /* ]]; then
+    story_path_abs="$WORKSPACE_ROOT/$raw_path"
+  else
+    story_path_abs="$raw_path"
+  fi
+
+  if [ -f "$story_path_abs" ] && [ "$force" -eq 0 ]; then
+    fail "story.json already exists: $story_path_abs
+  Use --force to overwrite."
+  fi
+
+  local title goal prompt_context effort sprint priority depends_on_arr
+  title="$(printf '%s' "$story_meta" | jq -r '.title // ""')"
+  goal="$(printf '%s' "$story_meta" | jq -r '.goal // ""')"
+  prompt_context="$(printf '%s' "$story_meta" | jq -r '.promptContext // ""')"
+  effort="$(printf '%s' "$story_meta" | jq -r '.effort // 3')"
+  priority="$(printf '%s' "$story_meta" | jq -r '.priority // 1')"
+  sprint="$(printf '%s' "$story_meta" | jq -r '.sprint // ""')"
+  [ -n "$sprint" ] || sprint="$(get_active_sprint 2>/dev/null || echo "sprint-1")"
+  depends_on_arr="$(printf '%s' "$story_meta" | jq -c '.depends_on // []')"
+
+  local branch_name="ralph/$sprint/story-$story_id"
+
+  # Pull done_notes from dependent stories for context injection
+  local dep_context=""
+  while IFS= read -r dep_id; do
+    [ -z "$dep_id" ] && continue
+    local dep_raw_path dep_abs_path dep_title dep_note
+    dep_raw_path="$(jq -r --arg d "$dep_id" '.stories[] | select(.id == $d) | .story_path // ""' "$STORIES_FILE" 2>/dev/null || true)"
+    [ -n "$dep_raw_path" ] || continue
+    [[ "$dep_raw_path" != /* ]] && dep_abs_path="$WORKSPACE_ROOT/$dep_raw_path" || dep_abs_path="$dep_raw_path"
+    [ -f "$dep_abs_path" ] || continue
+    dep_title="$(jq -r '.title // ""' "$dep_abs_path" 2>/dev/null || true)"
+    dep_note="$(jq -r '.done_note // ""' "$dep_abs_path" 2>/dev/null || true)"
+    [ -n "$dep_note" ] || continue
+    dep_context="${dep_context}
+Prior story $dep_id ($dep_title):
+$dep_note
+"
+  done < <(printf '%s' "$story_meta" | jq -r '.depends_on[]?' 2>/dev/null)
+
+  local dep_section=""
+  [ -n "$dep_context" ] && dep_section="Prior story results (dependencies):
+$dep_context"
+
+  local prompt
+  prompt="$(cat <<GENPROMPT
+## Generate story.json for $story_id
+
+Story backlog entry:
+- ID: $story_id
+- Title: $title
+- Sprint: $sprint
+- Priority: $priority
+- Effort: $effort
+- Goal: $goal
+- Planning context: $prompt_context
+- depends_on: $depends_on_arr
+
+$dep_section
+Write a complete story.json file to this exact path: $story_path_abs
+
+Follow the story-generate skill (skills/story-generate/SKILL.md) for schema and task design rules.
+
+Key requirements:
+1. Read package.json to find the real script names for typecheck, lint, test, and build.
+2. Explore the repo to identify the relevant source files for this story.
+3. Write T-01 (implementation), T-02 (tests), T-03 (full regression) tasks.
+4. Every checks[] entry must be a binary shell expression.
+5. scope[] must contain real file paths you verified exist or will be created.
+6. context must be self-contained for a fresh isolated Codex session.
+7. branchName: $branch_name
+8. Create the parent directory if needed.
+9. Do not commit.
+GENPROMPT
+)"
+
+  if [ "$dry_run" -eq 1 ]; then
+    echo "=== DRY RUN: generate prompt for $story_id ==="
+    printf '%s\n' "$prompt"
+    echo "=== Would write to: $story_path_abs ==="
+    return 0
+  fi
+
+  echo "Generating story.json for $story_id..."
+  mkdir -p "$(dirname "$story_path_abs")"
+
+  local profile_flag=""
+  [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
+
+  # shellcheck disable=SC2086
+  "$CODEX_BIN" exec $profile_flag "$prompt"
+
+  if [ ! -f "$story_path_abs" ]; then
+    fail "Codex did not write story.json to: $story_path_abs"
+  fi
+  if ! jq -e '.tasks | length > 0' "$story_path_abs" >/dev/null 2>&1; then
+    fail "Generated story.json has no tasks: $story_path_abs"
+  fi
+  if ! jq -e '.storyId' "$story_path_abs" >/dev/null 2>&1; then
+    fail "Generated story.json is missing storyId: $story_path_abs"
+  fi
+
+  local task_count
+  task_count="$(jq '.tasks | length' "$story_path_abs")"
+  echo "Generated: $raw_path ($task_count tasks)"
+  echo "Run './ralph-story.sh health $story_id' to validate."
+}
+
+# ---------------------------------------------------------------------------
+# import-prd
+# ---------------------------------------------------------------------------
+
+cmd_import_prd() {
+  resolve_stories_file
+
+  local prd_path="${1:-}"
+  [ -n "$prd_path" ] || prd_path="$SCRIPT_DIR/prd.json"
+  [ -f "$prd_path" ] || fail "PRD file not found: $prd_path"
+
+  jq -e '.userStories | length > 0' "$prd_path" >/dev/null 2>&1 || \
+    fail "No userStories[] found in $prd_path"
+
+  local active_sprint
+  active_sprint="$(get_active_sprint)" || fail "No active sprint."
+
+  local imported=0 skipped=0
+
+  while IFS= read -r us_json; do
+    local us_id us_title us_desc us_ac us_priority us_passes
+    us_id="$(printf '%s' "$us_json" | jq -r '.id')"
+    us_title="$(printf '%s' "$us_json" | jq -r '.title // ""')"
+    us_desc="$(printf '%s' "$us_json" | jq -r '.description // ""')"
+    us_ac="$(printf '%s' "$us_json" | jq -r '(.acceptanceCriteria // []) | join(". ")')"
+    us_priority="$(printf '%s' "$us_json" | jq -r '.priority // 99')"
+    us_passes="$(printf '%s' "$us_json" | jq -r '.passes // false')"
+
+    if [ "$us_passes" = "true" ]; then
+      echo "SKIP $us_id (passes=true): $us_title"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Auto-assign next S-NNN from current max
+    local max_n=0
+    while IFS= read -r existing_id; do
+      local raw_n="${existing_id#S-}"
+      if [[ "$raw_n" =~ ^[0-9]+$ ]]; then
+        local n=$(( 10#$raw_n ))
+        [ "$n" -gt "$max_n" ] && max_n="$n"
+      fi
+    done < <(jq -r '.stories[].id' "$STORIES_FILE")
+    local new_id
+    new_id="$(printf 'S-%03d' $((max_n + 1)))"
+
+    local story_path="scripts/ralph/sprints/$active_sprint/stories/$new_id/story.json"
+
+    local tmp
+    tmp="$(mktemp)"
+    jq \
+      --arg id "$new_id" \
+      --arg title "$us_title" \
+      --argjson priority "$us_priority" \
+      --arg status "planned" \
+      --arg goal "$us_desc" \
+      --arg ctx "$us_ac" \
+      --arg path "$story_path" \
+      '.stories += [{
+        "id": $id,
+        "title": $title,
+        "priority": $priority,
+        "effort": 3,
+        "planningSource": "prd-import",
+        "status": $status,
+        "depends_on": [],
+        "story_path": $path,
+        "goal": $goal,
+        "promptContext": $ctx
+      }]' \
+      "$STORIES_FILE" > "$tmp"
+    mv "$tmp" "$STORIES_FILE"
+
+    echo "Imported $us_id → $new_id: $us_title"
+    imported=$((imported + 1))
+  done < <(jq -c '.userStories[]' "$prd_path")
+
+  echo ""
+  echo "Imported: $imported  Skipped (done): $skipped"
+  if [ "$imported" -gt 0 ]; then
+    echo "Next: run './ralph-story.sh generate <ID>' for each story to create task containers."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -513,6 +782,8 @@ case "$CMD" in
   set-status)   cmd_set_status "$@" ;;
   abandon)      cmd_abandon "$@" ;;
   health)       cmd_health "$@" ;;
+  generate)     cmd_generate "$@" ;;
+  import-prd)   cmd_import_prd "$@" ;;
   add)          cmd_add "$@" ;;
   -h|--help|"") usage; exit 0 ;;
   *) fail "Unknown command: $CMD. Use --help for usage." ;;

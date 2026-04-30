@@ -80,23 +80,43 @@ Expected:
 ## Sprint Story Sequencing
 
 ```bash
-# Create a sprint and add stories
+# Create a sprint and add stories (or use ralph-roadmap.sh to plan a full roadmap)
 ./scripts/ralph/ralph-sprint.sh create sprint-1
 ./scripts/ralph/ralph-story.sh add --title "My Story" --goal "..." --prompt-context "..."
 
-# Start each story and run its tasks
+# Generate task containers for each story (required before start-next)
+./scripts/ralph/ralph-story.sh generate S-001
+./scripts/ralph/ralph-story.sh health S-001        # validate tasks, checks, deps
+
+# Start a story and run its tasks
 ./scripts/ralph/ralph-story.sh start-next
+./scripts/ralph/ralph-status.sh                    # confirm active story + branch state
 ./scripts/ralph/ralph-task.sh
 
-# Repeat start-next + ralph-task.sh for each story
+# If ralph-task.sh exits non-zero, check what blocked:
+./scripts/ralph/ralph-status.sh
+
+# Repeat generate → start-next → ralph-task.sh for each story
 ```
 
 After all stories complete:
 
 ```bash
+./scripts/ralph/ralph-status.sh                    # confirm all stories done before commit
 ./scripts/ralph/ralph-sprint-commit.sh
 # use --keep to retain merged sprint branch
 # use --skip-regression to bypass pre-merge regression gate
+```
+
+### Importing an existing prd.json into sprint format
+
+```bash
+# Convert prd.json userStories → stories.json entries
+./scripts/ralph/ralph-story.sh import-prd scripts/ralph/prd.json
+
+# Then generate task containers for each imported story
+./scripts/ralph/ralph-story.sh generate S-001
+# ... repeat for each S-NNN
 ```
 
 Standalone PRD flow (single feature, no sprint):
