@@ -59,7 +59,7 @@ fi
 
 if [ ! -f "$ROADMAP_FILE" ]; then
   echo "WARN: Missing $ROADMAP_FILE"
-  echo "      Run: ./$SCRIPT_DIR/ralph-roadmap.sh to define your product roadmap."
+  echo "      Run: $SCRIPT_DIR/ralph-roadmap.sh to define your product roadmap."
 fi
 
 if [ -f "$ACTIVE_SPRINT_FILE" ]; then
