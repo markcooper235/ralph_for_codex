@@ -26,6 +26,18 @@ get_active_sprint() {
   awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
 }
 
+find_specify_bin() {
+  if command -v specify >/dev/null 2>&1; then
+    echo "specify"; return 0
+  fi
+  if command -v npx >/dev/null 2>&1; then
+    if npx --yes specify version >/dev/null 2>&1; then
+      echo "npx --yes specify"; return 0
+    fi
+  fi
+  return 1
+}
+
 resolve_stories_file() {
   if [ -n "$STORIES_FILE" ]; then
     [ -f "$STORIES_FILE" ] || fail "Stories file not found: $STORIES_FILE"
@@ -54,7 +66,8 @@ Commands:
   set-status <ID> <STATUS>   Set story status (planned|ready|active|done|abandoned|blocked)
   abandon <ID> [REASON]      Mark story abandoned
   health [ID]                Validate story tasks: dead deps, duplicate checks, missing fields
-  generate <ID>              Generate story.json task container via Codex
+  specify <ID>               Run SpecKit analysis then generate story.json (primary path)
+  generate <ID>              Generate story.json (uses SpecKit artifacts when present)
   import-prd [PATH]          Import prd.json userStories into sprint backlog
   add [options]              Add a story non-interactively
 
@@ -62,6 +75,11 @@ Eligibility for "next":
   - status is ready or planned
   - all depends_on stories are done
   - lowest priority wins, then ID
+
+Specify options:
+  --dry-run                  Print plan without running
+  --force                    Re-run SpecKit even if artifacts exist
+  --no-generate              Stop after SpecKit analysis (skip story.json generation)
 
 Generate options:
   --dry-run                  Print the Codex prompt without running
@@ -594,6 +612,13 @@ cmd_generate() {
 
   local branch_name="ralph/$sprint/story-$story_id"
 
+  # Check for SpecKit artifacts (.specify/ in story directory)
+  local story_dir specify_dir has_speckit
+  story_dir="$(dirname "$story_path_abs")"
+  specify_dir="$story_dir/.specify"
+  has_speckit=0
+  [ -f "$specify_dir/spec.md" ] && [ -f "$specify_dir/tasks.md" ] && has_speckit=1
+
   # Pull done_notes from dependent stories for context injection
   local dep_context=""
   while IFS= read -r dep_id; do
@@ -616,6 +641,19 @@ $dep_note
   [ -n "$dep_context" ] && dep_section="Prior story results (dependencies):
 $dep_context"
 
+  local skill_instruction
+  if [ "$has_speckit" -eq 1 ]; then
+    skill_instruction="SpecKit analysis artifacts are available — use them as the primary source:
+  spec.md:  $specify_dir/spec.md
+  plan.md:  $specify_dir/plan.md
+  tasks.md: $specify_dir/tasks.md
+
+Follow the story-specify skill (skills/story-specify/SKILL.md) to convert these artifacts into story.json."
+  else
+    skill_instruction="No SpecKit artifacts found.
+Follow the story-generate skill (skills/story-generate/SKILL.md) for schema and task design rules."
+  fi
+
   local prompt
   prompt="$(cat <<GENPROMPT
 ## Generate story.json for $story_id
@@ -631,20 +669,17 @@ Story backlog entry:
 - depends_on: $depends_on_arr
 
 $dep_section
-Write a complete story.json file to this exact path: $story_path_abs
+$skill_instruction
 
-Follow the story-generate skill (skills/story-generate/SKILL.md) for schema and task design rules.
+Write the completed story.json to: $story_path_abs
 
-Key requirements:
-1. Read package.json to find the real script names for typecheck, lint, test, and build.
-2. Explore the repo to identify the relevant source files for this story.
-3. Write T-01 (implementation), T-02 (tests), T-03 (full regression) tasks.
-4. Every checks[] entry must be a binary shell expression.
-5. scope[] must contain real file paths you verified exist or will be created.
-6. context must be self-contained for a fresh isolated Codex session.
-7. branchName: $branch_name
-8. Create the parent directory if needed.
-9. Do not commit.
+Requirements:
+1. Read package.json to find real script names for typecheck, lint, test, and build.
+2. scope[] must contain real file paths (verify they exist or will be created).
+3. context must be self-contained for a fresh isolated Codex session.
+4. branchName: $branch_name
+5. Create the parent directory if needed.
+6. Do not commit.
 GENPROMPT
 )"
 
@@ -760,7 +795,179 @@ cmd_import_prd() {
   echo ""
   echo "Imported: $imported  Skipped (done): $skipped"
   if [ "$imported" -gt 0 ]; then
-    echo "Next: run './ralph-story.sh generate <ID>' for each story to create task containers."
+    echo "Next: run './ralph-story.sh specify <ID>' for each story to run SpecKit analysis and create task containers."
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# specify
+# ---------------------------------------------------------------------------
+
+cmd_specify() {
+  local story_id="${1:-}"
+  [ -n "$story_id" ] || fail "Usage: ralph-story.sh specify <ID> [--dry-run] [--force] [--no-generate]"
+  shift || true
+  local dry_run=0 force=0 no_generate=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)     dry_run=1;     shift ;;
+      --force)       force=1;       shift ;;
+      --no-generate) no_generate=1; shift ;;
+      *) fail "Unknown specify option: $1" ;;
+    esac
+  done
+
+  resolve_stories_file
+
+  local story_meta
+  story_meta="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id)' "$STORIES_FILE")"
+  [ -n "$story_meta" ] || fail "Story $story_id not found in $STORIES_FILE"
+
+  local raw_path
+  raw_path="$(printf '%s' "$story_meta" | jq -r '.story_path // empty')"
+  [ -n "$raw_path" ] || fail "story_path not set for $story_id"
+
+  local story_path_abs story_dir specify_dir
+  [[ "$raw_path" != /* ]] && story_path_abs="$WORKSPACE_ROOT/$raw_path" || story_path_abs="$raw_path"
+  story_dir="$(dirname "$story_path_abs")"
+  specify_dir="$story_dir/.specify"
+
+  # Detect specify binary — fallback to generic generate if unavailable
+  local specify_bin=""
+  if ! specify_bin="$(find_specify_bin)"; then
+    echo "WARN: 'specify' and 'npx specify' not found — falling back to generic generate"
+    local fb_args=()
+    [ "$dry_run" -eq 1 ] && fb_args+=(--dry-run)
+    [ "$force"   -eq 1 ] && fb_args+=(--force)
+    cmd_generate "$story_id" "${fb_args[@]}"
+    return $?
+  fi
+  echo "SpecKit: $specify_bin"
+
+  # Short-circuit if artifacts already exist and --force not set
+  if [ -f "$specify_dir/spec.md" ] && [ -f "$specify_dir/tasks.md" ] && [ "$force" -eq 0 ]; then
+    echo "SpecKit artifacts already exist for $story_id (use --force to regenerate)"
+    if [ "$no_generate" -eq 0 ]; then
+      local gen_args=()
+      [ "$dry_run" -eq 1 ] && gen_args+=(--dry-run)
+      cmd_generate "$story_id" "${gen_args[@]}"
+    fi
+    return 0
+  fi
+
+  # Extract story metadata
+  local title goal prompt_context effort sprint priority depends_on_arr
+  title="$(printf '%s' "$story_meta" | jq -r '.title // ""')"
+  goal="$(printf '%s' "$story_meta" | jq -r '.goal // ""')"
+  prompt_context="$(printf '%s' "$story_meta" | jq -r '.promptContext // ""')"
+  effort="$(printf '%s' "$story_meta" | jq -r '.effort // 3')"
+  sprint="$(printf '%s' "$story_meta" | jq -r '.sprint // ""')"
+  [ -n "$sprint" ] || sprint="$(get_active_sprint 2>/dev/null || echo "sprint-1")"
+  priority="$(printf '%s' "$story_meta" | jq -r '.priority // 1')"
+  depends_on_arr="$(printf '%s' "$story_meta" | jq -c '.depends_on // []')"
+
+  # Pull dependency done_notes for context
+  local dep_context=""
+  while IFS= read -r dep_id; do
+    [ -z "$dep_id" ] && continue
+    local dep_raw_path dep_abs_path dep_title dep_note
+    dep_raw_path="$(jq -r --arg d "$dep_id" '.stories[] | select(.id == $d) | .story_path // ""' "$STORIES_FILE" 2>/dev/null || true)"
+    [ -n "$dep_raw_path" ] || continue
+    [[ "$dep_raw_path" != /* ]] && dep_abs_path="$WORKSPACE_ROOT/$dep_raw_path" || dep_abs_path="$dep_raw_path"
+    [ -f "$dep_abs_path" ] || continue
+    dep_title="$(jq -r '.title // ""' "$dep_abs_path" 2>/dev/null || true)"
+    dep_note="$(jq -r '.done_note // ""' "$dep_abs_path" 2>/dev/null || true)"
+    [ -n "$dep_note" ] || continue
+    dep_context="${dep_context}
+Prior story $dep_id ($dep_title):
+$dep_note"
+  done < <(printf '%s' "$story_meta" | jq -r '.depends_on[]?' 2>/dev/null)
+
+  if [ "$dry_run" -eq 1 ]; then
+    echo "=== DRY RUN: specify for $story_id ==="
+    echo "Binary:      $specify_bin"
+    echo "Specify dir: $specify_dir"
+    echo "Title:       $title"
+    echo "Goal:        $goal"
+    return 0
+  fi
+
+  mkdir -p "$specify_dir"
+
+  # Write SpecKit feature input file
+  cat > "$specify_dir/input.md" <<SPECIN
+# Feature: $title
+
+## What to Build
+$goal
+
+## Context and Constraints
+$prompt_context
+
+## Story Metadata
+- Story ID: $story_id
+- Sprint: $sprint
+- Priority: $priority
+- Effort (story points): $effort
+- Depends on: $depends_on_arr
+SPECIN
+
+  if [ -n "$dep_context" ]; then
+    printf '\n## Prior Story Results\n%s\n' "$dep_context" >> "$specify_dir/input.md"
+  fi
+
+  # Ensure SpecKit Codex integration is configured
+  $specify_bin integration install claude-code >/dev/null 2>&1 || true
+
+  local profile_flag=""
+  [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
+
+  local speckit_prompt
+  speckit_prompt="$(cat <<SKPROMPT
+Run the SpecKit specification workflow for this story. No human approval gates — proceed automatically through all three phases in sequence.
+
+Feature input file: $specify_dir/input.md
+
+Phase 1 — Specify:
+Use the SpecKit specify skill to analyse the feature input and produce a structured specification.
+Write output to: $specify_dir/spec.md
+
+Phase 2 — Plan:
+Use the SpecKit plan skill on spec.md to produce a technical implementation plan with file decisions.
+Write output to: $specify_dir/plan.md
+
+Phase 3 — Tasks:
+Use the SpecKit tasks skill on spec.md and plan.md to produce an executable, phased task list.
+Write output to: $specify_dir/tasks.md
+
+All three files must be written before finishing. Do not commit.
+SKPROMPT
+)"
+
+  echo "Running SpecKit analysis for $story_id (phases: specify → plan → tasks)..."
+  # shellcheck disable=SC2086
+  "$CODEX_BIN" exec $profile_flag "$speckit_prompt"
+
+  # Validate artifacts
+  local missing=0
+  for artifact in spec.md plan.md tasks.md; do
+    [ -f "$specify_dir/$artifact" ] || { echo "WARN: SpecKit did not produce $artifact"; missing=$((missing + 1)); }
+  done
+
+  if [ "$missing" -gt 0 ]; then
+    echo "WARN: SpecKit artifacts incomplete — falling back to generic generate"
+    local fb_args=()
+    [ "$force" -eq 1 ] && fb_args+=(--force)
+    cmd_generate "$story_id" "${fb_args[@]}"
+    return $?
+  fi
+
+  echo "SpecKit artifacts written: $specify_dir/{spec.md,plan.md,tasks.md}"
+
+  if [ "$no_generate" -eq 0 ]; then
+    local gen_args=()
+    [ "$force" -eq 1 ] && gen_args+=(--force)
+    cmd_generate "$story_id" "${gen_args[@]}"
   fi
 }
 
@@ -782,6 +989,7 @@ case "$CMD" in
   set-status)   cmd_set_status "$@" ;;
   abandon)      cmd_abandon "$@" ;;
   health)       cmd_health "$@" ;;
+  specify)      cmd_specify "$@" ;;
   generate)     cmd_generate "$@" ;;
   import-prd)   cmd_import_prd "$@" ;;
   add)          cmd_add "$@" ;;

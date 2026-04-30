@@ -84,9 +84,12 @@ Expected:
 ./scripts/ralph/ralph-sprint.sh create sprint-1
 ./scripts/ralph/ralph-story.sh add --title "My Story" --goal "..." --prompt-context "..."
 
-# Generate task containers for each story (required before start-next)
-./scripts/ralph/ralph-story.sh generate S-001
+# Generate task containers for each story via SpecKit analysis (primary path)
+./scripts/ralph/ralph-story.sh specify S-001       # SpecKit analysis → story.json
 ./scripts/ralph/ralph-story.sh health S-001        # validate tasks, checks, deps
+
+# If SpecKit is not installed, generate directly (fallback):
+# ./scripts/ralph/ralph-story.sh generate S-001
 
 # Start a story and run its tasks
 ./scripts/ralph/ralph-story.sh start-next
@@ -114,8 +117,8 @@ After all stories complete:
 # Convert prd.json userStories → stories.json entries
 ./scripts/ralph/ralph-story.sh import-prd scripts/ralph/prd.json
 
-# Then generate task containers for each imported story
-./scripts/ralph/ralph-story.sh generate S-001
+# Then run SpecKit analysis and generate task containers for each imported story
+./scripts/ralph/ralph-story.sh specify S-001
 # ... repeat for each S-NNN
 ```
 

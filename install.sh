@@ -18,6 +18,7 @@ FORCE=0
 WITH_EXAMPLE_PRD=1
 INSTALL_SKILLS=0
 INSTALL_PROMPTS=0
+INSTALL_SPECKIT=0
 SKIP_GIT_CHECK=0
 
 usage() {
@@ -31,6 +32,7 @@ Options:
   --no-example-prd      Do not create prd.json if missing
   --install-skills      Copy skills into ~/.codex/skills
   --install-prompts     Copy /command prompts to Global prompts directory
+  --install-speckit     Install the SpecKit CLI (specify) via uv, pip, or npx
   --skip-git-check      Allow installing outside a git repo
   -h, --help            Show help
 
@@ -66,6 +68,8 @@ while [[ $# -gt 0 ]]; do
       INSTALL_SKILLS=1; shift;;
       --install-prompts)
       INSTALL_PROMPTS=1; shift;;
+    --install-speckit)
+      INSTALL_SPECKIT=1; shift;;
     --skip-git-check)
       SKIP_GIT_CHECK=1; shift;;
     -h|--help)
@@ -279,6 +283,22 @@ if [ "$INSTALL_PROMPTS" -eq 1 ]; then
     cp "$file" "$CODEX_GLOBAL_PROMPTS_DIR/"
     echo "Installed Codex prompt: $name"
   done < <(find "$SOURCE_DIR/prompts" -type f -print0)
+fi
+
+if [ "$INSTALL_SPECKIT" -eq 1 ]; then
+  echo "Installing SpecKit (specify CLI)..."
+  if command -v uv >/dev/null 2>&1; then
+    uv tool install "git+https://github.com/github/spec-kit.git" && echo "SpecKit installed via uv."
+  elif command -v pip >/dev/null 2>&1; then
+    pip install "git+https://github.com/github/spec-kit.git" && echo "SpecKit installed via pip."
+  elif command -v npx >/dev/null 2>&1; then
+    echo "SpecKit available via npx (no persistent install required)."
+    echo "  Run: npx specify init <PROJECT>"
+  else
+    echo "WARN: Cannot install SpecKit — uv, pip, and npx not found."
+    echo "      Install uv (recommended): https://docs.astral.sh/uv/getting-started/installation/"
+    echo "      Then re-run: bash install.sh --install-speckit"
+  fi
 fi
 
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"

@@ -47,6 +47,16 @@ if [ ! -f "$SPRINT_TEST_FILE" ]; then
   echo "      Copy $SCRIPT_DIR/ralph-sprint-test.sh.example to ralph-sprint-test.sh and customize."
 fi
 
+if command -v specify >/dev/null 2>&1; then
+  echo "OK: specify CLI found"
+elif command -v npx >/dev/null 2>&1 && npx --yes specify version >/dev/null 2>&1; then
+  echo "OK: specify available via npx"
+else
+  echo "WARN: 'specify' CLI not found — ralph-story.sh specify will fall back to generic generate."
+  echo "      Install: uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT>"
+  echo "      Or:      npx specify init <PROJECT>"
+fi
+
 if [ ! -f "$PRD_FILE" ]; then
   echo "WARN: Missing $PRD_FILE"
   echo "      Create it (or copy from prd.json.example) before running ralph.sh."
