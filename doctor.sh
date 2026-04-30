@@ -7,7 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 PRD_FILE="$SCRIPT_DIR/prd.json"
-PROMPT_FILE="$SCRIPT_DIR/prompt.md"
 ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
@@ -31,14 +30,6 @@ require_cmd "$CODEX_BIN"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fail "Not inside a git repository. Run this from within your project repo."
-fi
-
-if [ ! -f "$PROMPT_FILE" ]; then
-  fail "Missing $PROMPT_FILE"
-fi
-
-if grep -q '{{PRD_FILE}}' "$PROMPT_FILE" 2>/dev/null; then
-  echo "WARN: prompt.md still contains unfilled placeholders ({{PRD_FILE}})"
 fi
 
 SPRINT_TEST_FILE="$SCRIPT_DIR/ralph-sprint-test.sh"
@@ -69,7 +60,7 @@ fi
 
 if [ ! -f "$PRD_FILE" ]; then
   echo "WARN: Missing $PRD_FILE"
-  echo "      Create it (or copy from prd.json.example) before running ralph.sh."
+  echo "      Create it (or use ralph-story.sh add) before running ralph.sh."
 fi
 
 if [ -f "$ACTIVE_SPRINT_FILE" ]; then

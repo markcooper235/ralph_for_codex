@@ -155,7 +155,6 @@ copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh
 copy_file "$SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
 copy_file "$SOURCE_DIR/README-local.md" "$DEST_DIR_REL/README-local.md"
 copy_file "$SOURCE_DIR/new-local-extension.sh.example" "$DEST_DIR_REL/new-local-extension.sh.example"
-copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.md"
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
 copy_file "$SOURCE_DIR/story.json.example" "$DEST_DIR_REL/story.json.example"
 copy_file "$SOURCE_DIR/stories.json.example" "$DEST_DIR_REL/stories.json.example"
