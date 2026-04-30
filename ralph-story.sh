@@ -832,16 +832,12 @@ cmd_specify() {
   story_dir="$(dirname "$story_path_abs")"
   specify_dir="$story_dir/.specify"
 
-  # Detect specify binary — fallback to generic generate if unavailable
+  # Detect specify binary — required, no fallback
   local specify_bin=""
-  if ! specify_bin="$(find_specify_bin)"; then
-    echo "WARN: 'specify' and 'npx specify' not found — falling back to generic generate"
-    local fb_args=()
-    [ "$dry_run" -eq 1 ] && fb_args+=(--dry-run)
-    [ "$force"   -eq 1 ] && fb_args+=(--force)
-    cmd_generate "$story_id" "${fb_args[@]}"
-    return $?
-  fi
+  specify_bin="$(find_specify_bin)" || fail "'specify' CLI not found and 'npx specify' unavailable.
+  Install: uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT>
+  Or:      npx specify init <PROJECT>
+  Or re-run: bash install.sh --install-speckit"
   echo "SpecKit: $specify_bin"
 
   # Short-circuit if artifacts already exist and --force not set
@@ -955,11 +951,7 @@ SKPROMPT
   done
 
   if [ "$missing" -gt 0 ]; then
-    echo "WARN: SpecKit artifacts incomplete — falling back to generic generate"
-    local fb_args=()
-    [ "$force" -eq 1 ] && fb_args+=(--force)
-    cmd_generate "$story_id" "${fb_args[@]}"
-    return $?
+    fail "SpecKit did not produce all required artifacts ($missing missing). Check the Codex session log and re-run with --force."
   fi
 
   echo "SpecKit artifacts written: $specify_dir/{spec.md,plan.md,tasks.md}"

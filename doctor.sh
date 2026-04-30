@@ -52,9 +52,10 @@ if command -v specify >/dev/null 2>&1; then
 elif command -v npx >/dev/null 2>&1 && npx --yes specify version >/dev/null 2>&1; then
   echo "OK: specify available via npx"
 else
-  echo "WARN: 'specify' CLI not found — ralph-story.sh specify will fall back to generic generate."
-  echo "      Install: uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT>"
-  echo "      Or:      npx specify init <PROJECT>"
+  fail "'specify' CLI not found — required for story specification.
+  Install: uvx --from git+https://github.com/github/spec-kit.git specify init <PROJECT>
+  Or:      npx specify init <PROJECT>
+  Or:      bash install.sh --install-speckit"
 fi
 
 if [ ! -f "$PRD_FILE" ]; then
