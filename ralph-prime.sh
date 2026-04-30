@@ -10,7 +10,6 @@ ACTIVE_PRD_FILE="$SCRIPT_DIR/.active-prd"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 EPICS_FILE=""
-EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 CODEX_BIN="${CODEX_BIN:-codex}"
 ACTIVE_SPRINT=""
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
@@ -106,6 +105,13 @@ resolve_epics_file() {
   if [ -z "$ACTIVE_SPRINT" ]; then
     fail "No active sprint set. Run ./scripts/ralph/ralph-sprint.sh use <sprint-name>."
   fi
+  local stories_file="$SPRINTS_DIR/$ACTIVE_SPRINT/stories.json"
+  if [ -f "$stories_file" ]; then
+    echo "ralph-prime.sh is not used in the story-task architecture." >&2
+    echo "Sprint '$ACTIVE_SPRINT' uses stories.json. To work on the next story:" >&2
+    echo "  ./scripts/ralph/ralph-story.sh start-next && ./scripts/ralph/ralph-task.sh" >&2
+    exit 1
+  fi
   EPICS_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/epics.json"
 }
 
@@ -174,8 +180,13 @@ ensure_transient_files_not_tracked() {
 }
 
 find_next_epic_id() {
-  [ -f "$EPIC_CLI" ] || return 1
-  bash "$EPIC_CLI" next-id 2>/dev/null | head -n 1
+  [ -f "$EPICS_FILE" ] || return 1
+  jq -r '
+    (.epics // [])
+    | map(select(.status != "done" and .status != "abandoned" and .status != "active"))
+    | sort_by(.priority // 0, .id)
+    | .[0].id // empty
+  ' "$EPICS_FILE" 2>/dev/null | head -n 1
 }
 
 choose_primary_prd_path_for_epic() {
@@ -208,8 +219,13 @@ get_active_epic_id() {
 
 set_epic_active() {
   local epic_id="$1"
-  [ -f "$EPIC_CLI" ] || return 0
-  bash "$EPIC_CLI" set-status "$epic_id" active >/dev/null
+  [ -f "$EPICS_FILE" ] || return 0
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg id "$epic_id" --arg now "$(date -Iseconds)" '
+    .epics = [.epics[] | if .id == $id then .status = "active" | .activatedAt = $now else . end]
+    | .activeEpicId = $id
+  ' "$EPICS_FILE" > "$tmp" && mv "$tmp" "$EPICS_FILE"
 }
 
 set_active_epic_prd() {

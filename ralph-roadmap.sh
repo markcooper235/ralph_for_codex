@@ -11,7 +11,6 @@ ROADMAP_SOURCE="$SCRIPT_DIR/roadmap-source.md"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 EDITOR_HELPER="$SCRIPT_DIR/lib/editor-intake.sh"
 SPRINT_CLI="$SCRIPT_DIR/ralph-sprint.sh"
-EPIC_CLI="$SCRIPT_DIR/ralph-epic.sh"
 
 # shellcheck source=./lib/editor-intake.sh
 source "$EDITOR_HELPER"
@@ -35,7 +34,7 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/ralph/ralph-roadmap.sh [options]
 
-Create or refine a durable roadmap plan and seed sprint/epic backlogs.
+Create or refine a durable roadmap plan and seed sprint/story backlogs.
 
 Options:
   --vision TEXT             Roadmap vision / future-state description
@@ -50,9 +49,9 @@ Options:
   -h, --help                Show help
 
 Notes:
-  - Each epic effort must be one of: 1, 2, 3, 5
-  - Roadmap planning keeps epics sprint-safe; oversized work should roll into later sprints
-  - Refinement is additive by default: prefer updating open/future work and adding follow-up epics or sprints over churning completed work
+  - Each story effort must be one of: 1, 2, 3, 5
+  - Roadmap planning keeps stories sprint-safe; oversized work should roll into later sprints
+  - Refinement is additive by default: prefer updating open/future work and adding follow-up stories or sprints over churning completed work
 EOF
 }
 
@@ -73,10 +72,22 @@ require_cmd() {
   fi
 }
 
-get_epic_planning_source_from_backlog() {
-  local epics_file="$1"
-  local epic_id="$2"
-  jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | (.planningSource // "legacy")' "$epics_file"
+get_story_planning_source_from_backlog() {
+  local stories_file="$1"
+  local story_id="$2"
+  jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | (.planningSource // "legacy")' "$stories_file"
+}
+
+get_story_status_from_backlog() {
+  local stories_file="$1"
+  local story_id="$2"
+  jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | (.status // "planned")' "$stories_file"
+}
+
+story_exists_in_backlog() {
+  local stories_file="$1"
+  local story_id="$2"
+  jq -e --arg id "$story_id" '.stories[] | select(.id == $id)' "$stories_file" >/dev/null 2>&1
 }
 
 setup_work_paths() {
@@ -195,7 +206,7 @@ write_roadmap_source() {
 
   {
     printf '# Ralph Roadmap Source\n\n'
-    printf 'This is the durable roadmap input. Refine it when the target state changes; downstream sprint and epic plans should reconcile from here.\n\n'
+    printf 'This is the durable roadmap input. Refine it when the target state changes; downstream sprint and story plans should reconcile from here.\n\n'
     printf '<!-- BEGIN CURRENT -->\n'
     printf 'VISION:\n%s\n\n' "$VISION"
     printf 'CONSTRAINTS:\n%s\n\n' "${CONSTRAINTS:-Not provided.}"
@@ -205,7 +216,7 @@ write_roadmap_source() {
     printf -- '- Update open and future work directly.\n'
     printf -- '- Treat closed sprints as stable by default.\n'
     printf -- '- Only reopen closed sprints for tightly scoped, low-churn additions.\n'
-    printf -- '- Otherwise inject new epics or new sprints for the refinement.\n\n'
+    printf -- '- Otherwise inject new stories or new sprints for the refinement.\n\n'
     printf '## Revision History\n'
     if [ -n "$existing_history" ]; then
       printf '%s\n' "$existing_history"
@@ -234,7 +245,7 @@ EOF
     if [ -f "$ROADMAP_JSON" ]; then
       current_plan_hint="- Current roadmap JSON already exists at \`scripts/ralph/roadmap.json\`."
     fi
-    backlog_hint="- Existing sprint backlogs may already contain active or completed epics. Prefer additive updates over churn."
+    backlog_hint="- Existing sprint backlogs may already contain active or completed stories. Prefer additive updates over churn."
   fi
 
   mkdir -p "$SCRIPT_DIR"
@@ -260,17 +271,18 @@ $backlog_hint
 Requirements:
 1. Output JSON with keys: project, visionSummary, constraintsSummary, capacityTarget, capacityCeiling, sprints.
 2. Create exactly $SPRINT_COUNT sprints named \`sprint-1\` through \`sprint-$SPRINT_COUNT\`.
-3. Each sprint object must contain: name, goal, capacityTarget, capacityCeiling, epics.
-4. Each epic must contain: id, title, priority, effort, dependsOn, goal, promptContext.
-5. Epic effort must be one of: 1, 2, 3, 5.
-6. Keep each sprint at or under the capacity ceiling; if more work exists, roll overflow into later sprints.
-7. If any epic would be too large for a sprint-safe PRD later, split it now instead of creating an oversized epic.
-8. Use \`dependsOn\` only for dependencies inside the same sprint. Express cross-sprint sequencing by sprint order, not cross-sprint dependency links.
-9. Write execution-oriented \`promptContext\` that is specific enough for later PRD generation.
-10. Treat closed/completed sprints as stable by default. Only place new work into a closed sprint when it is tightly scoped and likely lower churn than adding a follow-up epic or sprint.
-11. Prefer additive follow-up epics or new sprints over reopening completed work when the refinement would otherwise cause broad refactor churn.
-12. Preserve stable epic IDs for unchanged work when refining; use new IDs for genuinely new follow-up work.
-13. Do not create runtime files or PRD JSON. This is planning only.
+3. Each sprint object must contain: name, goal, capacityTarget, capacityCeiling, stories.
+4. Each story must contain: id, title, priority, effort, dependsOn, goal, promptContext.
+5. Story IDs must use the format S-NNN (e.g., S-001, S-002), unique across all sprints.
+6. Story effort must be one of: 1, 2, 3, 5.
+7. Keep each sprint at or under the capacity ceiling; if more work exists, roll overflow into later sprints.
+8. If any story would be too large to deliver in a single focused Codex session, split it now.
+9. Use \`dependsOn\` only for dependencies inside the same sprint. Express cross-sprint sequencing by sprint order, not cross-sprint dependency links.
+10. Write execution-oriented \`promptContext\` that is specific enough for later task generation.
+11. Treat closed/completed sprints as stable by default. Only place new work into a closed sprint when it is tightly scoped and likely lower churn than adding a follow-up story or sprint.
+12. Prefer additive follow-up stories or new sprints over reopening completed work when the refinement would otherwise cause broad refactor churn.
+13. Preserve stable story IDs for unchanged work when refining; use new IDs for genuinely new follow-up work.
+14. Do not create runtime files or PRD JSON. This is planning only.
 
 Return only a short summary after writing the file.
 EOF
@@ -296,38 +308,38 @@ validate_roadmap_json() {
       .name and .goal and
       .capacityTarget == $target and
       .capacityCeiling == $ceiling and
-      (.epics | type == "array") and
-      ([.epics[]?.effort] | all(. == 1 or . == 2 or . == 3 or . == 5))
+      (.stories | type == "array") and
+      ([.stories[]?.effort] | all(. == 1 or . == 2 or . == 3 or . == 5))
     )
   ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Invalid roadmap JSON structure: $ROADMAP_JSON_WORK"
 
   jq -e '
-    [ .sprints[].epics[].id ] as $ids
+    [ .sprints[].stories[].id ] as $ids
     | ($ids | unique | length) == ($ids | length)
-  ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Roadmap JSON contains duplicate epic IDs."
+  ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Roadmap JSON contains duplicate story IDs."
 
   jq -e '
     .sprints
-    | all(.[]; ([.epics[]?.effort] | add // 0) <= .capacityCeiling)
+    | all(.[]; ([.stories[]?.effort] | add // 0) <= .capacityCeiling)
   ' "$ROADMAP_JSON_WORK" >/dev/null 2>&1 || fail "Roadmap JSON exceeds sprint capacity ceiling."
   validate_sprint_local_dependencies
 }
 
 validate_sprint_local_dependencies() {
-  local sprint local_ids dep_line epic_id dep_id
+  local sprint local_ids story_id dep_id
   while IFS= read -r sprint; do
     [ -n "$sprint" ] || continue
-    local_ids="$(jq -r --arg sprint "$sprint" '.sprints[] | select(.name == $sprint) | .epics[]?.id' "$ROADMAP_JSON_WORK")"
-    while IFS=$'\t' read -r epic_id dep_id; do
-      [ -n "$epic_id" ] || continue
+    local_ids="$(jq -r --arg sprint "$sprint" '.sprints[] | select(.name == $sprint) | .stories[]?.id' "$ROADMAP_JSON_WORK")"
+    while IFS=$'\t' read -r story_id dep_id; do
+      [ -n "$story_id" ] || continue
       [ -n "$dep_id" ] || continue
       if ! printf '%s\n' "$local_ids" | grep -qx "$dep_id"; then
-        fail "Roadmap JSON contains cross-sprint or missing dependency: $epic_id -> $dep_id"
+        fail "Roadmap JSON contains cross-sprint or missing dependency: $story_id -> $dep_id"
       fi
     done < <(jq -r --arg sprint "$sprint" '
       .sprints[]
       | select(.name == $sprint)
-      | .epics[]
+      | .stories[]
       | .id as $id
       | (.dependsOn // [])[]
       | [$id, .] | @tsv
@@ -344,16 +356,16 @@ render_roadmap_markdown() {
     "## Capacity Policy\n\n" +
     "- Sprint target effort: \(.capacityTarget)\n" +
     "- Sprint ceiling effort: \(.capacityCeiling)\n" +
-    "- Epic effort scale: 1, 2, 3, 5\n" +
+    "- Story effort scale: 1, 2, 3, 5\n" +
     "- Cross-sprint sequencing is expressed by sprint order; \u0060dependsOn\u0060 is sprint-local only.\n\n" +
     (
       .sprints
       | map(
           "## " + .name + "\n\n" +
           "Goal: " + .goal + "\n\n" +
-          "Planned effort: " + (([.epics[]?.effort] | add // 0) | tostring) + "/" + (.capacityCeiling | tostring) + "\n\n" +
+          "Planned effort: " + (([.stories[]?.effort] | add // 0) | tostring) + "/" + (.capacityCeiling | tostring) + "\n\n" +
           (
-            .epics
+            .stories
             | sort_by(.priority, .id)
             | map(
                 "- **" + .id + "** (P" + (.priority | tostring) + " E" + (.effort | tostring) + ") " + .title +
@@ -369,92 +381,83 @@ render_roadmap_markdown() {
 
 ensure_empty_sprint_backlog() {
   local sprint="$1"
-  local epics_file="$SCRIPT_DIR/sprints/$sprint/epics.json"
-  [ -f "$epics_file" ] || return 0
-  if jq -e '(.epics | length) == 0' "$epics_file" >/dev/null 2>&1; then
+  local stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
+  [ -f "$stories_file" ] || return 0
+  if jq -e '(.stories | length) == 0' "$stories_file" >/dev/null 2>&1; then
     return 0
   fi
-  if is_seed_example_backlog "$epics_file"; then
-    reset_seed_example_backlog "$epics_file" "$sprint"
+  if is_seed_example_backlog "$stories_file"; then
+    reset_seed_example_backlog "$stories_file" "$sprint"
     return 0
   fi
-  fail "Sprint backlog already has epics: $epics_file"
+  fail "Sprint backlog already has stories: $stories_file"
 }
 
 is_seed_example_backlog() {
-  local epics_file="$1"
+  local stories_file="$1"
   jq -e '
-    (.epics | length) == 2 and
-    .epics[0].title == "Foundation Epic" and
-    .epics[1].title == "Follow-on Epic"
-  ' "$epics_file" >/dev/null 2>&1
+    (.stories | length) == 2 and
+    .stories[0].title == "Foundation Story" and
+    .stories[1].title == "Follow-on Story"
+  ' "$stories_file" >/dev/null 2>&1
 }
 
 reset_seed_example_backlog() {
-  local epics_file="$1"
+  local stories_file="$1"
   local sprint="$2"
   local tmp_file
   tmp_file="$(mktemp)"
   jq --arg sprint "$sprint" --arg project "$(basename "$WORKSPACE_ROOT")" '
     .project = $project
     | .sprint = $sprint
-    | .activeEpicId = null
-    | .epics = []
-  ' "$epics_file" > "$tmp_file"
-  mv "$tmp_file" "$epics_file"
+    | .activeStoryId = null
+    | .stories = []
+  ' "$stories_file" > "$tmp_file"
+  mv "$tmp_file" "$stories_file"
 }
 
 ensure_sprint_structure_local() {
   local sprint="$1"
-  local epics_file="$SCRIPT_DIR/sprints/$sprint/epics.json"
-  mkdir -p "$SCRIPT_DIR/sprints/$sprint" "$SCRIPT_DIR/tasks/$sprint" "$SCRIPT_DIR/tasks/archive/$sprint"
-  if [ ! -f "$epics_file" ]; then
-    cat > "$epics_file" <<JSON
-{
-  "version": 1,
-  "project": "$(basename "$WORKSPACE_ROOT")",
-  "sprint": "$sprint",
-  "capacityTarget": $CAPACITY_TARGET,
-  "capacityCeiling": $CAPACITY_CEILING,
-  "activeEpicId": null,
-  "epics": []
-}
-JSON
+  local stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
+  mkdir -p "$SCRIPT_DIR/sprints/$sprint/stories" "$SCRIPT_DIR/tasks/$sprint" "$SCRIPT_DIR/tasks/archive/$sprint"
+  if [ ! -f "$stories_file" ]; then
+    jq -n \
+      --arg project "$(basename "$WORKSPACE_ROOT")" \
+      --arg sprint "$sprint" \
+      --argjson target "$CAPACITY_TARGET" \
+      --argjson ceiling "$CAPACITY_CEILING" \
+      '{
+        "version": 1,
+        "project": $project,
+        "sprint": $sprint,
+        "capacityTarget": $target,
+        "capacityCeiling": $ceiling,
+        "activeStoryId": null,
+        "stories": []
+      }' > "$stories_file"
   fi
 }
 
 write_sprint_capacity_metadata() {
   local sprint="$1"
-  local epics_file="$SCRIPT_DIR/sprints/$sprint/epics.json"
+  local stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
   local tmp_file
   tmp_file="$(mktemp)"
   jq --arg sprint "$sprint" --argjson target "$CAPACITY_TARGET" --argjson ceiling "$CAPACITY_CEILING" '
     .sprint = $sprint
     | .capacityTarget = $target
     | .capacityCeiling = $ceiling
-  ' "$epics_file" > "$tmp_file"
-  mv "$tmp_file" "$epics_file"
+  ' "$stories_file" > "$tmp_file"
+  mv "$tmp_file" "$stories_file"
 }
 
-epic_exists_in_backlog() {
-  local epics_file="$1"
-  local epic_id="$2"
-  jq -e --arg id "$epic_id" '.epics[] | select(.id == $id)' "$epics_file" >/dev/null 2>&1
-}
-
-get_epic_status_from_backlog() {
-  local epics_file="$1"
-  local epic_id="$2"
-  jq -r --arg id "$epic_id" '.epics[] | select(.id == $id) | (.status // "planned")' "$epics_file"
-}
-
-upsert_epic_metadata() {
-  local epics_file="$1"
-  local epic_json="$2"
-  local epic_id status planning_source tmp_file
-  epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
-  status="$(get_epic_status_from_backlog "$epics_file" "$epic_id")"
-  planning_source="$(get_epic_planning_source_from_backlog "$epics_file" "$epic_id")"
+upsert_story_metadata() {
+  local stories_file="$1"
+  local story_json="$2"
+  local story_id status planning_source tmp_file
+  story_id="$(printf '%s\n' "$story_json" | jq -r '.id')"
+  status="$(get_story_status_from_backlog "$stories_file" "$story_id")"
+  planning_source="$(get_story_planning_source_from_backlog "$stories_file" "$story_id")"
 
   case "$status" in
     done|abandoned|active)
@@ -466,63 +469,70 @@ upsert_epic_metadata() {
   fi
 
   tmp_file="$(mktemp)"
-  jq --argjson epic "$epic_json" --arg sourceRef "$ROADMAP_REVISION_ID" '
-    .epics = (
-      .epics
+  jq --argjson story "$story_json" --arg sourceRef "$ROADMAP_REVISION_ID" '
+    .stories = (
+      .stories
       | map(
-          if .id == $epic.id then
-            .title = $epic.title
-            | .priority = $epic.priority
-            | .effort = $epic.effort
+          if .id == $story.id then
+            .title = $story.title
+            | .priority = $story.priority
+            | .effort = $story.effort
             | .planningSource = "roadmap"
             | .sourceRef = $sourceRef
-            | .dependsOn = ($epic.dependsOn // [])
-            | .goal = $epic.goal
-            | .promptContext = $epic.promptContext
+            | .depends_on = ($story.dependsOn // [])
+            | .goal = $story.goal
+            | .promptContext = $story.promptContext
           else
             .
           end
         )
     )
-  ' "$epics_file" > "$tmp_file"
-  mv "$tmp_file" "$epics_file"
+  ' "$stories_file" > "$tmp_file"
+  mv "$tmp_file" "$stories_file"
 }
 
 reconcile_sprint_backlog() {
   local sprint_name="$1"
-  local epics_file="$SCRIPT_DIR/sprints/$sprint_name/epics.json"
-  local epic_json epic_id title priority effort goal prompt_context depends_csv
+  local stories_file="$SCRIPT_DIR/sprints/$sprint_name/stories.json"
+  local story_json story_id depends_json story_path tmp_file
 
-  while IFS= read -r epic_json; do
-    [ -n "$epic_json" ] || continue
-    epic_id="$(printf '%s\n' "$epic_json" | jq -r '.id')"
-    title="$(printf '%s\n' "$epic_json" | jq -r '.title')"
-    priority="$(printf '%s\n' "$epic_json" | jq -r '.priority')"
-    effort="$(printf '%s\n' "$epic_json" | jq -r '.effort')"
-    goal="$(printf '%s\n' "$epic_json" | jq -r '.goal')"
-    prompt_context="$(printf '%s\n' "$epic_json" | jq -r '.promptContext')"
-    depends_csv="$(printf '%s\n' "$epic_json" | jq -r '(.dependsOn // []) | join(",")')"
+  while IFS= read -r story_json; do
+    [ -n "$story_json" ] || continue
+    story_id="$(printf '%s\n' "$story_json" | jq -r '.id')"
 
-    if epic_exists_in_backlog "$epics_file" "$epic_id"; then
-      upsert_epic_metadata "$epics_file" "$epic_json"
+    if story_exists_in_backlog "$stories_file" "$story_id"; then
+      upsert_story_metadata "$stories_file" "$story_json"
     else
-      RALPH_EPICS_FILE="$epics_file" "$EPIC_CLI" add \
-        --id "$epic_id" \
-        --title "$title" \
-        --priority "$priority" \
-        --effort "$effort" \
-        --planning-source roadmap \
-        --source-ref "$ROADMAP_REVISION_ID" \
-        --depends-on "$depends_csv" \
-        --goal "$goal" \
-        --prompt-context "$prompt_context" >/dev/null
+      depends_json="$(printf '%s\n' "$story_json" | jq -c '(.dependsOn // [])')"
+      story_path="scripts/ralph/sprints/$sprint_name/stories/$story_id/story.json"
+      tmp_file="$(mktemp)"
+      jq \
+        --argjson story "$story_json" \
+        --argjson depends "$depends_json" \
+        --arg path "$story_path" \
+        --arg sourceRef "$ROADMAP_REVISION_ID" \
+        '.stories += [{
+          "id": $story.id,
+          "title": $story.title,
+          "priority": $story.priority,
+          "effort": $story.effort,
+          "planningSource": "roadmap",
+          "sourceRef": $sourceRef,
+          "status": "planned",
+          "depends_on": $depends,
+          "story_path": $path,
+          "goal": $story.goal,
+          "promptContext": $story.promptContext
+        }]' \
+        "$stories_file" > "$tmp_file"
+      mv "$tmp_file" "$stories_file"
     fi
-  done < <(jq -c --arg sprint "$sprint_name" '.sprints[] | select(.name == $sprint) | .epics[]' "$ROADMAP_JSON_WORK")
+  done < <(jq -c --arg sprint "$sprint_name" '.sprints[] | select(.name == $sprint) | .stories[]' "$ROADMAP_JSON_WORK")
 }
 
 apply_roadmap_to_sprints() {
   local first_sprint=""
-  local sprint_count sprint_name sprint_goal epics_file
+  local sprint_count sprint_name sprint_goal
 
   sprint_count="$(jq '.sprints | length' "$ROADMAP_JSON_WORK")"
   [ "$sprint_count" -gt 0 ] || fail "Roadmap has no sprints to apply."
@@ -533,10 +543,10 @@ apply_roadmap_to_sprints() {
       first_sprint="$sprint_name"
     fi
 
-    if [ -f "$SCRIPT_DIR/sprints/$sprint_name/epics.json" ]; then
+    if [ -f "$SCRIPT_DIR/sprints/$sprint_name/stories.json" ]; then
       if [ "$REFINE_MODE" -eq 1 ]; then
-        if is_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/epics.json"; then
-          reset_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/epics.json" "$sprint_name"
+        if is_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/stories.json"; then
+          reset_seed_example_backlog "$SCRIPT_DIR/sprints/$sprint_name/stories.json" "$sprint_name"
         fi
       else
         ensure_empty_sprint_backlog "$sprint_name"
@@ -547,7 +557,6 @@ apply_roadmap_to_sprints() {
     ensure_sprint_structure_local "$sprint_name"
     "$SPRINT_CLI" branch "$sprint_name" >/dev/null
     write_sprint_capacity_metadata "$sprint_name"
-    epics_file="$SCRIPT_DIR/sprints/$sprint_name/epics.json"
     reconcile_sprint_backlog "$sprint_name"
   done < <(jq -r '.sprints[] | [.name, .goal] | @tsv' "$ROADMAP_JSON_WORK")
 

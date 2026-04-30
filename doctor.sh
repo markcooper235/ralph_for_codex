@@ -45,9 +45,14 @@ fi
 if [ -f "$ACTIVE_SPRINT_FILE" ]; then
   ACTIVE_SPRINT="$(awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE" || true)"
   if [ -n "${ACTIVE_SPRINT:-}" ]; then
+    STORIES_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/stories.json"
     EPICS_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/epics.json"
-    if [ ! -f "$EPICS_FILE" ]; then
-      echo "WARN: Active sprint is set to '$ACTIVE_SPRINT' but epics file is missing: $EPICS_FILE"
+    if [ -f "$STORIES_FILE" ]; then
+      echo "OK: active sprint '$ACTIVE_SPRINT' uses story-task format (stories.json)"
+    elif [ -f "$EPICS_FILE" ]; then
+      echo "WARN: active sprint '$ACTIVE_SPRINT' still uses legacy epic format. Run ralph-sprint-migrate.sh to convert."
+    else
+      echo "WARN: active sprint '$ACTIVE_SPRINT' has no stories.json or epics.json: $STORIES_FILE"
     fi
   fi
 fi
@@ -77,6 +82,13 @@ if [ -f "$ACTIVE_PRD_FILE" ]; then
       sprint_active_epic_id="$(jq -r '.activeEpicId // empty' "$EPICS_FILE" 2>/dev/null || true)"
       if [ -n "$sprint_active_epic_id" ] && [ "$sprint_active_epic_id" != "$active_epic_id" ]; then
         echo "WARN: Active epic mismatch: .active-prd=$active_epic_id, epics.json.activeEpicId=$sprint_active_epic_id"
+      fi
+    fi
+    if [ "$active_mode" = "story" ] && [ -n "${STORIES_FILE:-}" ] && [ -f "$STORIES_FILE" ]; then
+      sprint_active_story_id="$(jq -r '.activeStoryId // empty' "$STORIES_FILE" 2>/dev/null || true)"
+      active_story_id_prd="$(jq -r '.storyId // empty' "$ACTIVE_PRD_FILE" 2>/dev/null || true)"
+      if [ -n "$sprint_active_story_id" ] && [ -n "$active_story_id_prd" ] && [ "$sprint_active_story_id" != "$active_story_id_prd" ]; then
+        echo "WARN: Active story mismatch: .active-prd storyId=$active_story_id_prd, stories.json.activeStoryId=$sprint_active_story_id"
       fi
     fi
   fi

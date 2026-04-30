@@ -22,7 +22,7 @@ usage() {
 Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target master|main] [--dry-run] [--keep]
 
 Behavior:
-  1. Validates active sprint exists and all epics are done/abandoned (legacy aborted also accepted)
+  1. Validates active sprint exists and all stories are done/abandoned
   2. Ensures sprint branch exists (ralph/sprint/<active-sprint>)
   3. Archives sprint-level artifacts to scripts/ralph/tasks/archive/sprints/
   4. Merges sprint branch into target branch (master preferred, else main)
@@ -78,16 +78,16 @@ ensure_clean_worktree() {
   fi
 }
 
-validate_epics_done_or_abandoned() {
-  local epics_file="$1"
-  jq -e '.epics and (.epics|type=="array")' "$epics_file" >/dev/null 2>&1 || fail "Invalid epics file: $epics_file"
+validate_stories_done_or_abandoned() {
+  local stories_file="$1"
+  jq -e '.stories and (.stories|type=="array")' "$stories_file" >/dev/null 2>&1 || fail "Invalid stories file: $stories_file"
 
   local invalid
-  invalid="$(jq -r '.epics[] | select((.status != "done") and (.status != "abandoned") and (.status != "aborted")) | "\(.id)\t\(.status)"' "$epics_file")"
+  invalid="$(jq -r '.stories[] | select((.status != "done") and (.status != "abandoned")) | "\(.id)\t\(.status)"' "$stories_file")"
   if [ -n "$invalid" ]; then
-    echo "Sprint has incomplete epics:" >&2
+    echo "Sprint has incomplete stories:" >&2
     printf '%s\n' "$invalid" >&2
-    fail "All sprint epics must be done or abandoned before sprint commit (legacy status 'aborted' is also accepted)."
+    fail "All sprint stories must be done or abandoned before sprint commit."
   fi
 }
 
@@ -144,8 +144,8 @@ fi
 ACTIVE_SPRINT="$(get_active_sprint || true)"
 [ -n "$ACTIVE_SPRINT" ] || fail "No active sprint set."
 
-EPICS_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/epics.json"
-[ -f "$EPICS_FILE" ] || fail "Missing epics file: $EPICS_FILE"
+STORIES_FILE="$SPRINTS_DIR/$ACTIVE_SPRINT/stories.json"
+[ -f "$STORIES_FILE" ] || fail "Missing stories file: $STORIES_FILE"
 
 SPRINT_BRANCH="$(sprint_branch_name "$ACTIVE_SPRINT")"
 if ! git show-ref --verify --quiet "refs/heads/$SPRINT_BRANCH"; then
@@ -164,14 +164,14 @@ if ! git show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
   fail "Missing target branch: $TARGET_BRANCH"
 fi
 
-validate_epics_done_or_abandoned "$EPICS_FILE"
+validate_stories_done_or_abandoned "$STORIES_FILE"
 
 if [ "$DRY_RUN" = "true" ]; then
   echo "Ralph sprint commit plan:"
   echo "  sprint:        $ACTIVE_SPRINT"
   echo "  sprint branch: $SPRINT_BRANCH"
   echo "  target branch: $TARGET_BRANCH"
-  echo "  epics file:    $EPICS_FILE"
+  echo "  stories file:  $STORIES_FILE"
   echo "  archive root:  $ARCHIVE_DIR"
   if [ "$KEEP_SOURCE" = "true" ]; then
     echo "  delete source: no (--keep)"
@@ -192,7 +192,7 @@ if [ -e "$ARCHIVE_PATH" ]; then
   ARCHIVE_PATH="$ARCHIVE_DIR/$DATE_PREFIX-$ACTIVE_SPRINT-$(date +%H%M%S)"
 fi
 mkdir -p "$ARCHIVE_PATH"
-cp "$EPICS_FILE" "$ARCHIVE_PATH/epics.json"
+cp "$STORIES_FILE" "$ARCHIVE_PATH/stories.json"
 [ -f "$ACTIVE_SPRINT_FILE" ] && cp "$ACTIVE_SPRINT_FILE" "$ARCHIVE_PATH/.active-sprint"
 [ -f "$ACTIVE_PRD_FILE" ] && cp "$ACTIVE_PRD_FILE" "$ARCHIVE_PATH/.active-prd"
 [ -f "$LAST_BRANCH_FILE" ] && cp "$LAST_BRANCH_FILE" "$ARCHIVE_PATH/.last-branch"
@@ -202,7 +202,7 @@ archive_time=$(date -Iseconds)
 active_sprint=$ACTIVE_SPRINT
 sprint_branch=$SPRINT_BRANCH
 target_branch=$TARGET_BRANCH
-source_epics_file=$EPICS_FILE
+source_stories_file=$STORIES_FILE
 MANIFEST
 
 if [ -n "$(git status --porcelain -- "$ARCHIVE_PATH")" ]; then
@@ -212,13 +212,13 @@ if [ -n "$(git status --porcelain -- "$ARCHIVE_PATH")" ]; then
   fi
 fi
 
-# Ensure activeEpicId is cleared before merge
+# Clear activeStoryId before merge
 TMP_FILE="$(mktemp)"
-jq '.activeEpicId = null' "$EPICS_FILE" > "$TMP_FILE"
-mv "$TMP_FILE" "$EPICS_FILE"
-if ! git diff --quiet -- "$EPICS_FILE"; then
-  git add "$EPICS_FILE"
-  git commit -m "chore(ralph): finalize sprint $ACTIVE_SPRINT epic state"
+jq '.activeStoryId = null' "$STORIES_FILE" > "$TMP_FILE"
+mv "$TMP_FILE" "$STORIES_FILE"
+if ! git diff --quiet -- "$STORIES_FILE"; then
+  git add "$STORIES_FILE"
+  git commit -m "chore(ralph): finalize sprint $ACTIVE_SPRINT story state"
 fi
 
 # Merge sprint branch into target
