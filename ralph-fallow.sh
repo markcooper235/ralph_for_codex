@@ -20,6 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+source "$SCRIPT_DIR/lib/codex-exec.sh"
 
 STORY_FILE=""
 DRY_RUN=0
@@ -683,9 +684,6 @@ run_codex_fix() {
     files_list="  (all files changed in this story)"
   fi
 
-  local profile_flag=""
-  [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_flag="--profile $RALPH_CODEX_PROFILE"
-
   local prompt
   prompt="$(cat <<PROMPT
 ## Fallow Auto-Fix: Code Quality Issues
@@ -717,8 +715,7 @@ PROMPT
   fi
 
   log "  Running Codex auto-fix session..."
-  # shellcheck disable=SC2086
-  "$CODEX_BIN" exec $profile_flag --quiet "$prompt" 2>&1 | tee "$log_file"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" --quiet 2>&1 | tee "$log_file"
 }
 
 # ---------------------------------------------------------------------------

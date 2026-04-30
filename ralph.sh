@@ -120,6 +120,24 @@ fi
 acquire_workflow_lock
 
 # ---------------------------------------------------------------------------
+# Pre-flight: warn about stories with no story.json
+# ---------------------------------------------------------------------------
+
+unprepared_ids=()
+while IFS=$'\t' read -r sid spath; do
+  [ -n "$sid" ] || continue
+  [[ "$spath" != /* ]] && spath="$WORKSPACE_ROOT/$spath"
+  [ -f "$spath" ] || unprepared_ids+=("$sid")
+done < <(jq -r '.stories[] | select(.status != "done" and .status != "abandoned") | [.id, (.story_path // "")] | @tsv' "$STORIES_FILE" 2>/dev/null)
+
+if [ "${#unprepared_ids[@]}" -gt 0 ]; then
+  echo "WARN: ${#unprepared_ids[@]} story/stories have no story.json — run prepare-all first:"
+  printf '  %s\n' "${unprepared_ids[@]}"
+  echo "  ./scripts/ralph/ralph-story.sh prepare-all --jobs 2"
+  echo ""
+fi
+
+# ---------------------------------------------------------------------------
 # Sprint execution loop
 # ---------------------------------------------------------------------------
 
@@ -160,6 +178,7 @@ while [ "$story_count" -lt "$MAX_STORIES" ]; do
     echo "ERROR: start-next failed for $next_id"
     failed_count=$((failed_count + 1))
     if [ "$CONTINUE_ON_FAILURE" = "true" ]; then
+      git -C "$WORKSPACE_ROOT" checkout "$SPRINT_BRANCH" 2>/dev/null || true
       continue
     fi
     break
@@ -176,9 +195,11 @@ while [ "$story_count" -lt "$MAX_STORIES" ]; do
     done_count=$((done_count + 1))
   else
     echo ""
-    echo "FAIL: $next_id — some tasks incomplete or failed"
+    echo "FAIL: $next_id — story branch left intact for inspection"
+    echo "      To reset: ./scripts/ralph/ralph-story.sh set-status $next_id planned"
     failed_count=$((failed_count + 1))
     if [ "$CONTINUE_ON_FAILURE" = "true" ]; then
+      git -C "$WORKSPACE_ROOT" checkout "$SPRINT_BRANCH" 2>/dev/null || true
       continue
     fi
     break

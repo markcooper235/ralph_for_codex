@@ -495,6 +495,8 @@ Total changed: ${_story_total_diff}"
             || git -C "$WORKSPACE_ROOT" branch -D "$_story_branch" 2>/dev/null \
             || true
           log "Merged and deleted story branch: $_story_branch"
+          # Clean up task logs before committing metadata
+          rm -f "$STORY_DIR"/.task-log-*.txt "$STORY_DIR"/.fallow-autofix.txt
           # Commit story metadata on the sprint branch
           local _meta_stories_file="$SCRIPT_DIR/sprints/${_sprint}/stories.json"
           git -C "$WORKSPACE_ROOT" add "$STORY_FILE" 2>/dev/null || true

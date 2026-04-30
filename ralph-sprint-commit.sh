@@ -258,13 +258,11 @@ fi
 
 ensure_transient_files_untracked
 
-# Clear active Ralph state for next sprint/PRD setup
+# Clear active Ralph state for next sprint
 rm -f "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE"
-: > "$PRD_FILE"
-rm -f "$PROGRESS_FILE"
 
-if [ -n "$(git status --porcelain -- "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE" "$PRD_FILE" "$PROGRESS_FILE")" ]; then
-  git add -A "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE" "$PRD_FILE" "$PROGRESS_FILE" 2>/dev/null || true
+if [ -n "$(git status --porcelain -- "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE")" ]; then
+  git add -A "$ACTIVE_SPRINT_FILE" "$ACTIVE_PRD_FILE" "$LAST_BRANCH_FILE" 2>/dev/null || true
   if ! git diff --cached --quiet; then
     git commit -m "chore(ralph): clear active sprint state after sprint commit"
   fi

@@ -134,56 +134,46 @@ copy_file_if_missing() {
   copy_file "$src" "$dst"
 }
 
+# Core story-task workflow
 copy_file "$SOURCE_DIR/ralph.sh" "$DEST_DIR_REL/ralph.sh"
-copy_file "$SOURCE_DIR/ralph-prd.sh" "$DEST_DIR_REL/ralph-prd.sh"
 copy_file "$SOURCE_DIR/doctor.sh" "$DEST_DIR_REL/doctor.sh"
-copy_file "$SOURCE_DIR/ralph-archive.sh" "$DEST_DIR_REL/ralph-archive.sh"
-copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
-copy_file "$SOURCE_DIR/ralph-commit.sh" "$DEST_DIR_REL/ralph-commit.sh"
-copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
-copy_file "$SOURCE_DIR/ralph-prime.sh" "$DEST_DIR_REL/ralph-prime.sh"
-copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
-copy_file "$SOURCE_DIR/ralph-spec-strengthen.sh" "$DEST_DIR_REL/ralph-spec-strengthen.sh"
 copy_file "$SOURCE_DIR/ralph-sprint.sh" "$DEST_DIR_REL/ralph-sprint.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-commit.sh" "$DEST_DIR_REL/ralph-sprint-commit.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-migrate.sh" "$DEST_DIR_REL/ralph-sprint-migrate.sh"
 copy_file "$SOURCE_DIR/ralph-story.sh" "$DEST_DIR_REL/ralph-story.sh"
 copy_file "$SOURCE_DIR/ralph-task.sh" "$DEST_DIR_REL/ralph-task.sh"
 copy_file "$SOURCE_DIR/ralph-fallow.sh" "$DEST_DIR_REL/ralph-fallow.sh"
+copy_file "$SOURCE_DIR/ralph-roadmap.sh" "$DEST_DIR_REL/ralph-roadmap.sh"
+copy_file "$SOURCE_DIR/ralph-status.sh" "$DEST_DIR_REL/ralph-status.sh"
+copy_file "$SOURCE_DIR/ralph-cleanup.sh" "$DEST_DIR_REL/ralph-cleanup.sh"
 copy_file "$SOURCE_DIR/ralph-verify.sh" "$DEST_DIR_REL/ralph-verify.sh"
+copy_file "$SOURCE_DIR/ralph-spec-check.sh" "$DEST_DIR_REL/ralph-spec-check.sh"
+copy_file "$SOURCE_DIR/ralph-spec-strengthen.sh" "$DEST_DIR_REL/ralph-spec-strengthen.sh"
 copy_file "$SOURCE_DIR/ralph-sprint-test.sh.example" "$DEST_DIR_REL/ralph-sprint-test.sh.example"
 copy_file "$SOURCE_DIR/lib/codex-exec.sh" "$DEST_DIR_REL/lib/codex-exec.sh"
 copy_file "$SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
-copy_file "$SOURCE_DIR/templates/epic-intake.md" "$DEST_DIR_REL/templates/epic-intake.md"
 copy_file "$SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
-copy_file "$SOURCE_DIR/prompt.md" "$DEST_DIR_REL/prompt.md"
-copy_file "$SOURCE_DIR/prompt.standalone.md" "$DEST_DIR_REL/prompt.standalone.md"
-copy_file "$SOURCE_DIR/prompt.sprint.md" "$DEST_DIR_REL/prompt.sprint.md"
 copy_file "$SOURCE_DIR/README-local.md" "$DEST_DIR_REL/README-local.md"
 copy_file "$SOURCE_DIR/new-local-extension.sh.example" "$DEST_DIR_REL/new-local-extension.sh.example"
 copy_file_if_missing "$SOURCE_DIR/prompt.local.md" "$DEST_DIR_REL/prompt.local.md"
 copy_file "$SOURCE_DIR/known-test-baseline-failures.txt" "$DEST_DIR_REL/known-test-baseline-failures.txt"
-copy_file "$SOURCE_DIR/prd.json.example" "$DEST_DIR_REL/prd.json.example"
 copy_file "$SOURCE_DIR/story.json.example" "$DEST_DIR_REL/story.json.example"
 copy_file "$SOURCE_DIR/stories.json.example" "$DEST_DIR_REL/stories.json.example"
 chmod +x \
   "$DEST_DIR_REL/ralph.sh" \
-  "$DEST_DIR_REL/ralph-prd.sh" \
   "$DEST_DIR_REL/doctor.sh" \
-  "$DEST_DIR_REL/ralph-archive.sh" \
-  "$DEST_DIR_REL/ralph-cleanup.sh" \
-  "$DEST_DIR_REL/ralph-commit.sh" \
-  "$DEST_DIR_REL/ralph-roadmap.sh" \
-  "$DEST_DIR_REL/ralph-prime.sh" \
-  "$DEST_DIR_REL/ralph-spec-check.sh" \
-  "$DEST_DIR_REL/ralph-spec-strengthen.sh" \
   "$DEST_DIR_REL/ralph-sprint.sh" \
   "$DEST_DIR_REL/ralph-sprint-commit.sh" \
   "$DEST_DIR_REL/ralph-sprint-migrate.sh" \
   "$DEST_DIR_REL/ralph-story.sh" \
   "$DEST_DIR_REL/ralph-task.sh" \
   "$DEST_DIR_REL/ralph-fallow.sh" \
+  "$DEST_DIR_REL/ralph-roadmap.sh" \
+  "$DEST_DIR_REL/ralph-status.sh" \
+  "$DEST_DIR_REL/ralph-cleanup.sh" \
   "$DEST_DIR_REL/ralph-verify.sh" \
+  "$DEST_DIR_REL/ralph-spec-check.sh" \
+  "$DEST_DIR_REL/ralph-spec-strengthen.sh" \
   "$DEST_DIR_REL/lib/editor-intake.sh"
 
 if [ "$WITH_EXAMPLE_PRD" -eq 1 ]; then
@@ -305,14 +295,15 @@ fi
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
-echo "  Standalone:"
-echo "    ./$DEST_DIR_REL/ralph-prd.sh"
-echo "    ./$DEST_DIR_REL/ralph.sh 10"
-echo "    ./$DEST_DIR_REL/ralph-commit.sh"
-echo "  Sprint:"
-echo "    ./$DEST_DIR_REL/ralph-roadmap.sh --vision \"Baseline to target-state roadmap\""
-echo "    ./$DEST_DIR_REL/ralph-sprint.sh status"
-echo "    ./$DEST_DIR_REL/ralph.sh 10"
-echo "    ./$DEST_DIR_REL/ralph-commit.sh"
-echo "  Sprint closeout:"
+echo ""
+echo "  Sprint setup:"
+echo "    ./$DEST_DIR_REL/ralph-sprint.sh create sprint-1"
+echo "    ./$DEST_DIR_REL/ralph-story.sh add --title '<story title>'"
+echo "    ./$DEST_DIR_REL/ralph-story.sh prepare-all --jobs 2"
+echo "    ./$DEST_DIR_REL/ralph-story.sh health-all"
+echo ""
+echo "  Sprint execution (runs all stories automatically):"
+echo "    ./$DEST_DIR_REL/ralph.sh"
+echo ""
+echo "  Sprint closeout (after all stories done):"
 echo "    ./$DEST_DIR_REL/ralph-sprint-commit.sh"
