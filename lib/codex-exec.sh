@@ -24,8 +24,8 @@ codex_exec_prompt() {
   local profile_args=()
   [ -n "${RALPH_CODEX_PROFILE:-}" ] && profile_args=(--profile "$RALPH_CODEX_PROFILE")
   if _supports_codex_yolo; then
-    printf '%s\n' "$prompt" | "${CODEX_BIN:-codex}" --yolo exec "${profile_args[@]}" -C "$workspace" "$@" -
+    printf '%s\n' "$prompt" | "${CODEX_BIN:-codex}" --yolo exec "${profile_args[@]+"${profile_args[@]}"}" -C "$workspace" "$@" -
   else
-    printf '%s\n' "$prompt" | "${CODEX_BIN:-codex}" exec --dangerously-bypass-approvals-and-sandbox "${profile_args[@]}" -C "$workspace" "$@" -
+    printf '%s\n' "$prompt" | "${CODEX_BIN:-codex}" exec --dangerously-bypass-approvals-and-sandbox "${profile_args[@]+"${profile_args[@]}"}" -C "$workspace" "$@" -
   fi
 }

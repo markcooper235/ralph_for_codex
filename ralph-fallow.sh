@@ -715,7 +715,7 @@ PROMPT
   fi
 
   log "  Running Codex auto-fix session..."
-  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" --quiet 2>&1 | tee "$log_file"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" 2>&1 | tee "$log_file"
 }
 
 # ---------------------------------------------------------------------------

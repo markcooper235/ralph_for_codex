@@ -191,9 +191,18 @@ activate_sprint() {
     fi
   done < <(sorted_sprints)
 
-  ensure_sprint_branch_exists "$sprint"
+  # Write activation metadata before branching so sprint branch inherits committed state
   set_sprint_status "$sprint" "active"
   set_active_sprint "$sprint"
+
+  local sf
+  sf="$(sprint_stories_file "$sprint")"
+  git add "$sf" "$ACTIVE_SPRINT_FILE" 2>/dev/null || true
+  if ! git diff --cached --quiet 2>/dev/null; then
+    git commit -m "chore(ralph): activate sprint $sprint"
+  fi
+
+  ensure_sprint_branch_exists "$sprint"
   echo "Active sprint set to: $sprint"
   checkout_sprint_branch "$sprint"
 }

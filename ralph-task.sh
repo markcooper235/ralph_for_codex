@@ -314,7 +314,7 @@ run_codex_session() {
   fi
 
   log "  Running Codex session for $task_id..."
-  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" --quiet 2>&1 | tee "$log_file"
+  codex_exec_prompt "$prompt" "$WORKSPACE_ROOT" 2>&1 | tee "$log_file"
 }
 
 # ---------------------------------------------------------------------------
@@ -463,24 +463,22 @@ Total changed: ${_story_total_diff}"
     mark_story_done
 
     # Sync stories.json: mark story done and clear activeStoryId
-    local active_sprint_file="$SCRIPT_DIR/.active-sprint"
-    if [ -f "$active_sprint_file" ]; then
-      local sprint stories_file stmp
-      sprint="$(awk 'NF {print; exit}' "$active_sprint_file")"
-      stories_file="$SCRIPT_DIR/sprints/$sprint/stories.json"
-      if [ -f "$stories_file" ]; then
-        stmp="$(mktemp)"
+    _active_sprint_file="$SCRIPT_DIR/.active-sprint"
+    if [ -f "$_active_sprint_file" ]; then
+      _meta_sprint="$(awk 'NF {print; exit}' "$_active_sprint_file")"
+      _meta_stories_file2="$SCRIPT_DIR/sprints/$_meta_sprint/stories.json"
+      if [ -f "$_meta_stories_file2" ]; then
+        _stmp="$(mktemp)"
         jq --arg id "$STORY_ID" '
           .stories = [.stories[] | if .id == $id then .status = "done" | .passes = true else . end]
           | .activeStoryId = null
-        ' "$stories_file" > "$stmp"
-        mv "$stmp" "$stories_file"
+        ' "$_meta_stories_file2" > "$_stmp"
+        mv "$_stmp" "$_meta_stories_file2"
         log "Updated stories.json: $STORY_ID → done"
       fi
     fi
 
     # Merge story branch back to sprint branch, then delete it
-    local _story_branch _sprint _sprint_branch
     _story_branch="$(jq -r '.branchName // ""' "$STORY_FILE" 2>/dev/null || true)"
     _sprint=""
     [ -f "$SCRIPT_DIR/.active-sprint" ] && _sprint="$(awk 'NF {print; exit}' "$SCRIPT_DIR/.active-sprint")"
@@ -498,7 +496,7 @@ Total changed: ${_story_total_diff}"
           # Clean up task logs before committing metadata
           rm -f "$STORY_DIR"/.task-log-*.txt "$STORY_DIR"/.fallow-autofix.txt
           # Commit story metadata on the sprint branch
-          local _meta_stories_file="$SCRIPT_DIR/sprints/${_sprint}/stories.json"
+          _meta_stories_file="$SCRIPT_DIR/sprints/${_sprint}/stories.json"
           git -C "$WORKSPACE_ROOT" add "$STORY_FILE" 2>/dev/null || true
           [ -f "$_meta_stories_file" ] && git -C "$WORKSPACE_ROOT" add "$_meta_stories_file" 2>/dev/null || true
           if ! git -C "$WORKSPACE_ROOT" diff --cached --quiet 2>/dev/null; then
