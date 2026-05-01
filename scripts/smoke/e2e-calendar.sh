@@ -1,12 +1,18 @@
 #!/bin/bash
-# e2e-calendar.sh — Full-stack Calendar + Todo app smoke test
+# e2e-calendar.sh — Full end-to-end Calendar + Todo app smoke test
 #
-# Creates two TypeScript projects and runs a complete 4-story sprint for each:
+# Exercises the complete Ralph lifecycle for two TypeScript projects:
 #
 #   nextjs-calendar  — Next.js-style modular TypeScript (functional services,
 #                      barrel exports, hook/context patterns)
 #   angular-calendar — Angular-style TypeScript (class-based services,
 #                      constructor injection, Map-backed state)
+#
+# Full lifecycle under test:
+#   install.sh → doctor.sh → ralph-sprint.sh create → ralph-story.sh add →
+#   (story.json: hand-written default | Codex-generated --generated) →
+#   ralph-story.sh health → ralph.sh → ralph-status.sh →
+#   ralph-sprint-commit.sh → ralph-verify.sh
 #
 # Each project runs one sprint with 4 stories:
 #   S-001: Core types / data models
@@ -14,22 +20,19 @@
 #   S-003: Todo service                     (depends on S-001)
 #   S-004: Barrel export + integration test (depends on S-001, S-002, S-003)
 #
-# Each story has 3 tasks:
-#   T-01: Create the source file
-#   T-02: Create tests (runtime assertions)
-#   T-03: Full regression (build + lint + test), depends on T-02
-#
-# Validation runs before execution:
-#   - story.json schema check (jq)
-#   - depends_on reference check
-#   - ralph-story.sh health per story
-#
 # Usage:
-#   ./scripts/smoke/e2e-calendar.sh [--keep] [--max-retries N]
+#   ./scripts/smoke/e2e-calendar.sh [--keep] [--max-retries N] [--generated]
 #
 # Flags:
 #   --keep          Keep work directory on success (always kept on failure)
 #   --max-retries N Retry count per task (default: 2)
+#   --generated     Use ralph-story.sh generate for story.json instead of
+#                   hand-written files — exercises the full story generation
+#                   pipeline (adds ~8 Codex sessions total)
+#
+# NOTE: story-level depends_on is patched into stories.json via jq after
+# ralph-story.sh add, because add does not yet accept --depends-on.
+# This is a known framework gap.
 
 set -euo pipefail
 
@@ -50,11 +53,13 @@ source "$SCRIPT_DIR/assert.sh"
 
 KEEP=0
 MAX_RETRIES=2
+GENERATED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --keep)         KEEP=1; shift ;;
     --max-retries)  MAX_RETRIES="${2:-2}"; shift 2 ;;
+    --generated)    GENERATED=1; shift ;;
     -h|--help)
       sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1 | sed 's/^# \?//'
       exit 0 ;;
@@ -147,6 +152,104 @@ commit_baseline() {
   )
 }
 
+# ── doctor_check ───────────────────────────────────────────────────────────────
+# Run doctor.sh after install. Accepts a missing 'specify' CLI (not used in the
+# smoke test), but fails on any other diagnostic error (missing codex, jq, etc).
+
+doctor_check() {
+  local proj_dir="$1"
+  local proj_label="$2"
+  local dlog="$LOG_DIR/${proj_label}-doctor.log"
+  log "  Running doctor.sh..."
+  if (cd "$proj_dir/scripts/ralph" && CODEX_BIN=codex ./doctor.sh) > "$dlog" 2>&1; then
+    log "  doctor.sh PASS"
+  elif grep -q "specify.*CLI not found\|specify.*not found" "$dlog" 2>/dev/null; then
+    log "  doctor.sh WARN: specify CLI not available (expected — not used in smoke test)"
+  else
+    cat "$dlog" >&2
+    fail "doctor.sh failed for $proj_label — see $dlog"
+  fi
+}
+
+# ── generate_stories ───────────────────────────────────────────────────────────
+# Call ralph-story.sh generate for all 4 stories in parallel.
+# Codex generates story.json task plans from the story specs in stories.json.
+# All 4 run in parallel since no done_notes exist yet (dep context is empty).
+
+generate_stories() {
+  local proj_dir="$1"
+  local proj_label="$2"
+  local ralph_dir="$proj_dir/scripts/ralph"
+
+  log "  Generating story.json files via ralph-story.sh generate (parallel)..."
+
+  local sids=(S-001 S-002 S-003 S-004)
+  local pids=() glogs=()
+
+  for sid in "${sids[@]}"; do
+    local glog="$LOG_DIR/${proj_label}-generate-${sid}.log"
+    glogs+=("$glog")
+    ( cd "$ralph_dir" && CODEX_BIN=codex ./ralph-story.sh generate "$sid" ) \
+      > "$glog" 2>&1 &
+    pids+=($!)
+  done
+
+  local failed=0 i=0
+  for pid in "${pids[@]}"; do
+    local sid="${sids[$i]}" glog="${glogs[$i]}"
+    if wait "$pid"; then
+      local story_path="$ralph_dir/sprints/sprint-1/stories/$sid/story.json"
+      if [ ! -f "$story_path" ]; then
+        log "  FAIL: generate $sid wrote no story.json"
+        failed=$((failed + 1))
+      elif ! jq -e '.tasks | length > 0' "$story_path" >/dev/null 2>&1; then
+        log "  FAIL: generate $sid produced story.json with no tasks"
+        failed=$((failed + 1))
+      else
+        log "  generated $sid ($(jq '.tasks | length' "$story_path") tasks)"
+      fi
+    else
+      log "  FAIL: generate $sid — see $glog"
+      failed=$((failed + 1))
+    fi
+    i=$((i + 1))
+  done
+
+  [ "$failed" -eq 0 ] \
+    || fail "Story generation failed for $proj_label ($failed of ${#sids[@]} stories)"
+}
+
+# ── run_sprint_commit ──────────────────────────────────────────────────────────
+# Run ralph-sprint-commit.sh for a project. Asserts sprint is closed and
+# .active-sprint is cleared after the commit.
+
+run_sprint_commit() {
+  local proj_dir="$1"
+  local proj_label="$2"
+  local clog="$LOG_DIR/${proj_label}-sprint-commit.log"
+
+  log "  Running ralph-sprint-commit.sh for $proj_label..."
+  if ! (cd "$proj_dir/scripts/ralph" && ./ralph-sprint-commit.sh) > "$clog" 2>&1; then
+    cat "$clog" >&2
+    fail "ralph-sprint-commit.sh failed for $proj_label — see $clog"
+  fi
+
+  # Assert sprint is now closed in stories.json
+  local stories_file="$proj_dir/scripts/ralph/sprints/sprint-1/stories.json"
+  local sprint_status
+  sprint_status="$(jq -r '.status // "unknown"' "$stories_file" 2>/dev/null || echo "unknown")"
+  [ "$sprint_status" = "closed" ] \
+    || fail "$proj_label sprint-commit: expected stories.json status=closed, got '$sprint_status'"
+
+  # Assert .active-sprint has been cleared
+  local active_file="$proj_dir/scripts/ralph/.active-sprint"
+  if [ -f "$active_file" ] && [ -n "$(cat "$active_file")" ]; then
+    fail "$proj_label sprint-commit: .active-sprint was not cleared after commit"
+  fi
+
+  log "  sprint-commit PASS (status=closed, active-sprint cleared)"
+}
+
 # ── Validation helpers ─────────────────────────────────────────────────────────
 
 validate_story() {
@@ -198,7 +301,8 @@ validate_sprint() {
   # Validate each story.json
   while IFS= read -r story_path; do
     [ -z "$story_path" ] && continue
-    local abs_path="$(git -C "$(dirname "$ralph_dir")" rev-parse --show-toplevel 2>/dev/null || dirname "$ralph_dir")"
+    local abs_path
+    abs_path="$(git -C "$(dirname "$ralph_dir")" rev-parse --show-toplevel 2>/dev/null || dirname "$ralph_dir")"
     abs_path="$abs_path/$story_path"
     [ -f "$abs_path" ] || abs_path="$story_path"
     [ -f "$abs_path" ] || fail "story.json not found: $story_path"
@@ -207,7 +311,7 @@ validate_sprint() {
   done < <(jq -r '.stories[].story_path' "$stories_file")
 }
 
-# ── Execution helper ───────────────────────────────────────────────────────────
+# ── Execution helpers ──────────────────────────────────────────────────────────
 
 run_sprint() {
   local proj_dir="$1"
@@ -328,8 +432,8 @@ assert_file_exists "$NEXTJS_DIR/scripts/ralph/ralph.sh"
 assert_file_exists "$NEXTJS_DIR/scripts/ralph/ralph-task.sh"
 assert_file_exists "$NEXTJS_DIR/scripts/ralph/ralph-story.sh"
 assert_file_exists "$NEXTJS_DIR/scripts/ralph/ralph-sprint.sh"
-
-commit_baseline "$NEXTJS_DIR" "chore: install ralph framework"
+assert_file_exists "$NEXTJS_DIR/scripts/ralph/ralph-sprint-commit.sh"
+assert_file_exists "$NEXTJS_DIR/scripts/ralph/doctor.sh"
 
 # ── NextJS sprint scaffold ─────────────────────────────────────────────────────
 
@@ -359,7 +463,8 @@ commit_baseline "$NEXTJS_DIR" "chore: install ralph framework"
     --prompt-context "Update src/index.ts to re-export calendarService, todoService, types. Add tests/integration.test.mjs." \
     > "$LOG_DIR/nextjs-story-add-S-004.log" 2>&1
 
-  # Patch stories.json with story-level depends_on so ralph.sh enforces sequencing
+  # Patch story-level depends_on into stories.json.
+  # ralph-story.sh add does not yet accept --depends-on (known framework gap).
   _sf="sprints/sprint-1/stories.json"
   _tmp="$(mktemp)"
   jq '
@@ -372,7 +477,17 @@ commit_baseline "$NEXTJS_DIR" "chore: install ralph framework"
   ' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
 )
 
+# ── NextJS doctor check ────────────────────────────────────────────────────────
+
+doctor_check "$NEXTJS_DIR" "nextjs"
+
 # ── NextJS story.json definitions ─────────────────────────────────────────────
+# --generated: let ralph-story.sh generate (Codex) produce story.json files
+# default:     use hand-written task plans for deterministic fast execution
+
+if [ "$GENERATED" -eq 1 ]; then
+  generate_stories "$NEXTJS_DIR" "nextjs"
+else
 
 mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
 cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'STORYJSON'
@@ -661,6 +776,8 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'S
 }
 STORYJSON
 
+fi  # end GENERATED guard for nextjs story.json
+
 # Write ralph-sprint-test.sh for nextjs-calendar
 cat > "$NEXTJS_DIR/scripts/ralph/ralph-sprint-test.sh" <<'SH'
 #!/bin/bash
@@ -754,8 +871,8 @@ HOME="$WORK_DIR/home-angular" "$REPO_ROOT/install.sh" \
   --project "$ANGULAR_DIR" > "$LOG_DIR/install-angular.log" 2>&1
 assert_file_exists "$ANGULAR_DIR/scripts/ralph/ralph.sh"
 assert_file_exists "$ANGULAR_DIR/scripts/ralph/ralph-task.sh"
-
-commit_baseline "$ANGULAR_DIR" "chore: install ralph framework"
+assert_file_exists "$ANGULAR_DIR/scripts/ralph/ralph-sprint-commit.sh"
+assert_file_exists "$ANGULAR_DIR/scripts/ralph/doctor.sh"
 
 # ── Angular sprint scaffold ────────────────────────────────────────────────────
 
@@ -785,7 +902,8 @@ commit_baseline "$ANGULAR_DIR" "chore: install ralph framework"
     --prompt-context "Create src/app/app.module.ts with class AppModule having a static create() factory." \
     > "$LOG_DIR/angular-story-add-S-004.log" 2>&1
 
-  # Patch stories.json with story-level depends_on
+  # Patch story-level depends_on into stories.json.
+  # ralph-story.sh add does not yet accept --depends-on (known framework gap).
   _sf="sprints/sprint-1/stories.json"
   _tmp="$(mktemp)"
   jq '
@@ -798,7 +916,15 @@ commit_baseline "$ANGULAR_DIR" "chore: install ralph framework"
   ' "$_sf" > "$_tmp" && mv "$_tmp" "$_sf"
 )
 
+# ── Angular doctor check ───────────────────────────────────────────────────────
+
+doctor_check "$ANGULAR_DIR" "angular"
+
 # ── Angular story.json definitions ────────────────────────────────────────────
+
+if [ "$GENERATED" -eq 1 ]; then
+  generate_stories "$ANGULAR_DIR" "angular"
+else
 
 mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
 cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'STORYJSON'
@@ -1085,6 +1211,8 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'
 }
 STORYJSON
 
+fi  # end GENERATED guard for angular story.json
+
 # Write ralph-sprint-test.sh for angular-calendar
 cat > "$ANGULAR_DIR/scripts/ralph/ralph-sprint-test.sh" <<'SH'
 #!/bin/bash
@@ -1099,7 +1227,7 @@ commit_baseline "$ANGULAR_DIR" "chore(smoke): angular-calendar sprint plan"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  VALIDATION PHASE
-#  Run before either sprint executes.
+#  Schema, dependency, and health checks for both projects before execution.
 # ══════════════════════════════════════════════════════════════════════════════
 
 log ""
@@ -1118,18 +1246,18 @@ for proj_label in nextjs angular; do
   log ""
   log "--- Validating $proj_label-calendar ---"
 
-  # Schema + dependency validation (our own checks)
+  # Schema + dependency validation
   validate_sprint "$ralph_dir" "sprint-1"
 
-  # ralph-story.sh health per story
+  # ralph-story.sh health — fatal if any story has structural issues
   for sid in S-001 S-002 S-003 S-004; do
     hlog="$LOG_DIR/${proj_label}-health-${sid}.log"
-    (cd "$ralph_dir" && ./ralph-story.sh health "$sid" > "$hlog" 2>&1) || true
-    if grep -q "FAIL\|ERROR\|error" "$hlog" 2>/dev/null; then
-      log "  WARN: health check for $sid reported issues — see $hlog"
-    else
-      log "  health OK: $proj_label $sid"
+    if ! (cd "$ralph_dir" && ./ralph-story.sh health "$sid" > "$hlog" 2>&1); then
+      log "  FAIL: health check for $proj_label $sid — see $hlog"
+      cat "$hlog" >&2
+      fail "Story health check failed: $proj_label $sid"
     fi
+    log "  health OK: $proj_label $sid"
   done
 done
 
@@ -1148,14 +1276,34 @@ log "═════════════════════════
 
 NEXTJS_EXIT=0
 ANGULAR_EXIT=0
+NEXTJS_COMMIT_EXIT=0
+ANGULAR_COMMIT_EXIT=0
 
 log ""
 log "--- Running nextjs-calendar sprint ---"
 run_sprint "$NEXTJS_DIR" "nextjs" || NEXTJS_EXIT=$?
 
+if [ "$NEXTJS_EXIT" -eq 0 ]; then
+  log ""
+  log "--- Post-sprint: nextjs-calendar ---"
+  (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-status.sh) \
+    > "$LOG_DIR/nextjs-status.log" 2>&1 || true
+  log "  ralph-status logged to: $LOG_DIR/nextjs-status.log"
+  run_sprint_commit "$NEXTJS_DIR" "nextjs" || NEXTJS_COMMIT_EXIT=$?
+fi
+
 log ""
 log "--- Running angular-calendar sprint ---"
 run_sprint "$ANGULAR_DIR" "angular" || ANGULAR_EXIT=$?
+
+if [ "$ANGULAR_EXIT" -eq 0 ]; then
+  log ""
+  log "--- Post-sprint: angular-calendar ---"
+  (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-status.sh) \
+    > "$LOG_DIR/angular-status.log" 2>&1 || true
+  log "  ralph-status logged to: $LOG_DIR/angular-status.log"
+  run_sprint_commit "$ANGULAR_DIR" "angular" || ANGULAR_COMMIT_EXIT=$?
+fi
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1173,9 +1321,11 @@ for proj_label in nextjs angular; do
   if [ "$proj_label" = "nextjs" ]; then
     proj_dir="$NEXTJS_DIR"
     sprint_exit=$NEXTJS_EXIT
+    commit_exit=$NEXTJS_COMMIT_EXIT
   else
     proj_dir="$ANGULAR_DIR"
     sprint_exit=$ANGULAR_EXIT
+    commit_exit=$ANGULAR_COMMIT_EXIT
   fi
 
   sprint_log="$LOG_DIR/${proj_label}-sprint.log"
@@ -1199,7 +1349,7 @@ for proj_label in nextjs angular; do
   echo "  Loop output summary:"
   extract_story_status "$sprint_log" | sed 's/^/    /' || echo "    (no story-complete markers found)"
 
-  # Structural failures (new detection from this session)
+  # Structural failures
   struct_failures="$(extract_structural_failures "$sprint_log")"
   if [ -n "$struct_failures" ]; then
     echo ""
@@ -1216,7 +1366,7 @@ for proj_label in nextjs angular; do
     overall_exit=1
   fi
 
-  # Sprint exit code
+  # Sprint exit
   if [ "$sprint_exit" -eq 0 ]; then
     echo ""
     echo "  Sprint exit: PASS"
@@ -1229,6 +1379,7 @@ for proj_label in nextjs angular; do
   # Post-sprint assertions
   echo ""
   echo "  Post-sprint assertions:"
+
   if [ -f "$stories_file" ]; then
     if jq -e 'all(.stories[]; .status == "done" and .passes == true)' \
          "$stories_file" > /dev/null 2>&1; then
@@ -1239,49 +1390,65 @@ for proj_label in nextjs angular; do
     fi
   fi
 
-  # Build + test in final state
-  build_log="$LOG_DIR/${proj_label}-final-build.log"
-  test_log="$LOG_DIR/${proj_label}-final-test.log"
-  (cd "$proj_dir" && npm run build > "$build_log" 2>&1) \
-    && echo "    Final npm run build: PASS" \
-    || { echo "    Final npm run build: FAIL"; overall_exit=1; }
-  (cd "$proj_dir" && npm test > "$test_log" 2>&1) \
-    && echo "    Final npm test: PASS" \
-    || { echo "    Final npm test: FAIL"; overall_exit=1; }
-done
-
-# Gaps / behavioral observations
-echo ""
-echo "── Behavioral observations ───────────────────────────────────"
-
-for proj_label in nextjs angular; do
-  sprint_log="$LOG_DIR/${proj_label}-sprint.log"
-  [ -f "$sprint_log" ] || continue
-
-  # Retries (legitimate vs. structural) — use awk to avoid grep -c exit-code confusion
-  retry_count=$(awk '/Retrying\.\.\./{c++} END{print c+0}' "$sprint_log" 2>/dev/null || echo 0)
-  struct_count=$(awk '/STRUCTURAL FAILURE/{c++} END{print c+0}' "$sprint_log" 2>/dev/null || echo 0)
-  blocked_count=$(awk '/BLOCKED/{c++} END{print c+0}' "$sprint_log" 2>/dev/null || echo 0)
-
-  echo "  $proj_label: retries=$retry_count  structural_short_circuits=$struct_count  blocked=$blocked_count"
-
-  # Scope drift: files modified outside declared scope
-  if git -C "$proj_dir" log --name-only --pretty="" sprint-1-start..HEAD 2>/dev/null \
-       | grep -v "^scripts/ralph/" | grep -v "^src/" | grep -v "^tests/" \
-       | grep -v "^$" > "$LOG_DIR/${proj_label}-scope-drift.log" 2>/dev/null; then
-    drift="$(cat "$LOG_DIR/${proj_label}-scope-drift.log")"
-    if [ -n "$drift" ]; then
-      echo "  $proj_label: SCOPE DRIFT detected (files outside src/, tests/, scripts/ralph/):"
-      echo "$drift" | sed 's/^/    /'
+  # Sprint status closed after commit
+  if [ "$sprint_exit" -eq 0 ]; then
+    if [ "$commit_exit" -eq 0 ]; then
+      sprint_status="$(jq -r '.status // "unknown"' "$stories_file" 2>/dev/null || echo "unknown")"
+      echo "    ralph-sprint-commit: PASS (status=$sprint_status)"
+    else
+      echo "    ralph-sprint-commit: FAIL"
+      overall_exit=1
     fi
   fi
+
+  # ralph-verify: standalone build + typecheck + test on final merged state
+  if [ "$sprint_exit" -eq 0 ] && [ "$commit_exit" -eq 0 ]; then
+    verify_log="$LOG_DIR/${proj_label}-verify.log"
+    if (cd "$proj_dir/scripts/ralph" && ./ralph-verify.sh --full) > "$verify_log" 2>&1; then
+      echo "    ralph-verify --full: PASS"
+    else
+      echo "    ralph-verify --full: FAIL"
+      overall_exit=1
+    fi
+  fi
+
 done
+
+# ── Behavioral observations ────────────────────────────────────────────────────
+
+echo ""
+echo "── Behavioral observations ───────────────────────────────────"
+for proj_label in nextjs angular; do
+  sprint_log="$LOG_DIR/${proj_label}-sprint.log"
+  retries="$(awk '/Retrying\.\.\./{c++} END{print c+0}' "$sprint_log" 2>/dev/null || echo 0)"
+  structural="$(grep -c "STRUCTURAL FAILURE" "$sprint_log" 2>/dev/null || echo 0)"
+  blocked="$(grep -c "BLOCKED — dependencies" "$sprint_log" 2>/dev/null || echo 0)"
+  echo "  $proj_label: retries=$retries  structural_short_circuits=$structural  blocked=$blocked"
+done
+
+# ── Generation mode note ───────────────────────────────────────────────────────
+
+if [ "$GENERATED" -eq 1 ]; then
+  echo ""
+  echo "  Mode: --generated (story.json files produced by ralph-story.sh generate)"
+else
+  echo ""
+  echo "  Mode: default (hand-written story.json task plans)"
+fi
 
 echo ""
 if [ "$overall_exit" -eq 0 ]; then
-  echo "[smoke] PASS — both calendar projects completed sprint-1 successfully"
+  log "PASS — both calendar projects completed sprint-1 successfully"
 else
-  echo "[smoke] FAIL — one or more projects did not complete sprint-1 cleanly"
+  log "FAIL — one or more assertions failed (see above)"
+fi
+
+if [ "$KEEP" -eq 1 ]; then
+  echo ""
+  echo "[smoke] work dir retained for inspection: $WORK_DIR"
+  echo "  nextjs:   $NEXTJS_DIR"
+  echo "  angular:  $ANGULAR_DIR"
+  echo "  logs:     $LOG_DIR"
 fi
 
 exit "$overall_exit"
