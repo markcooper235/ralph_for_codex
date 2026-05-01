@@ -132,11 +132,71 @@ deps_met() {
 }
 
 # ---------------------------------------------------------------------------
-# Acceptance check runner
+# Acceptance check runner + structural-failure detection
 # ---------------------------------------------------------------------------
 
+# Best-effort: extract the primary file path from a check command.
+_extract_check_file() {
+  local check="$1"
+  # test -f/-e/-d <path>
+  if [[ "$check" =~ test[[:space:]]+-[fed][[:space:]]+([^[:space:]]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return
+  fi
+  # [ -f/-e/-d <path> ]
+  if [[ "$check" =~ \[[[:space:]]+-[fed][[:space:]]+([^[:space:]|]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return
+  fi
+  # grep/cat/wc — last non-flag whitespace-delimited token
+  case "$check" in
+    grep\ *|cat\ *|wc\ *)
+      local last
+      last=$(printf '%s' "$check" | awk '{print $NF}')
+      [[ "$last" != -* ]] && echo "$last"
+      ;;
+  esac
+}
+
+# Compute a content fingerprint for the file(s) a check command references.
+# Falls back to scope[] files for commands we can't parse statically.
+_check_fp() {
+  local check="$1"
+  local task_id="$2"
+  local ref
+  ref=$(_extract_check_file "$check")
+
+  if [ -n "$ref" ]; then
+    local abs
+    [[ "$ref" == /* ]] && abs="$ref" || abs="$WORKSPACE_ROOT/$ref"
+    if [ -f "$abs" ]; then
+      git -C "$WORKSPACE_ROOT" hash-object "$abs" 2>/dev/null || echo "UNHASHED"
+    else
+      echo "ABSENT:$ref"
+    fi
+    return
+  fi
+
+  # Fallback: hash all scope[] files for commands we can't statically parse
+  local fp=""
+  while IFS= read -r sf; do
+    [ -z "$sf" ] && continue
+    local abs
+    [[ "$sf" == /* ]] && abs="$sf" || abs="$WORKSPACE_ROOT/$sf"
+    if [ -f "$abs" ]; then
+      fp+=$(git -C "$WORKSPACE_ROOT" hash-object "$abs" 2>/dev/null || echo "X")
+    else
+      fp+="ABSENT:$sf"
+    fi
+  done < <(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .scope[]?' "$STORY_FILE")
+  echo "${fp:-EMPTY}"
+}
+
+# Run all acceptance checks for a task.
+# fp_out: optional path to append "check_num:fingerprint" lines for each failing check.
 run_checks() {
   local task_id="$1"
+  local fp_out="${2:-}"
   local checks_json
   checks_json="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .checks[]?' "$STORY_FILE")"
 
@@ -151,6 +211,9 @@ run_checks() {
     else
       log "    FAIL"
       all_pass=1
+      if [ -n "$fp_out" ]; then
+        echo "${check_num}:$(_check_fp "$check" "$task_id")" >> "$fp_out"
+      fi
     fi
   done <<< "$checks_json"
 
@@ -385,8 +448,24 @@ for task_id in "${TASK_IDS[@]}"; do
   set_task_field "$task_id" "status" '"running"'
   task_start_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
 
+  # Pre-flight: fingerprint currently-failing checks before the first Codex
+  # session. This becomes attempt "0" for structural detection, so a check that
+  # makes zero progress on attempt 1 is caught immediately rather than after
+  # a second full retry.
+  _prev_fp_file="$(mktemp)"
+  _pf_checks_json="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .checks[]?' "$STORY_FILE")"
+  _pf_num=0
+  while IFS= read -r _pf_check; do
+    [ -z "$_pf_check" ] && continue
+    _pf_num=$((_pf_num + 1))
+    if ! (cd "$WORKSPACE_ROOT" && eval "$_pf_check") >/dev/null 2>&1; then
+      echo "${_pf_num}:$(_check_fp "$_pf_check" "$task_id")" >> "$_prev_fp_file"
+    fi
+  done <<< "$_pf_checks_json"
+
   attempt=0
   task_passed=0
+
   while [ $attempt -le "$MAX_RETRIES" ]; do
     attempt=$((attempt + 1))
     log "  Attempt $attempt/$((MAX_RETRIES + 1))..."
@@ -394,7 +473,10 @@ for task_id in "${TASK_IDS[@]}"; do
     run_codex_session "$task_id"
 
     log "  Validating acceptance checks..."
-    if run_checks "$task_id"; then
+    _curr_fp_file="$(mktemp)"
+
+    if run_checks "$task_id" "$_curr_fp_file"; then
+      rm -f "$_curr_fp_file" "$_prev_fp_file"
       log "  PASS — all checks green"
       mark_task_done "$task_id"
       _task_end_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
@@ -409,13 +491,39 @@ Changed: ${_task_diff}"
       set_task_field "$task_id" "done_note" "$(printf '%s' "$_done_note" | jq -Rs .)"
       task_passed=1
       break
-    else
-      log "  Checks failed (attempt $attempt)"
-      if [ $attempt -le "$MAX_RETRIES" ]; then
-        log "  Retrying..."
+    fi
+
+    log "  Checks failed (attempt $attempt)"
+
+    # Structural-failure detection: if any failing check has the same file
+    # fingerprint as the previous attempt, retries cannot fix it — the check
+    # is not responding to the task's work.
+    if [ -n "$_prev_fp_file" ] && [ -s "$_prev_fp_file" ]; then
+      _structural=()
+      while IFS= read -r entry; do
+        [ -z "$entry" ] && continue
+        _cnum="${entry%%:*}"
+        if grep -qF "$entry" "$_prev_fp_file" 2>/dev/null; then
+          _structural+=("check[$_cnum]")
+        fi
+      done < "$_curr_fp_file"
+
+      if [ ${#_structural[@]} -gt 0 ]; then
+        log "  STRUCTURAL FAILURE — ${_structural[*]}: referenced files unchanged between attempts"
+        log "  Short-circuiting — the check cannot be satisfied by retrying this task"
+        rm -f "$_curr_fp_file" "$_prev_fp_file"
+        break
       fi
     fi
+
+    rm -f "$_prev_fp_file"
+    _prev_fp_file="$_curr_fp_file"
+
+    if [ $attempt -le "$MAX_RETRIES" ]; then
+      log "  Retrying..."
+    fi
   done
+  rm -f "${_prev_fp_file:-}"
 
   if [ $task_passed -eq 0 ]; then
     log "  FAILED after $attempt attempts — marking task failed"
