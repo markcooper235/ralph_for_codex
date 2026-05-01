@@ -238,6 +238,17 @@ if [ "$INSTALL_SPECKIT" -eq 1 ]; then
   fi
 fi
 
+# Commit installed files into the target repo so they are versioned from day one.
+if [ "$SKIP_GIT_CHECK" -ne 1 ]; then
+  git add "$DEST_DIR_REL" "$GITIGNORE_DEST"
+  if ! git diff --cached --quiet; then
+    git commit -m "chore: install Ralph workflow tooling into $DEST_DIR_REL"
+    echo "Committed Ralph scripts to git."
+  else
+    echo "(No git changes — files already up to date.)"
+  fi
+fi
+
 echo "Installed Ralph into: $PROJECT_DIR/$DEST_DIR_REL"
 echo "Next:"
 echo "  1) ./$DEST_DIR_REL/doctor.sh"
