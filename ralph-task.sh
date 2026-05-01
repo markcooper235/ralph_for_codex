@@ -357,7 +357,7 @@ $context
 **Preserved invariants (do not break):**
 $preserved_invariants
 
-Complete this task. Stay within the file scope listed. Commit the change when done.
+Complete this task. Stay within the file scope listed. Commit any changes you make when done. If the scoped files already satisfy all requirements and no changes are needed, verify the checks pass and exit without committing.
 PROMPT
 }
 
@@ -446,6 +446,8 @@ for task_id in "${TASK_IDS[@]}"; do
   fi
 
   set_task_field "$task_id" "status" '"running"'
+  git -C "$WORKSPACE_ROOT" add "$STORY_FILE" && \
+    git -C "$WORKSPACE_ROOT" commit -q -m "chore(ralph): $task_id in-progress" 2>/dev/null || true
   task_start_head="$(git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null || echo "")"
 
   # Pre-flight: fingerprint currently-failing checks before the first Codex

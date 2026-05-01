@@ -7,6 +7,7 @@ scripts/ralph/.workflow-lock/
 scripts/ralph/sprints/**/.task-log-*.txt
 scripts/ralph/sprints/**/.fallow-report.json
 scripts/ralph/sprints/**/.fallow-autofix.txt
+.fallow/
 
 # prd.json only if import-prd is used to seed a sprint
 scripts/ralph/prd.json
