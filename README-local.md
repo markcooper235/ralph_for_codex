@@ -43,11 +43,11 @@ Use local extensions when this repo needs capabilities that should not be pushed
    Use `scripts/ralph/new-local-extension.sh.example` as the starting point.
 2. Add usage instructions to `scripts/ralph/prompt.local.md`.
 3. Add one-line note in `AGENTS.md` if policy/process changed.
-4. Run `./scripts/ralph/doctor.sh` and a small Ralph iteration sanity check.
+4. Run `./scripts/ralph/doctor.sh` and a small Ralph story sanity check.
 
 ## Upgrade Checklist (Framework Reinstall)
 
 1. Re-run framework installer.
 2. Confirm `scripts/ralph/prompt.local.md` still exists and marker blocks still inject (or append fallback still works).
 3. Confirm local helper scripts still exist and are executable.
-4. Re-run one targeted Ralph workflow to validate behavior.
+4. Re-run one targeted Ralph story workflow to validate behavior.
