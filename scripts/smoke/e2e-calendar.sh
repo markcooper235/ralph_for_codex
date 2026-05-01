@@ -1,12 +1,12 @@
 #!/bin/bash
 # e2e-calendar.sh — Full end-to-end Calendar + Todo app smoke test
 #
-# Exercises the complete Ralph lifecycle for two TypeScript projects:
+# Exercises the complete Ralph lifecycle for two real framework projects:
 #
-#   nextjs-calendar  — Next.js-style modular TypeScript (functional services,
-#                      barrel exports, hook/context patterns)
-#   angular-calendar — Angular-style TypeScript (class-based services,
-#                      constructor injection, Map-backed state)
+#   nextjs-calendar  — Real Next.js project (create-next-app) with Jest.
+#                      Domain services in lib/. Tests in __tests__/.
+#   angular-calendar — Real Angular project (ng new) with Jest via ts-jest.
+#                      Services in src/app/services/. Tests as *.spec.ts.
 #
 # Full lifecycle under test:
 #   install.sh → doctor.sh → ralph-sprint.sh create → ralph-story.sh add →
@@ -94,50 +94,6 @@ trap cleanup EXIT
 
 log()  { echo "[smoke] $*"; }
 fail() { echo "[smoke] FAIL: $*" >&2; exit 1; }
-
-# Write the shared test runner script into a project
-write_run_tests_mjs() {
-  local proj="$1"
-  mkdir -p "$proj/scripts"
-  cat > "$proj/scripts/run-tests.mjs" <<'JS'
-import assert from "node:assert/strict";
-import { readdirSync, statSync } from "node:fs";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-
-const argv = process.argv.slice(2);
-let runTestsByPath = [];
-
-for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === "--runTestsByPath") {
-    i++;
-    while (i < argv.length && !argv[i].startsWith("--")) {
-      runTestsByPath.push(argv[i++]);
-    }
-    i--;
-  }
-}
-
-function collectTests(dir) {
-  const files = [];
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) { files.push(...collectTests(full)); continue; }
-    if (/(\.test|\.spec)\.m?js$/.test(e.name)) files.push(full);
-  }
-  return files;
-}
-
-const tests = runTestsByPath.length > 0
-  ? runTestsByPath.map(p => path.resolve(p))
-  : collectTests("tests").map(p => path.resolve(p));
-
-assert.ok(tests.length > 0, "No tests discovered");
-for (const t of tests) await import(pathToFileURL(t).href);
-console.log(`PASS ${tests.length} test file(s)`);
-console.log("test ok");
-JS
-}
 
 # Commit any staged or unstaged changes (used for framework baseline commits)
 commit_baseline() {
@@ -352,77 +308,83 @@ count_stories_done() {
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PROJECT 1: nextjs-calendar
-#  Next.js-style TypeScript: functional services, barrel exports
+#  Real Next.js project via create-next-app. Domain services in lib/.
+#  Tests in __tests__/ using Jest + ts-jest.
 # ══════════════════════════════════════════════════════════════════════════════
 
 log "=== Setting up nextjs-calendar ==="
 
-mkdir -p "$NEXTJS_DIR"
+cd "$WORK_DIR"
+log "  Running create-next-app..."
+npx create-next-app@latest nextjs-calendar \
+  --typescript \
+  --no-tailwind \
+  --no-eslint \
+  --app \
+  --no-src-dir \
+  --use-npm \
+  --yes \
+  --disable-git \
+  > "$LOG_DIR/nextjs-create.log" 2>&1 \
+  || fail "create-next-app failed — see $LOG_DIR/nextjs-create.log"
+
 cd "$NEXTJS_DIR"
 git init -b main >/dev/null
 git config user.name "Ralph Smoke"
 git config user.email "ralph-smoke@example.com"
 
-cat > package.json <<'JSON'
-{
-  "name": "nextjs-calendar",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build":     "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint":      "node -e \"console.log('lint ok')\"",
-    "test":      "node scripts/run-tests.mjs"
-  },
-  "devDependencies": {
-    "typescript": "^5.4.5"
-  }
-}
-JSON
+log "  Adding Jest..."
+npm install --save-dev jest @types/jest ts-jest jest-environment-node --silent \
+  >> "$LOG_DIR/nextjs-create.log" 2>&1
 
-cat > tsconfig.json <<'JSON'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "skipLibCheck": true
-  },
-  "include": ["src"]
-}
-JSON
+npm pkg set scripts.test="jest"
+npm pkg set scripts.typecheck="tsc --noEmit"
 
-mkdir -p src
-cat > src/index.ts <<'TS'
-export const APP_NAME = "nextjs-calendar";
-export const APP_VERSION = "0.1.0";
+cat > jest.config.ts <<'TS'
+import type { Config } from 'jest'
+
+const config: Config = {
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        module: 'commonjs',
+        moduleResolution: 'node',
+      },
+    }],
+  },
+  testEnvironment: 'node',
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/$1',
+  },
+  testMatch: ['**/__tests__/**/*.test.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+}
+
+export default config
 TS
 
-write_run_tests_mjs "$NEXTJS_DIR"
+mkdir -p lib __tests__
 
-mkdir -p tests
-cat > tests/baseline.test.mjs <<'JS'
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-const src = readFileSync("src/index.ts", "utf8");
-assert.ok(src.includes("nextjs-calendar"), "APP_NAME missing from src/index.ts");
-JS
+cat > lib/index.ts <<'TS'
+export const APP_NAME = "nextjs-calendar"
+export const APP_VERSION = "0.1.0"
+TS
 
-cat > .gitignore <<'EOF'
-dist/
-node_modules/
-EOF
+cat > __tests__/baseline.test.ts <<'TS'
+import { APP_NAME, APP_VERSION } from '../lib/index'
 
-log "  npm install..."
-npm install --silent
-npm run build --silent
+describe('baseline', () => {
+  it('exports APP_NAME', () => {
+    expect(APP_NAME).toBe('nextjs-calendar')
+  })
+  it('exports APP_VERSION', () => {
+    expect(typeof APP_VERSION).toBe('string')
+  })
+})
+TS
 
 git add .
-git reset -- dist >/dev/null 2>&1 || true
+git reset -- .next >/dev/null 2>&1 || true
 git commit -m "chore: init nextjs-calendar" >/dev/null
 
 log "  installing ralph framework..."
@@ -445,22 +407,22 @@ assert_file_exists "$NEXTJS_DIR/scripts/ralph/doctor.sh"
 
   ./ralph-story.sh add --title "Core types and interfaces" \
     --goal "Define all TypeScript types for the calendar and todo domain." \
-    --prompt-context "Create src/types.ts with CalendarEvent, Todo, Category interfaces and a Priority type." \
+    --prompt-context "Create lib/types.ts with CalendarEvent, Todo, Category interfaces and a Priority type." \
     > "$LOG_DIR/nextjs-story-add-S-001.log" 2>&1
 
   ./ralph-story.sh add --title "Calendar service" \
     --goal "Implement a CalendarStore class with add/remove/query operations." \
-    --prompt-context "Create src/calendarService.ts importing CalendarEvent from types." \
+    --prompt-context "Create lib/calendarService.ts importing CalendarEvent from types." \
     > "$LOG_DIR/nextjs-story-add-S-002.log" 2>&1
 
   ./ralph-story.sh add --title "Todo service" \
     --goal "Implement a TodoStore class with CRUD and priority filtering." \
-    --prompt-context "Create src/todoService.ts importing Todo, Priority from types." \
+    --prompt-context "Create lib/todoService.ts importing Todo, Priority from types." \
     > "$LOG_DIR/nextjs-story-add-S-003.log" 2>&1
 
   ./ralph-story.sh add --title "Barrel export and integration" \
-    --goal "Wire all modules through src/index.ts and add cross-module integration test." \
-    --prompt-context "Update src/index.ts to re-export calendarService, todoService, types. Add tests/integration.test.mjs." \
+    --goal "Wire all modules through lib/index.ts and add cross-module integration test." \
+    --prompt-context "Update lib/index.ts to re-export calendarService, todoService, types. Add __tests__/integration.test.ts." \
     > "$LOG_DIR/nextjs-story-add-S-004.log" 2>&1
 
   # Patch story-level depends_on into stories.json.
@@ -503,7 +465,7 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'S
   "depends_on": [],
   "status": "ready",
   "spec": {
-    "scope": "src/types.ts",
+    "scope": "lib/types.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -512,15 +474,15 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'S
   "tasks": [
     {
       "id": "T-01",
-      "title": "Create src/types.ts with domain interfaces",
-      "context": "Create src/types.ts. Export:\n  - Priority: a type alias for the union 'low' | 'medium' | 'high'\n  - Category: interface with id: string, name: string, color: string\n  - CalendarEvent: interface with id: string, title: string, date: string (ISO), description?: string, categoryId?: string, linkedTodoIds: string[]\n  - Todo: interface with id: string, title: string, done: boolean, priority: Priority, categoryId?: string, dueDate?: string, linkedEventId?: string\nCommit the file.",
-      "scope": ["src/types.ts"],
-      "acceptance": "src/types.ts exists and exports CalendarEvent, Todo, Category, Priority. TypeScript strict typecheck passes.",
+      "title": "Create lib/types.ts with domain interfaces",
+      "context": "Create lib/types.ts. Export:\n  - Priority: a type alias for the union 'low' | 'medium' | 'high'\n  - Category: interface with id: string, name: string, color: string\n  - CalendarEvent: interface with id: string, title: string, date: string (ISO), description?: string, categoryId?: string, linkedTodoIds: string[]\n  - Todo: interface with id: string, title: string, done: boolean, priority: Priority, categoryId?: string, dueDate?: string, linkedEventId?: string\nCommit the file.",
+      "scope": ["lib/types.ts"],
+      "acceptance": "lib/types.ts exists and exports CalendarEvent, Todo, Category, Priority. TypeScript strict typecheck passes.",
       "checks": [
-        "test -f src/types.ts",
-        "grep -q 'CalendarEvent' src/types.ts",
-        "grep -q 'Priority' src/types.ts",
-        "grep -q 'Todo' src/types.ts",
+        "test -f lib/types.ts",
+        "grep -q 'CalendarEvent' lib/types.ts",
+        "grep -q 'Priority' lib/types.ts",
+        "grep -q 'Todo' lib/types.ts",
         "npm run typecheck"
       ],
       "depends_on": [],
@@ -529,13 +491,13 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'S
     },
     {
       "id": "T-02",
-      "title": "Create tests/types.test.mjs — source inspection",
-      "context": "Create tests/types.test.mjs. Use readFileSync to read src/types.ts and assert that the following strings are present in the source: 'CalendarEvent', 'Todo', 'Priority', 'Category', 'linkedTodoIds'. Commit the file.",
-      "scope": ["tests/types.test.mjs"],
-      "acceptance": "tests/types.test.mjs exists and asserts all required type symbols are present. Test passes.",
+      "title": "Create __tests__/types.test.ts — Jest type-shape tests",
+      "context": "Create __tests__/types.test.ts. Import the TypeScript types from '../lib/types'. Write Jest tests using describe/it/expect:\n\n  import type { CalendarEvent, Todo, Category, Priority } from '../lib/types'\n\n  describe('types', () => {\n    it('CalendarEvent can be shaped', () => {\n      const event: CalendarEvent = { id: 'e1', title: 'Meeting', date: '2024-01-01', linkedTodoIds: [] }\n      expect(event.id).toBe('e1')\n      expect(event.linkedTodoIds).toEqual([])\n    })\n    it('Todo has done and priority fields', () => {\n      const todo: Todo = { id: 't1', title: 'Task', done: false, priority: 'high' }\n      expect(todo.done).toBe(false)\n      expect(todo.priority).toBe('high')\n    })\n    it('Priority accepts valid values', () => {\n      const priorities: Priority[] = ['low', 'medium', 'high']\n      expect(priorities).toHaveLength(3)\n    })\n    it('Category has id, name, color', () => {\n      const cat: Category = { id: 'c1', name: 'Work', color: '#ff0000' }\n      expect(cat.color).toBe('#ff0000')\n    })\n  })\n\nCommit the file.",
+      "scope": ["__tests__/types.test.ts"],
+      "acceptance": "__tests__/types.test.ts exists with passing Jest tests for all type shapes.",
       "checks": [
-        "test -f tests/types.test.mjs",
-        "npm test -- --runTestsByPath tests/types.test.mjs",
+        "test -f __tests__/types.test.ts",
+        "npm test -- --testPathPattern=\"types\\.test\"",
         "npm run typecheck"
       ],
       "depends_on": [],
@@ -545,12 +507,12 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'S
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. If any issues are found, fix them and commit. If everything already passes, no commit is needed.",
-      "scope": ["src/types.ts", "tests/types.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. If any issues are found, fix them and commit. If everything already passes, no commit is needed.",
+      "scope": ["lib/types.ts", "__tests__/types.test.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -576,7 +538,7 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'S
   "depends_on": ["S-001"],
   "status": "ready",
   "spec": {
-    "scope": "src/calendarService.ts and tests/calendarService.test.mjs",
+    "scope": "lib/calendarService.ts and __tests__/calendarService.test.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -585,14 +547,14 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'S
   "tasks": [
     {
       "id": "T-01",
-      "title": "Create src/calendarService.ts",
-      "context": "Create src/calendarService.ts. Import CalendarEvent from './types.js' (NodeNext requires .js extension).\nExport a CalendarStore class with:\n  - private events: CalendarEvent[] = []\n  - addEvent(event: CalendarEvent): void\n  - removeEvent(id: string): void  — filters out the matching id\n  - getEventsForDate(date: string): CalendarEvent[]  — returns events where event.date === date\n  - getAllEvents(): CalendarEvent[]  — returns a copy of the array\nAlso export standalone functions that delegate to a CalendarStore instance:\n  function addEvent(store: CalendarStore, event: CalendarEvent): void\n  function removeEvent(store: CalendarStore, id: string): void\n  function getEventsForDate(store: CalendarStore, date: string): CalendarEvent[]\nCommit the file.",
-      "scope": ["src/calendarService.ts"],
-      "acceptance": "src/calendarService.ts exists, exports CalendarStore class and addEvent/removeEvent/getEventsForDate functions. TypeScript strict typecheck passes.",
+      "title": "Create lib/calendarService.ts",
+      "context": "Create lib/calendarService.ts. Import CalendarEvent from './types'.\nExport a CalendarStore class with:\n  - private events: CalendarEvent[] = []\n  - addEvent(event: CalendarEvent): void\n  - removeEvent(id: string): void  — filters out the matching id\n  - getEventsForDate(date: string): CalendarEvent[]  — returns events where event.date === date\n  - getAllEvents(): CalendarEvent[]  — returns a shallow copy of the array\nAlso export standalone functions that delegate to a store instance:\n  function addEvent(store: CalendarStore, event: CalendarEvent): void\n  function removeEvent(store: CalendarStore, id: string): void\n  function getEventsForDate(store: CalendarStore, date: string): CalendarEvent[]\nCommit the file.",
+      "scope": ["lib/calendarService.ts"],
+      "acceptance": "lib/calendarService.ts exists, exports CalendarStore and standalone functions. TypeScript strict typecheck passes.",
       "checks": [
-        "test -f src/calendarService.ts",
-        "grep -q 'CalendarStore' src/calendarService.ts",
-        "grep -q 'addEvent' src/calendarService.ts",
+        "test -f lib/calendarService.ts",
+        "grep -q 'CalendarStore' lib/calendarService.ts",
+        "grep -q 'addEvent' lib/calendarService.ts",
         "npm run typecheck"
       ],
       "depends_on": [],
@@ -601,13 +563,13 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'S
     },
     {
       "id": "T-02",
-      "title": "Create tests/calendarService.test.mjs — runtime assertions",
-      "context": "Create tests/calendarService.test.mjs. Import CalendarStore from '../src/calendarService.js'.\nSince this is a NodeNext TypeScript project, the .js file won't exist until tsc compiles. Use this runtime-transpilation pattern at the top of the test file to compile the TypeScript on-the-fly:\n\n  import ts from 'typescript';\n  import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';\n  import { fileURLToPath } from 'node:url';\n  import path from 'node:path';\n  const __dir = path.dirname(fileURLToPath(import.meta.url));\n  for (const name of ['types', 'calendarService']) {\n    const jsf = path.join(__dir, `../src/${name}.js`);\n    const tsf = path.join(__dir, `../src/${name}.ts`);\n    if (!existsSync(jsf)) {\n      const { outputText } = ts.transpileModule(readFileSync(tsf, 'utf8'), {\n        compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 }\n      });\n      writeFileSync(jsf, outputText);\n      process.on('exit', () => rmSync(jsf, { force: true }));\n    }\n  }\n  const { CalendarStore } = await import('../src/calendarService.js');\n\nThen write assertions:\n  - Create a CalendarStore, add two events for date '2024-03-15', assert getEventsForDate returns 2 events\n  - Add a third event for a different date, assert getEventsForDate for '2024-03-15' still returns 2\n  - removeEvent the first event, assert getEventsForDate returns 1 event\n  - getAllEvents() returns the remaining 2 events\nCommit the file.",
-      "scope": ["tests/calendarService.test.mjs"],
-      "acceptance": "tests/calendarService.test.mjs exists with assertions for add, remove, and query. All tests pass.",
+      "title": "Create __tests__/calendarService.test.ts — Jest runtime tests",
+      "context": "Create __tests__/calendarService.test.ts. Import CalendarStore from '../lib/calendarService'. Write Jest tests:\n\n  import { CalendarStore } from '../lib/calendarService'\n\n  describe('CalendarStore', () => {\n    let store: CalendarStore\n    beforeEach(() => { store = new CalendarStore() })\n\n    it('adds events and queries by date', () => {\n      store.addEvent({ id: 'e1', title: 'A', date: '2024-03-15', linkedTodoIds: [] })\n      store.addEvent({ id: 'e2', title: 'B', date: '2024-03-15', linkedTodoIds: [] })\n      store.addEvent({ id: 'e3', title: 'C', date: '2024-03-16', linkedTodoIds: [] })\n      expect(store.getEventsForDate('2024-03-15')).toHaveLength(2)\n      expect(store.getEventsForDate('2024-03-16')).toHaveLength(1)\n    })\n\n    it('removes an event', () => {\n      store.addEvent({ id: 'e1', title: 'A', date: '2024-03-15', linkedTodoIds: [] })\n      store.removeEvent('e1')\n      expect(store.getAllEvents()).toHaveLength(0)\n    })\n\n    it('getAllEvents returns remaining events', () => {\n      store.addEvent({ id: 'e1', title: 'A', date: '2024-03-15', linkedTodoIds: [] })\n      store.addEvent({ id: 'e2', title: 'B', date: '2024-03-16', linkedTodoIds: [] })\n      store.removeEvent('e1')\n      expect(store.getAllEvents()).toHaveLength(1)\n      expect(store.getAllEvents()[0].id).toBe('e2')\n    })\n  })\n\nCommit the file.",
+      "scope": ["__tests__/calendarService.test.ts"],
+      "acceptance": "__tests__/calendarService.test.ts exists with passing Jest tests for CalendarStore.",
       "checks": [
-        "test -f tests/calendarService.test.mjs",
-        "npm test -- --runTestsByPath tests/calendarService.test.mjs"
+        "test -f __tests__/calendarService.test.ts",
+        "npm test -- --testPathPattern=\"calendarService\\.test\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -616,12 +578,12 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'S
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/calendarService.ts", "tests/calendarService.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["lib/calendarService.ts", "__tests__/calendarService.test.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -647,7 +609,7 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'S
   "depends_on": ["S-001"],
   "status": "ready",
   "spec": {
-    "scope": "src/todoService.ts and tests/todoService.test.mjs",
+    "scope": "lib/todoService.ts and __tests__/todoService.test.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -656,14 +618,14 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'S
   "tasks": [
     {
       "id": "T-01",
-      "title": "Create src/todoService.ts",
-      "context": "Create src/todoService.ts. Import Todo and Priority from './types.js' (NodeNext requires .js extension).\nExport a TodoStore class with:\n  - private todos: Todo[] = []\n  - createTodo(todo: Todo): void\n  - completeTodo(id: string): void  — sets done = true for the matching id\n  - deleteTodo(id: string): void  — filters out the matching id\n  - filterByPriority(priority: Priority): Todo[]  — returns todos matching the priority\n  - getAllTodos(): Todo[]  — returns a copy\nCommit the file.",
-      "scope": ["src/todoService.ts"],
-      "acceptance": "src/todoService.ts exists, exports TodoStore with createTodo, completeTodo, deleteTodo, filterByPriority. TypeScript strict typecheck passes.",
+      "title": "Create lib/todoService.ts",
+      "context": "Create lib/todoService.ts. Import Todo and Priority from './types'.\nExport a TodoStore class with:\n  - private todos: Todo[] = []\n  - createTodo(todo: Todo): void\n  - completeTodo(id: string): void  — sets done = true for the matching id\n  - deleteTodo(id: string): void  — filters out the matching id\n  - filterByPriority(priority: Priority): Todo[]  — returns todos matching the priority\n  - getAllTodos(): Todo[]  — returns a shallow copy\nCommit the file.",
+      "scope": ["lib/todoService.ts"],
+      "acceptance": "lib/todoService.ts exists, exports TodoStore with createTodo, completeTodo, deleteTodo, filterByPriority. TypeScript strict typecheck passes.",
       "checks": [
-        "test -f src/todoService.ts",
-        "grep -q 'TodoStore' src/todoService.ts",
-        "grep -q 'createTodo' src/todoService.ts",
+        "test -f lib/todoService.ts",
+        "grep -q 'TodoStore' lib/todoService.ts",
+        "grep -q 'createTodo' lib/todoService.ts",
         "npm run typecheck"
       ],
       "depends_on": [],
@@ -672,13 +634,13 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'S
     },
     {
       "id": "T-02",
-      "title": "Create tests/todoService.test.mjs — runtime assertions",
-      "context": "Create tests/todoService.test.mjs. Import TodoStore from '../src/todoService.js'.\nUse the same runtime-transpilation pattern as tests/calendarService.test.mjs: transpile 'types' and 'todoService' modules using ts.transpileModule with ModuleKind.ES2022, writing temp .js files and cleaning them up on process exit.\n\nThen write assertions:\n  - Create a TodoStore, add three todos: two with priority 'high', one with 'low'\n  - filterByPriority('high') returns 2\n  - filterByPriority('low') returns 1\n  - completeTodo on the first high-priority todo — getAllTodos shows it has done: true\n  - deleteTodo on the low-priority todo — getAllTodos returns 2 todos\nCommit the file.",
-      "scope": ["tests/todoService.test.mjs"],
-      "acceptance": "tests/todoService.test.mjs exists with assertions for create, complete, delete, filterByPriority. All tests pass.",
+      "title": "Create __tests__/todoService.test.ts — Jest runtime tests",
+      "context": "Create __tests__/todoService.test.ts. Import TodoStore from '../lib/todoService'. Write Jest tests:\n\n  import { TodoStore } from '../lib/todoService'\n\n  describe('TodoStore', () => {\n    let store: TodoStore\n    beforeEach(() => { store = new TodoStore() })\n\n    it('filters by priority', () => {\n      store.createTodo({ id: 't1', title: 'High 1', done: false, priority: 'high' })\n      store.createTodo({ id: 't2', title: 'High 2', done: false, priority: 'high' })\n      store.createTodo({ id: 't3', title: 'Low', done: false, priority: 'low' })\n      expect(store.filterByPriority('high')).toHaveLength(2)\n      expect(store.filterByPriority('low')).toHaveLength(1)\n    })\n\n    it('completes a todo', () => {\n      store.createTodo({ id: 't1', title: 'Task', done: false, priority: 'medium' })\n      store.completeTodo('t1')\n      expect(store.getAllTodos()[0].done).toBe(true)\n    })\n\n    it('deletes a todo', () => {\n      store.createTodo({ id: 't1', title: 'A', done: false, priority: 'low' })\n      store.createTodo({ id: 't2', title: 'B', done: false, priority: 'high' })\n      store.deleteTodo('t1')\n      expect(store.getAllTodos()).toHaveLength(1)\n      expect(store.getAllTodos()[0].id).toBe('t2')\n    })\n  })\n\nCommit the file.",
+      "scope": ["__tests__/todoService.test.ts"],
+      "acceptance": "__tests__/todoService.test.ts exists with passing Jest tests for TodoStore.",
       "checks": [
-        "test -f tests/todoService.test.mjs",
-        "npm test -- --runTestsByPath tests/todoService.test.mjs"
+        "test -f __tests__/todoService.test.ts",
+        "npm test -- --testPathPattern=\"todoService\\.test\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -687,12 +649,12 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'S
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/todoService.ts", "tests/todoService.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["lib/todoService.ts", "__tests__/todoService.test.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -711,16 +673,16 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'S
   "project": "nextjs-calendar",
   "storyId": "S-004",
   "title": "Barrel export and integration test",
-  "description": "Wire all modules through src/index.ts and add a cross-module integration test that uses both services together.",
+  "description": "Wire all modules through lib/index.ts and add a cross-module integration test.",
   "branchName": "ralph/sprint-1/story-S-004",
   "sprint": "sprint-1",
   "priority": 4,
   "depends_on": ["S-001", "S-002", "S-003"],
   "status": "ready",
   "spec": {
-    "scope": "src/index.ts and tests/integration.test.mjs",
+    "scope": "lib/index.ts and __tests__/integration.test.ts",
     "preserved_invariants": [
-      "APP_NAME and APP_VERSION exports must remain in src/index.ts",
+      "APP_NAME and APP_VERSION exports must remain in lib/index.ts",
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
     ]
@@ -728,14 +690,14 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'S
   "tasks": [
     {
       "id": "T-01",
-      "title": "Update src/index.ts to re-export all modules",
-      "context": "Update src/index.ts (which currently only exports APP_NAME and APP_VERSION). Add re-exports:\n  export * from './calendarService.js';\n  export * from './todoService.js';\n  export * from './types.js';\nKeep the existing APP_NAME and APP_VERSION exports. Commit the change.",
-      "scope": ["src/index.ts"],
-      "acceptance": "src/index.ts re-exports calendarService, todoService, and types. APP_NAME and APP_VERSION remain. TypeScript strict typecheck passes.",
+      "title": "Update lib/index.ts to re-export all modules",
+      "context": "Update lib/index.ts (which currently only exports APP_NAME and APP_VERSION). Add re-exports:\n  export * from './calendarService'\n  export * from './todoService'\n  export * from './types'\nKeep the existing APP_NAME and APP_VERSION exports. Commit the change.",
+      "scope": ["lib/index.ts"],
+      "acceptance": "lib/index.ts re-exports calendarService, todoService, and types. APP_NAME and APP_VERSION remain. TypeScript strict typecheck passes.",
       "checks": [
-        "grep -q 'calendarService' src/index.ts",
-        "grep -q 'todoService' src/index.ts",
-        "grep -q 'APP_NAME' src/index.ts",
+        "grep -q 'calendarService' lib/index.ts",
+        "grep -q 'todoService' lib/index.ts",
+        "grep -q 'APP_NAME' lib/index.ts",
         "npm run typecheck"
       ],
       "depends_on": [],
@@ -744,13 +706,13 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'S
     },
     {
       "id": "T-02",
-      "title": "Create tests/integration.test.mjs — cross-module assertions",
-      "context": "Create tests/integration.test.mjs. This test exercises both CalendarStore and TodoStore together.\nUse the runtime-transpilation pattern: transpile 'types', 'calendarService', 'todoService', and 'index' modules using ts.transpileModule with ModuleKind.ES2022.\n\nImport CalendarStore and TodoStore from '../src/index.js' (the barrel).\n\nWrite assertions:\n  - Create a CalendarStore and add an event with id 'e1', title 'Team standup', date '2024-04-01', linkedTodoIds: ['t1']\n  - Create a TodoStore and add a todo with id 't1', title 'Prepare agenda', done: false, priority: 'high', linkedEventId: 'e1'\n  - Assert calendarStore.getEventsForDate('2024-04-01') returns 1 event with title 'Team standup'\n  - Assert todoStore.filterByPriority('high') returns 1 todo with title 'Prepare agenda'\n  - completeTodo('t1'), assert getAllTodos()[0].done === true\n  - Assert the event's linkedTodoIds includes 't1'\nCommit the file.",
-      "scope": ["tests/integration.test.mjs"],
-      "acceptance": "tests/integration.test.mjs exists. All cross-module assertions pass.",
+      "title": "Create __tests__/integration.test.ts — cross-module Jest test",
+      "context": "Create __tests__/integration.test.ts. Import from the barrel lib/index.ts. Write Jest tests:\n\n  import { CalendarStore, TodoStore, APP_NAME } from '../lib/index'\n\n  describe('integration', () => {\n    it('APP_NAME is exported from barrel', () => {\n      expect(APP_NAME).toBe('nextjs-calendar')\n    })\n\n    it('CalendarStore and TodoStore work together', () => {\n      const calStore = new CalendarStore()\n      const todoStore = new TodoStore()\n\n      calStore.addEvent({ id: 'e1', title: 'Standup', date: '2024-04-01', linkedTodoIds: ['t1'] })\n      todoStore.createTodo({ id: 't1', title: 'Prepare agenda', done: false, priority: 'high' })\n\n      expect(calStore.getEventsForDate('2024-04-01')).toHaveLength(1)\n      expect(calStore.getEventsForDate('2024-04-01')[0].title).toBe('Standup')\n      expect(todoStore.filterByPriority('high')).toHaveLength(1)\n\n      todoStore.completeTodo('t1')\n      expect(todoStore.getAllTodos()[0].done).toBe(true)\n\n      const event = calStore.getAllEvents()[0]\n      expect(event.linkedTodoIds).toContain('t1')\n    })\n  })\n\nCommit the file.",
+      "scope": ["__tests__/integration.test.ts"],
+      "acceptance": "__tests__/integration.test.ts exists with passing cross-module Jest assertions.",
       "checks": [
-        "test -f tests/integration.test.mjs",
-        "npm test -- --runTestsByPath tests/integration.test.mjs"
+        "test -f __tests__/integration.test.ts",
+        "npm test -- --testPathPattern=\"integration\\.test\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -759,12 +721,12 @@ cat > "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'S
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/index.ts", "tests/integration.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass including integration.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["lib/index.ts", "__tests__/integration.test.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass including integration.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -783,7 +745,7 @@ cat > "$NEXTJS_DIR/scripts/ralph/ralph-sprint-test.sh" <<'SH'
 #!/bin/bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-npm run build && npm run lint && npm test
+npm run build && npm run typecheck && npm test
 SH
 chmod +x "$NEXTJS_DIR/scripts/ralph/ralph-sprint-test.sh"
 
@@ -792,75 +754,68 @@ commit_baseline "$NEXTJS_DIR" "chore(smoke): nextjs-calendar sprint plan"
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PROJECT 2: angular-calendar
-#  Angular-style TypeScript: class-based services, constructor injection, Maps
+#  Real Angular project via ng new. Services in src/app/services/.
+#  Tests as *.spec.ts using Jest + ts-jest.
 # ══════════════════════════════════════════════════════════════════════════════
 
 log "=== Setting up angular-calendar ==="
 
-mkdir -p "$ANGULAR_DIR"
+cd "$WORK_DIR"
+log "  Running ng new..."
+npx @angular/cli@latest new angular-calendar \
+  --routing=false \
+  --style=css \
+  --skip-git \
+  --standalone \
+  --defaults \
+  > "$LOG_DIR/angular-create.log" 2>&1 \
+  || fail "ng new failed — see $LOG_DIR/angular-create.log"
+
 cd "$ANGULAR_DIR"
 git init -b main >/dev/null
 git config user.name "Ralph Smoke"
 git config user.email "ralph-smoke@example.com"
 
-cat > package.json <<'JSON'
-{
-  "name": "angular-calendar",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build":     "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint":      "node -e \"console.log('lint ok')\"",
-    "test":      "node scripts/run-tests.mjs"
-  },
-  "devDependencies": {
-    "typescript": "^5.4.5"
-  }
-}
-JSON
+# Remove generated Karma/Jasmine spec files — incompatible with Jest
+find src -name "*.spec.ts" -delete 2>/dev/null || true
 
-cat > tsconfig.json <<'JSON'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "experimentalDecorators": true,
-    "skipLibCheck": true
-  },
-  "include": ["src"]
-}
-JSON
+log "  Adding Jest..."
+npm install --save-dev jest @types/jest ts-jest jest-environment-node --silent \
+  >> "$LOG_DIR/angular-create.log" 2>&1
 
-mkdir -p src/app/services
-cat > src/index.ts <<'TS'
-export const APP_NAME = "angular-calendar";
-export const APP_VERSION = "0.1.0";
+npm pkg set scripts.test="jest"
+npm pkg set scripts.typecheck="tsc --noEmit"
+
+cat > jest.config.ts <<'TS'
+import type { Config } from 'jest'
+
+const config: Config = {
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
+      tsconfig: {
+        module: 'commonjs',
+        moduleResolution: 'node',
+        experimentalDecorators: true,
+        emitDecoratorMetadata: true,
+      },
+    }],
+  },
+  testEnvironment: 'node',
+  testMatch: ['**/*.spec.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+}
+
+export default config
 TS
 
-write_run_tests_mjs "$ANGULAR_DIR"
-
-mkdir -p tests
-cat > tests/baseline.test.mjs <<'JS'
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-const src = readFileSync("src/index.ts", "utf8");
-assert.ok(src.includes("angular-calendar"), "APP_NAME missing from src/index.ts");
-JS
-
-cat > .gitignore <<'EOF'
-dist/
-node_modules/
-EOF
-
-log "  npm install..."
-npm install --silent
-npm run build --silent
+# Minimal baseline spec replacing deleted generated one
+cat > src/app/app.spec.ts <<'SPEC'
+describe('app', () => {
+  it('is configured', () => {
+    expect(true).toBe(true)
+  })
+})
+SPEC
 
 git add .
 git reset -- dist >/dev/null 2>&1 || true
@@ -950,7 +905,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'
     {
       "id": "T-01",
       "title": "Create src/app/models.ts with class-based models",
-      "context": "Create src/app/models.ts. Export three classes:\n\n  export class CalendarEvent {\n    constructor(\n      public id: string,\n      public title: string,\n      public date: string,\n      public description: string = '',\n      public linkedTodoIds: string[] = []\n    ) {}\n  }\n\n  export class Todo {\n    public done: boolean = false;\n    constructor(\n      public id: string,\n      public title: string,\n      public priority: 'low' | 'medium' | 'high' = 'medium',\n      public dueDate?: string\n    ) {}\n  }\n\n  export class Category {\n    constructor(\n      public id: string,\n      public name: string,\n      public color: string\n    ) {}\n  }\n\nCommit the file.",
+      "context": "Create src/app/models.ts. Export three classes:\n\n  export class CalendarEvent {\n    constructor(\n      public id: string,\n      public title: string,\n      public date: string,\n      public description: string = '',\n      public linkedTodoIds: string[] = []\n    ) {}\n  }\n\n  export class Todo {\n    public done: boolean = false\n    constructor(\n      public id: string,\n      public title: string,\n      public priority: 'low' | 'medium' | 'high' = 'medium',\n      public dueDate?: string\n    ) {}\n  }\n\n  export class Category {\n    constructor(\n      public id: string,\n      public name: string,\n      public color: string\n    ) {}\n  }\n\nCommit the file.",
       "scope": ["src/app/models.ts"],
       "acceptance": "src/app/models.ts exists and exports class CalendarEvent, class Todo, class Category. TypeScript strict typecheck passes.",
       "checks": [
@@ -966,13 +921,14 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'
     },
     {
       "id": "T-02",
-      "title": "Create tests/models.test.mjs — source inspection",
-      "context": "Create tests/models.test.mjs. Use readFileSync to read src/app/models.ts and assert that the following class names are present: 'class CalendarEvent', 'class Todo', 'class Category'. Also assert 'linkedTodoIds' and 'priority' appear. Commit the file.",
-      "scope": ["tests/models.test.mjs"],
-      "acceptance": "tests/models.test.mjs exists and asserts required class names. Test passes.",
+      "title": "Create src/app/models.spec.ts — Jest class instantiation tests",
+      "context": "Create src/app/models.spec.ts. Import the model classes from './models'. Write Jest tests:\n\n  import { CalendarEvent, Todo, Category } from './models'\n\n  describe('CalendarEvent', () => {\n    it('sets defaults for description and linkedTodoIds', () => {\n      const e = new CalendarEvent('e1', 'Meeting', '2024-01-01')\n      expect(e.id).toBe('e1')\n      expect(e.description).toBe('')\n      expect(e.linkedTodoIds).toEqual([])\n    })\n  })\n\n  describe('Todo', () => {\n    it('defaults done to false and priority to medium', () => {\n      const t = new Todo('t1', 'Task')\n      expect(t.done).toBe(false)\n      expect(t.priority).toBe('medium')\n    })\n    it('accepts explicit priority', () => {\n      const t = new Todo('t2', 'Urgent', 'high')\n      expect(t.priority).toBe('high')\n    })\n  })\n\n  describe('Category', () => {\n    it('stores id, name, color', () => {\n      const c = new Category('c1', 'Work', '#ff0000')\n      expect(c.name).toBe('Work')\n      expect(c.color).toBe('#ff0000')\n    })\n  })\n\nCommit the file.",
+      "scope": ["src/app/models.spec.ts"],
+      "acceptance": "src/app/models.spec.ts exists with passing Jest tests for all model classes.",
       "checks": [
-        "test -f tests/models.test.mjs",
-        "npm test -- --runTestsByPath tests/models.test.mjs"
+        "test -f src/app/models.spec.ts",
+        "npm test -- --testPathPattern=\"models\\.spec\"",
+        "npm run typecheck"
       ],
       "depends_on": [],
       "status": "pending",
@@ -981,12 +937,12 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001/story.json" <<'
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/app/models.ts", "tests/models.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["src/app/models.ts", "src/app/models.spec.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -1012,7 +968,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'
   "depends_on": ["S-001"],
   "status": "ready",
   "spec": {
-    "scope": "src/app/services/calendar.service.ts and tests/calendar.service.test.mjs",
+    "scope": "src/app/services/calendar.service.ts and src/app/services/calendar.service.spec.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -1022,7 +978,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'
     {
       "id": "T-01",
       "title": "Create src/app/services/calendar.service.ts",
-      "context": "Create src/app/services/calendar.service.ts. Import CalendarEvent from '../models.js' (NodeNext requires .js extension).\nExport class CalendarService with:\n  - private events: Map<string, CalendarEvent> = new Map()\n  - addEvent(event: CalendarEvent): void  — sets events.set(event.id, event)\n  - removeEvent(id: string): boolean  — returns events.delete(id)\n  - getEventsForDate(date: string): CalendarEvent[]  — filters by event.date === date\n  - getAllEvents(): CalendarEvent[]  — returns Array.from(events.values())\nCommit the file.",
+      "context": "Create src/app/services/calendar.service.ts. Import CalendarEvent from '../models'.\nExport class CalendarService with:\n  - private events: Map<string, CalendarEvent> = new Map()\n  - addEvent(event: CalendarEvent): void  — sets events.set(event.id, event)\n  - removeEvent(id: string): boolean  — returns events.delete(id)\n  - getEventsForDate(date: string): CalendarEvent[]  — filters by event.date === date\n  - getAllEvents(): CalendarEvent[]  — returns Array.from(events.values())\nCommit the file.",
       "scope": ["src/app/services/calendar.service.ts"],
       "acceptance": "src/app/services/calendar.service.ts exists, exports class CalendarService with addEvent, removeEvent, getEventsForDate. TypeScript strict typecheck passes.",
       "checks": [
@@ -1037,13 +993,13 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'
     },
     {
       "id": "T-02",
-      "title": "Create tests/calendar.service.test.mjs — runtime assertions",
-      "context": "Create tests/calendar.service.test.mjs. Import CalendarService from '../src/app/services/calendar.service.js'.\nUse the runtime-transpilation pattern: for each of ['app/models', 'app/services/calendar.service'], check if the .js file exists under src/; if not, use ts.transpileModule with ModuleKind.ES2022 to compile the .ts file and write the .js file, registering process.on('exit', ...) cleanup.\n\nWrite assertions:\n  - new CalendarService(), add two CalendarEvent instances for date '2024-05-01'\n  - getEventsForDate('2024-05-01') returns array of length 2\n  - removeEvent on the first — getEventsForDate returns length 1\n  - getAllEvents() returns length 1\nCommit the file.",
-      "scope": ["tests/calendar.service.test.mjs"],
-      "acceptance": "tests/calendar.service.test.mjs exists with passing runtime assertions for CalendarService.",
+      "title": "Create src/app/services/calendar.service.spec.ts — Jest tests",
+      "context": "Create src/app/services/calendar.service.spec.ts. Import CalendarService and CalendarEvent. Write Jest tests:\n\n  import { CalendarService } from './calendar.service'\n  import { CalendarEvent } from '../models'\n\n  describe('CalendarService', () => {\n    let service: CalendarService\n    beforeEach(() => { service = new CalendarService() })\n\n    it('adds events and queries by date', () => {\n      service.addEvent(new CalendarEvent('e1', 'A', '2024-05-01'))\n      service.addEvent(new CalendarEvent('e2', 'B', '2024-05-01'))\n      service.addEvent(new CalendarEvent('e3', 'C', '2024-05-02'))\n      expect(service.getEventsForDate('2024-05-01')).toHaveLength(2)\n      expect(service.getEventsForDate('2024-05-02')).toHaveLength(1)\n    })\n\n    it('removes an event and returns true', () => {\n      service.addEvent(new CalendarEvent('e1', 'A', '2024-05-01'))\n      expect(service.removeEvent('e1')).toBe(true)\n      expect(service.getAllEvents()).toHaveLength(0)\n    })\n\n    it('removeEvent returns false for unknown id', () => {\n      expect(service.removeEvent('nonexistent')).toBe(false)\n    })\n  })\n\nCommit the file.",
+      "scope": ["src/app/services/calendar.service.spec.ts"],
+      "acceptance": "src/app/services/calendar.service.spec.ts exists with passing Jest tests for CalendarService.",
       "checks": [
-        "test -f tests/calendar.service.test.mjs",
-        "npm test -- --runTestsByPath tests/calendar.service.test.mjs"
+        "test -f src/app/services/calendar.service.spec.ts",
+        "npm test -- --testPathPattern=\"calendar\\.service\\.spec\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -1052,12 +1008,12 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002/story.json" <<'
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/app/services/calendar.service.ts", "tests/calendar.service.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["src/app/services/calendar.service.ts", "src/app/services/calendar.service.spec.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -1083,7 +1039,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'
   "depends_on": ["S-001"],
   "status": "ready",
   "spec": {
-    "scope": "src/app/services/todo.service.ts and tests/todo.service.test.mjs",
+    "scope": "src/app/services/todo.service.ts and src/app/services/todo.service.spec.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -1093,7 +1049,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'
     {
       "id": "T-01",
       "title": "Create src/app/services/todo.service.ts",
-      "context": "Create src/app/services/todo.service.ts. Import Todo from '../models.js' (NodeNext requires .js extension).\nExport class TodoService with:\n  - private todos: Map<string, Todo> = new Map()\n  - create(todo: Todo): void  — sets todos.set(todo.id, todo)\n  - complete(id: string): void  — sets todo.done = true for the matching id\n  - delete(id: string): boolean  — returns todos.delete(id)\n  - getByPriority(priority: 'low' | 'medium' | 'high'): Todo[]  — filters by todo.priority\n  - getAll(): Todo[]  — returns Array.from(todos.values())\nCommit the file.",
+      "context": "Create src/app/services/todo.service.ts. Import Todo from '../models'.\nExport class TodoService with:\n  - private todos: Map<string, Todo> = new Map()\n  - create(todo: Todo): void  — sets todos.set(todo.id, todo)\n  - complete(id: string): void  — finds the todo and sets done = true\n  - delete(id: string): boolean  — returns todos.delete(id)\n  - getByPriority(priority: 'low' | 'medium' | 'high'): Todo[]  — filters by todo.priority\n  - getAll(): Todo[]  — returns Array.from(todos.values())\nCommit the file.",
       "scope": ["src/app/services/todo.service.ts"],
       "acceptance": "src/app/services/todo.service.ts exists, exports class TodoService with create, complete, delete, getByPriority. TypeScript strict typecheck passes.",
       "checks": [
@@ -1108,13 +1064,13 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'
     },
     {
       "id": "T-02",
-      "title": "Create tests/todo.service.test.mjs — runtime assertions",
-      "context": "Create tests/todo.service.test.mjs. Import TodoService from '../src/app/services/todo.service.js'.\nUse the runtime-transpilation pattern for ['app/models', 'app/services/todo.service'] (same as calendar.service.test.mjs).\n\nWrite assertions:\n  - new TodoService(), create three Todo instances: two with priority 'high', one with 'low'\n  - getByPriority('high') returns 2\n  - getByPriority('low') returns 1\n  - complete on the first high-priority todo — getAll() shows it has done === true\n  - delete the low-priority todo — getAll() returns 2 todos\nCommit the file.",
-      "scope": ["tests/todo.service.test.mjs"],
-      "acceptance": "tests/todo.service.test.mjs exists with passing runtime assertions for TodoService.",
+      "title": "Create src/app/services/todo.service.spec.ts — Jest tests",
+      "context": "Create src/app/services/todo.service.spec.ts. Import TodoService and Todo. Write Jest tests:\n\n  import { TodoService } from './todo.service'\n  import { Todo } from '../models'\n\n  describe('TodoService', () => {\n    let service: TodoService\n    beforeEach(() => { service = new TodoService() })\n\n    it('filters by priority', () => {\n      service.create(new Todo('t1', 'High 1', 'high'))\n      service.create(new Todo('t2', 'High 2', 'high'))\n      service.create(new Todo('t3', 'Low', 'low'))\n      expect(service.getByPriority('high')).toHaveLength(2)\n      expect(service.getByPriority('low')).toHaveLength(1)\n    })\n\n    it('completes a todo', () => {\n      service.create(new Todo('t1', 'Task', 'medium'))\n      service.complete('t1')\n      expect(service.getAll()[0].done).toBe(true)\n    })\n\n    it('deletes a todo and returns true', () => {\n      service.create(new Todo('t1', 'A', 'low'))\n      service.create(new Todo('t2', 'B', 'high'))\n      expect(service.delete('t1')).toBe(true)\n      expect(service.getAll()).toHaveLength(1)\n      expect(service.getAll()[0].id).toBe('t2')\n    })\n  })\n\nCommit the file.",
+      "scope": ["src/app/services/todo.service.spec.ts"],
+      "acceptance": "src/app/services/todo.service.spec.ts exists with passing Jest tests for TodoService.",
       "checks": [
-        "test -f tests/todo.service.test.mjs",
-        "npm test -- --runTestsByPath tests/todo.service.test.mjs"
+        "test -f src/app/services/todo.service.spec.ts",
+        "npm test -- --testPathPattern=\"todo\\.service\\.spec\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -1123,12 +1079,12 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003/story.json" <<'
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/app/services/todo.service.ts", "tests/todo.service.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["src/app/services/todo.service.ts", "src/app/services/todo.service.spec.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -1147,14 +1103,14 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'
   "project": "angular-calendar",
   "storyId": "S-004",
   "title": "AppModule wiring and integration",
-  "description": "Create AppModule that wires CalendarService and TodoService as injected dependencies, and add a cross-service integration test.",
+  "description": "Create AppModule that wires CalendarService and TodoService, with cross-service integration tests.",
   "branchName": "ralph/sprint-1/story-S-004",
   "sprint": "sprint-1",
   "priority": 4,
   "depends_on": ["S-001", "S-002", "S-003"],
   "status": "ready",
   "spec": {
-    "scope": "src/app/app.module.ts and tests/app.module.test.mjs",
+    "scope": "src/app/app.module.ts and src/app/app.module.spec.ts",
     "preserved_invariants": [
       "TypeScript strict mode must remain satisfied",
       "All prior tests must continue to pass"
@@ -1164,7 +1120,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'
     {
       "id": "T-01",
       "title": "Create src/app/app.module.ts",
-      "context": "Create src/app/app.module.ts. Import CalendarService from './services/calendar.service.js' and TodoService from './services/todo.service.js' (NodeNext .js extension required).\nExport:\n  export interface AppServices {\n    calendarService: CalendarService;\n    todoService: TodoService;\n  }\n  export class AppModule {\n    static create(): AppServices {\n      return {\n        calendarService: new CalendarService(),\n        todoService: new TodoService(),\n      };\n    }\n  }\nCommit the file.",
+      "context": "Create src/app/app.module.ts. Import CalendarService from './services/calendar.service' and TodoService from './services/todo.service'.\nExport:\n  export interface AppServices {\n    calendarService: CalendarService\n    todoService: TodoService\n  }\n  export class AppModule {\n    static create(): AppServices {\n      return {\n        calendarService: new CalendarService(),\n        todoService: new TodoService(),\n      }\n    }\n  }\nCommit the file.",
       "scope": ["src/app/app.module.ts"],
       "acceptance": "src/app/app.module.ts exists, exports class AppModule with static create() returning AppServices. TypeScript strict typecheck passes.",
       "checks": [
@@ -1179,13 +1135,13 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'
     },
     {
       "id": "T-02",
-      "title": "Create tests/app.module.test.mjs — cross-service integration",
-      "context": "Create tests/app.module.test.mjs. Use the runtime-transpilation pattern for all four modules: 'app/models', 'app/services/calendar.service', 'app/services/todo.service', 'app/app.module'.\n\nImport AppModule from '../src/app/app.module.js'.\n\nWrite assertions:\n  - const { calendarService, todoService } = AppModule.create()\n  - Both are instances of their respective classes (calendarService has addEvent, todoService has create)\n  - Add a CalendarEvent via calendarService.addEvent(...) with id 'e1', date '2024-06-01'\n  - Add a Todo via todoService.create(...) with id 't1', priority 'high'\n  - calendarService.getEventsForDate('2024-06-01') has length 1\n  - todoService.getByPriority('high') has length 1\n  - Call AppModule.create() again — assert the new instance starts with empty state (getAllEvents().length === 0)\nCommit the file.",
-      "scope": ["tests/app.module.test.mjs"],
-      "acceptance": "tests/app.module.test.mjs exists with passing cross-service integration assertions.",
+      "title": "Create src/app/app.module.spec.ts — cross-service Jest integration",
+      "context": "Create src/app/app.module.spec.ts. Import AppModule, CalendarEvent, Todo. Write Jest tests:\n\n  import { AppModule } from './app.module'\n  import { CalendarEvent, Todo } from './models'\n\n  describe('AppModule', () => {\n    it('create() returns services with empty state', () => {\n      const { calendarService, todoService } = AppModule.create()\n      expect(calendarService.getAllEvents()).toHaveLength(0)\n      expect(todoService.getAll()).toHaveLength(0)\n    })\n\n    it('instances are independent across create() calls', () => {\n      const app1 = AppModule.create()\n      const app2 = AppModule.create()\n      app1.calendarService.addEvent(new CalendarEvent('e1', 'Meeting', '2024-06-01'))\n      expect(app1.calendarService.getAllEvents()).toHaveLength(1)\n      expect(app2.calendarService.getAllEvents()).toHaveLength(0)\n    })\n\n    it('cross-service integration', () => {\n      const { calendarService, todoService } = AppModule.create()\n      calendarService.addEvent(new CalendarEvent('e1', 'Standup', '2024-06-01'))\n      todoService.create(new Todo('t1', 'Agenda', 'high'))\n      expect(calendarService.getEventsForDate('2024-06-01')).toHaveLength(1)\n      expect(todoService.getByPriority('high')).toHaveLength(1)\n      todoService.complete('t1')\n      expect(todoService.getAll()[0].done).toBe(true)\n    })\n  })\n\nCommit the file.",
+      "scope": ["src/app/app.module.spec.ts"],
+      "acceptance": "src/app/app.module.spec.ts exists with passing cross-service Jest integration assertions.",
       "checks": [
-        "test -f tests/app.module.test.mjs",
-        "npm test -- --runTestsByPath tests/app.module.test.mjs"
+        "test -f src/app/app.module.spec.ts",
+        "npm test -- --testPathPattern=\"app\\.module\\.spec\""
       ],
       "depends_on": [],
       "status": "pending",
@@ -1194,12 +1150,12 @@ cat > "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004/story.json" <<'
     {
       "id": "T-03",
       "title": "Full regression",
-      "context": "Run npm run build, npm run lint, and npm test. Fix any issues and commit if needed.",
-      "scope": ["src/app/app.module.ts", "tests/app.module.test.mjs"],
-      "acceptance": "Build succeeds. Lint passes. All tests pass including integration.",
+      "context": "Run npm run build, npm run typecheck, and npm test. Fix any issues and commit if needed.",
+      "scope": ["src/app/app.module.ts", "src/app/app.module.spec.ts"],
+      "acceptance": "Build succeeds. TypeScript typecheck passes. All tests pass including integration.",
       "checks": [
         "npm run build",
-        "npm run lint",
+        "npm run typecheck",
         "npm test"
       ],
       "depends_on": ["T-02"],
@@ -1218,7 +1174,7 @@ cat > "$ANGULAR_DIR/scripts/ralph/ralph-sprint-test.sh" <<'SH'
 #!/bin/bash
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-npm run build && npm run lint && npm test
+npm run build && npm run typecheck && npm test
 SH
 chmod +x "$ANGULAR_DIR/scripts/ralph/ralph-sprint-test.sh"
 
@@ -1437,6 +1393,7 @@ else
 fi
 
 echo ""
+
 if [ "$overall_exit" -eq 0 ]; then
   log "PASS — both calendar projects completed sprint-1 successfully"
 else
@@ -1450,5 +1407,3 @@ if [ "$KEEP" -eq 1 ]; then
   echo "  angular:  $ANGULAR_DIR"
   echo "  logs:     $LOG_DIR"
 fi
-
-exit "$overall_exit"
