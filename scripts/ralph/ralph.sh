@@ -276,6 +276,7 @@ write_sprint_run_manifest() {
     --arg stories_file "$STORIES_FILE" \
     --arg started_at "$SPRINT_RUN_STARTED_AT" \
     --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg last_progress_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg phase "$phase" \
     --arg log_file "$SPRINT_LOG_FILE" \
     --arg run_dir "$SPRINT_RUN_DIR" \
@@ -292,6 +293,7 @@ write_sprint_run_manifest() {
       stories_file: $stories_file,
       started_at: $started_at,
       updated_at: $updated_at,
+      last_progress_at: $last_progress_at,
       phase: $phase,
       log_file: $log_file,
       run_dir: $run_dir,

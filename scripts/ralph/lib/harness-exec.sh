@@ -153,6 +153,8 @@ _get_agent_profile_field() {
     | if . == null then empty else . end
     | if $profile_key == ".models" then
         if has("models") then .models[$harness_name] // empty else empty end
+      elif $profile_key == ".free_models" then
+        if has("free_models") then .free_models[$harness_name] // empty else empty end
       elif $profile_key == ".lite_models" then
         if has("lite_models") then .lite_models[$harness_name] // empty else empty end
       elif $profile_key == "." then
@@ -192,7 +194,21 @@ _get_composite_profile() {
 
 _resolve_codex_model() {
   local requested_model="$1"
+  local provider_base="${OPENAI_BASE_URL:-}"
   [ -n "$requested_model" ] || return 0
+
+  if [[ "$provider_base" == *openrouter.ai* ]]; then
+    case "$requested_model" in
+      openrouter/*)
+        printf '%s\n' "${requested_model#openrouter/}"
+        return
+        ;;
+      */*)
+        printf '%s\n' "$requested_model"
+        return
+        ;;
+    esac
+  fi
 
   case "$requested_model" in
     openai/*)
@@ -281,6 +297,90 @@ _resolve_model_for_harness() {
       ;;
     *)
       printf '%s\n' "$requested_model"
+      ;;
+  esac
+}
+
+_default_free_model_for_harness() {
+  local complexity_tier="${1:-medium}"
+  local harness_name="${2:-$(_get_harness)}"
+  local requested_model=""
+
+  case "$complexity_tier" in
+    low|medium)
+      requested_model="openai/gpt-oss-20b:free"
+      ;;
+    high)
+      requested_model="openai/gpt-oss-120b:free"
+      ;;
+    extreme)
+      requested_model="qwen/qwen3-coder:free"
+      ;;
+    *)
+      requested_model="openai/gpt-oss-120b:free"
+      ;;
+  esac
+
+  _resolve_model_for_harness "$requested_model" "$harness_name"
+}
+
+_workflow_shape_from_composite_profile() {
+  local composite_profile="${1:-}"
+  local composite_shape
+
+  [ -n "$composite_profile" ] || { echo "linear"; return 0; }
+
+  composite_shape="$(_get_composite_profile_field "$composite_profile" ".shape")"
+  case "$composite_shape" in
+    fanout)
+      echo "parallelizable"
+      ;;
+    chain)
+      echo "verify-heavy"
+      ;;
+    toolchain)
+      echo "operational"
+      ;;
+    *)
+      echo "linear"
+      ;;
+  esac
+}
+
+_routing_mode_for_observability() {
+  local model="${1:-}"
+  local composite_profile="${2:-}"
+
+  if [ -n "$composite_profile" ]; then
+    case "${RALPH_EXECUTION_TIER:-}" in
+      composite-lite)
+        echo "composite-lite"
+        return 0
+        ;;
+      full-composite)
+        echo "composite-high"
+        return 0
+        ;;
+    esac
+  fi
+
+  case "${RALPH_EXECUTION_TIER:-}" in
+    simple)
+      if [ "$(_model_is_lite_like "$model")" = "1" ]; then
+        echo "single-lite"
+      else
+        case "${STORY_COMPLEXITY_TIER:-$(_story_complexity_tier_from_score "${STORY_COMPLEXITY_SCORE:-0}")}" in
+          high|extreme)
+            echo "single-high"
+            ;;
+          *)
+            echo "single-mid"
+            ;;
+        esac
+      fi
+      ;;
+    *)
+      echo "single-mid"
       ;;
   esac
 }
@@ -875,11 +975,13 @@ _get_effective_agent() {
 
 get_execution_profile_json() {
   local effective_agent="${1:-${RALPH_AGENT:-default}}"
-  local effective_harness model_value composite_value codex_profile
+  local effective_harness model_value composite_value codex_profile workflow_shape routing_mode
   effective_harness="$(_get_harness)"
   model_value="${RALPH_MODEL:-}"
   composite_value="${RALPH_COMPOSITE_PROFILE:-}"
   codex_profile="$(_resolve_codex_runtime_profile_name)"
+  workflow_shape="$(_workflow_shape_from_composite_profile "$composite_value")"
+  routing_mode="$(_routing_mode_for_observability "$model_value" "$composite_value")"
 
   jq -nc \
     --arg harness "$effective_harness" \
@@ -892,6 +994,8 @@ get_execution_profile_json() {
     --arg codex_profile "$codex_profile" \
     --arg pi_role "${RALPH_PIAGENT_ROLE:-}" \
     --arg execution_tier "${RALPH_EXECUTION_TIER:-}" \
+    --arg workflow_shape "$workflow_shape" \
+    --arg routing_mode "$routing_mode" \
     --arg runtime_home "$RALPH_RUNTIME_HOME_DIR" \
     --argjson composites_enabled "$(if _composites_enabled; then printf 'true'; else printf 'false'; fi)" \
     --arg complexity_tier "${STORY_COMPLEXITY_TIER:-}" \
@@ -908,6 +1012,8 @@ get_execution_profile_json() {
       codex_profile: (if $codex_profile == "" then null else $codex_profile end),
       piagent_role: (if $pi_role == "" then null else $pi_role end),
       execution_tier: (if $execution_tier == "" then null else $execution_tier end),
+      workflow_shape: (if $workflow_shape == "" then null else $workflow_shape end),
+      routing_mode: (if $routing_mode == "" then null else $routing_mode end),
       runtime_home: (if $runtime_home == "" then null else $runtime_home end),
       complexity_tier: (if $complexity_tier == "" then null else $complexity_tier end),
       complexity_score: (if $complexity_tier == "" then null else $complexity_score end)
@@ -984,7 +1090,7 @@ _apply_agent_profile() {
 
   # Only override model if not explicitly set via command line/environment
   if [ -z "${RALPH_MODEL:-}" ]; then
-    local suggested_model="" preferred_model lite_model dynamic_model tier_model complexity_tier allow_lite=0
+    local suggested_model="" preferred_model free_model lite_model dynamic_model tier_model complexity_tier allow_lite=0
     complexity_tier="$(_story_complexity_tier_from_score "${RALPH_STORY_COMPLEXITY_SCORE:-0}")"
     case "$complexity_tier" in
       low|medium) allow_lite=1 ;;
@@ -1003,6 +1109,20 @@ _apply_agent_profile() {
       lite_model="$(_resolve_model_for_harness "$lite_model" "$effective_harness")"
       if ! is_model_supported_by_harness "$effective_harness" "$lite_model"; then
         lite_model=""
+      fi
+    fi
+
+    free_model="$(_get_agent_profile_field "$agent_name" "$effective_harness" '.free_models')"
+    if [ -n "$free_model" ]; then
+      free_model="$(_resolve_model_for_harness "$free_model" "$effective_harness")"
+      if ! is_model_supported_by_harness "$effective_harness" "$free_model"; then
+        free_model=""
+      fi
+    fi
+    if [ -z "$free_model" ]; then
+      free_model="$(_default_free_model_for_harness "$complexity_tier" "$effective_harness")"
+      if ! is_model_supported_by_harness "$effective_harness" "$free_model"; then
+        free_model=""
       fi
     fi
 
@@ -1033,7 +1153,10 @@ _apply_agent_profile() {
       tier_model=""
     fi
 
-    if [ "$allow_lite" -eq 1 ] && [ -n "$lite_model" ]; then
+    if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ -n "$free_model" ]; then
+      suggested_model="$free_model"
+      RALPH_MODEL_SELECTION_SOURCE="agent-profile-free"
+    elif [ "$allow_lite" -eq 1 ] && [ -n "$lite_model" ]; then
       suggested_model="$lite_model"
       RALPH_MODEL_SELECTION_SOURCE="agent-profile-lite"
     elif [ -n "$tier_model" ]; then

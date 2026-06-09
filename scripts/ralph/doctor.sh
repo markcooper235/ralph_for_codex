@@ -71,6 +71,71 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+validate_framework_json() {
+  local json_file="$1"
+  [ -f "$json_file" ] || fail "Missing framework file: $json_file"
+  jq empty "$json_file" >/dev/null 2>&1 || fail "Invalid JSON: $json_file"
+}
+
+render_profile_preview() {
+  local story_meta_json="$1"
+  [ -n "$story_meta_json" ] || return 0
+  (
+    unset RALPH_MODEL RALPH_AGENT RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON \
+      RALPH_COMPOSITE_SHAPE RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON \
+      RALPH_COMPOSITE_SUBAGENT_ROLES_JSON RALPH_COMPOSITE_STEPS_JSON \
+      RALPH_MODEL_SELECTION_SOURCE RALPH_AGENT_SELECTION_SOURCE RALPH_PIAGENT_ROLE \
+      RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_EXECUTION_TIER
+    local effective_agent complexity_pair complexity_score complexity_tier explicit_story_agent
+    explicit_story_agent="$(printf '%s' "$story_meta_json" | jq -r '.agent // empty' 2>/dev/null || true)"
+    effective_agent="$(_get_effective_agent "$story_meta_json")"
+    complexity_pair="$(_story_complexity_score "$story_meta_json")"
+    complexity_score="${complexity_pair%%:*}"
+    complexity_tier="${complexity_pair#*:}"
+    STORY_COMPLEXITY_SCORE="$complexity_score"
+    STORY_COMPLEXITY_TIER="$complexity_tier"
+    export STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER
+    if [ -n "$explicit_story_agent" ]; then
+      RALPH_AGENT_SELECTION_SOURCE="explicit"
+    elif [ "$effective_agent" != "default" ]; then
+      RALPH_AGENT_SELECTION_SOURCE="inferred"
+    else
+      RALPH_AGENT_SELECTION_SOURCE="default"
+    fi
+    export RALPH_AGENT_SELECTION_SOURCE
+    _apply_agent_profile "$effective_agent"
+    printf '%s\n' "$(get_execution_profile_json "$effective_agent")"
+  )
+}
+
+print_resolution_preview() {
+  local story_meta_json=""
+  if [ -f "$ACTIVE_SPRINT_FILE" ]; then
+    local active_sprint stories_file active_story_id
+    active_sprint="$(awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE" || true)"
+    stories_file="$(sprint_stories_file "$active_sprint")"
+    if [ -f "$stories_file" ]; then
+      active_story_id="$(jq -r '.activeStoryId // empty' "$stories_file" 2>/dev/null || true)"
+      if [ -n "$active_story_id" ]; then
+        story_meta_json="$(jq -c --arg id "$active_story_id" '.stories[] | select(.id == $id)' "$stories_file" 2>/dev/null || true)"
+      fi
+      if [ -z "$story_meta_json" ]; then
+        story_meta_json="$(jq -c '.stories[0] // empty' "$stories_file" 2>/dev/null || true)"
+      fi
+    fi
+  fi
+
+  if [ -z "$story_meta_json" ] && [ -f "$ROADMAP_FILE" ]; then
+    story_meta_json="$(jq -c '.sprints[0].stories[0] // empty' "$ROADMAP_FILE" 2>/dev/null || true)"
+  fi
+
+  [ -n "$story_meta_json" ] || return 0
+  local preview
+  preview="$(render_profile_preview "$story_meta_json")"
+  [ -n "$preview" ] || return 0
+  echo "Profile preview: $(printf '%s' "$preview" | jq -c '.')"
+}
+
 echo "Ralph doctor"
 echo "ralph dir: $SCRIPT_DIR"
 echo "harness: $RALPH_HARNESS"
@@ -91,6 +156,11 @@ fi
 
 require_cmd git
 require_cmd jq
+
+validate_framework_json "$SCRIPT_DIR/lib/agent-profiles.json"
+validate_framework_json "$SCRIPT_DIR/lib/composite-profiles.json"
+validate_framework_json "$SCRIPT_DIR/lib/label-to-agent-mapping.json"
+validate_framework_json "$SCRIPT_DIR/lib/harness-capabilities.json"
 
   case "$RALPH_HARNESS" in
   codex)
@@ -202,3 +272,4 @@ case "$RALPH_HARNESS" in
 esac
 
 echo "OK: prerequisites present"
+print_resolution_preview

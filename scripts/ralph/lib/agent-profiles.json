@@ -8,6 +8,10 @@
         "codex": "gpt-5.5",
         "piagent": "gpt-5.5"
       },
+      "free_models": {
+        "codex": "openai/gpt-oss-120b:free",
+        "piagent": "openai/gpt-oss-120b:free"
+      },
       "system_prompt_addition": "You are an expert investigator and debugger. Focus on thorough analysis, asking clarifying questions when needed, and providing detailed explanations of your reasoning process.",
       "temperature": 0.2,
       "max_tokens": 4000,
@@ -23,6 +27,10 @@
         "codex": "gpt-5.4-mini",
         "piagent": "gpt-5.4-mini"
       },
+      "free_models": {
+        "codex": "openai/gpt-oss-20b:free",
+        "piagent": "openai/gpt-oss-20b:free"
+      },
       "system_prompt_addition": "You are a competent junior developer focused on completing tasks efficiently and correctly. Follow instructions precisely, write clean code, and ensure all tests pass.",
       "temperature": 0.3,
       "max_tokens": 3000
@@ -34,6 +42,10 @@
       "models": {
         "codex": "gpt-5.4",
         "piagent": "gpt-5.4"
+      },
+      "free_models": {
+        "codex": "qwen/qwen3-coder:free",
+        "piagent": "qwen/qwen3-coder:free"
       },
       "system_prompt_addition": "You are a senior software architect and developer. Consider long-term maintainability, scalability, and best practices in your solutions. Think ahead about potential issues and edge cases.",
       "temperature": 0.2,
@@ -51,6 +63,10 @@
         "codex": "gpt-5.5",
         "piagent": "gpt-5.5"
       },
+      "free_models": {
+        "codex": "openai/gpt-oss-120b:free",
+        "piagent": "openai/gpt-oss-120b:free"
+      },
       "system_prompt_addition": "You are a security-focused developer with expertise in identifying and fixing vulnerabilities. Always consider security implications, follow security best practices, and validate that your changes don't introduce new security risks.",
       "temperature": 0.1,
       "max_tokens": 4000
@@ -62,6 +78,10 @@
       "models": {
         "codex": "gpt-5.4",
         "piagent": "gpt-5.4"
+      },
+      "free_models": {
+        "codex": "qwen/qwen3-coder:free",
+        "piagent": "qwen/qwen3-coder:free"
       },
       "system_prompt_addition": "You are a careful code reviewer. Prioritize finding bugs, regressions, risky assumptions, missing tests, and maintainability issues. Be specific, evidence-based, and concise.",
       "temperature": 0.2,
@@ -79,6 +99,10 @@
         "codex": "gpt-5.4-mini",
         "piagent": "gpt-5.4-mini"
       },
+      "free_models": {
+        "codex": "qwen/qwen3-coder:free",
+        "piagent": "qwen/qwen3-coder:free"
+      },
       "system_prompt_addition": "You are a meticulous QA engineer focused on thorough testing and validation. Create comprehensive test cases, verify edge cases, and ensure all requirements are met.",
       "temperature": 0.2,
       "max_tokens": 3500,
@@ -95,6 +119,10 @@
         "codex": "gpt-5.4-mini",
         "piagent": "gpt-5.4-mini"
       },
+      "free_models": {
+        "codex": "openai/gpt-oss-20b:free",
+        "piagent": "openai/gpt-oss-20b:free"
+      },
       "system_prompt_addition": "You are a DevOps engineer with expertise in infrastructure, deployment pipelines, and system reliability. Focus on automation, reproducibility, and operational excellence.",
       "temperature": 0.3,
       "max_tokens": 3500
@@ -106,6 +134,10 @@
         "codex": "gpt-5.4-mini",
         "piagent": "gpt-5.4-mini"
       },
+      "free_models": {
+        "codex": "openai/gpt-oss-20b:free",
+        "piagent": "openai/gpt-oss-20b:free"
+      },
       "system_prompt_addition": "You are a technical writer focused on creating clear, accurate, and helpful documentation. Explain concepts thoroughly, provide examples, and ensure accessibility for your audience.",
       "temperature": 0.4,
       "max_tokens": 3000
@@ -116,6 +148,10 @@
       "models": {
         "codex": "gpt-5.4",
         "piagent": "gpt-5.4"
+      },
+      "free_models": {
+        "codex": "openai/gpt-oss-120b:free",
+        "piagent": "openai/gpt-oss-120b:free"
       },
       "system_prompt_addition": "You are a helpful and capable AI assistant. Follow instructions carefully and provide high-quality solutions.",
       "temperature": 0.3,

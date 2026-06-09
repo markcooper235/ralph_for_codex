@@ -14,7 +14,10 @@
         "gpt-5.4",
         "gpt-5",
         "gpt-5-mini",
-        "gpt-4.1"
+        "gpt-4.1",
+        "openai/gpt-oss-20b:free",
+        "openai/gpt-oss-120b:free",
+        "qwen/qwen3-coder:free"
       ],
       "model_parameter": "--model",
       "agent_parameter": "--agent"
@@ -34,7 +37,10 @@
         "openrouter/openai/gpt-5.4-mini",
         "gpt-5",
         "gpt-5.4",
-        "gpt-4.1"
+        "gpt-4.1",
+        "openrouter/openai/gpt-oss-20b:free",
+        "openrouter/openai/gpt-oss-120b:free",
+        "openrouter/qwen/qwen3-coder:free"
       ],
       "model_parameter": "--model",
       "agent_parameter": null

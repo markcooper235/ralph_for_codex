@@ -443,6 +443,51 @@ exec "${path.join(fakeGlobalPath, 'specify')}" "$@"
   assert.match(output, /global specify only as a last resort/)
 })
 
+test('doctor prints a profile preview for the active sprint story', () => {
+  const repoDir = initTempRepo()
+  const localSpecifyPath = path.join(repoDir, 'scripts/ralph/bin/specify')
+
+  writeExecutable(
+    localSpecifyPath,
+    `#!/bin/bash
+set -euo pipefail
+if [ "\${1:-}" = "version" ]; then
+  echo "specify test stub"
+  exit 0
+fi
+exit 0
+`
+  )
+
+  writeFile(
+    path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories.json'),
+    storiesJson('sprint-1', {
+      status: 'active',
+      activeStoryId: 'S-001',
+      stories: [
+        {
+          ...storyRecord('S-001', { status: 'in-progress' }),
+          agent: 'reviewer',
+          title: 'Review risky change',
+          promptContext: 'Review and regression assessment for a risky patch.',
+        },
+      ],
+    })
+  )
+  writeFile(path.join(repoDir, 'scripts/ralph/.active-sprint'), 'sprint-1\n')
+
+  const output = run('./scripts/ralph/doctor.sh', [], {
+    cwd: repoDir,
+    env: {
+      CODEX_BIN: path.join(REPO_ROOT, 'scripts/smoke/mock-codex.sh'),
+    },
+  })
+
+  assert.match(output, /Profile preview: /)
+  assert.match(output, /"agent":"reviewer"/)
+  assert.match(output, /"composite_profile":"chain_review_v1"/)
+})
+
 test('install auto-configures verify.local.sh for a detected Node/TypeScript repo', () => {
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-install-node-'))
 
@@ -676,8 +721,45 @@ test('composite agent profiles auto-route to piagent while simple profiles stay 
   assert.equal(reviewerProfile.harness_source, 'composite-auto')
   assert.equal(reviewerProfile.piagent_role, 'reviewer')
   assert.equal(reviewerProfile.composite_profile, 'chain_review_v1')
+  assert.equal(reviewerProfile.workflow_shape, 'verify-heavy')
+  assert.equal(reviewerProfile.routing_mode, 'composite-lite')
   assert.equal(documentationProfile.harness, 'codex')
   assert.equal(documentationProfile.composite_profile, null)
+  assert.equal(documentationProfile.workflow_shape, 'linear')
+  assert.equal(documentationProfile.routing_mode, 'single-lite')
+})
+
+test('free mode switches auto-selected models to the free-tier mapping', () => {
+  const repoDir = initTempRepo()
+  const output = run(
+    'bash',
+    [
+      '-lc',
+      [
+        'source "$PWD/scripts/ralph/lib/harness-exec.sh"',
+        'unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON RALPH_COMPOSITE_STEPS_JSON RALPH_PIAGENT_ROLE STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER RALPH_STORY_COMPLEXITY_SCORE',
+        'RALPH_FREE_MODE=1',
+        'export RALPH_FREE_MODE',
+        'RALPH_STORY_COMPLEXITY_SCORE=0',
+        'STORY_COMPLEXITY_SCORE=0',
+        'STORY_COMPLEXITY_TIER=low',
+        '_apply_agent_profile documentation',
+        'get_execution_profile_json documentation',
+      ].join('; '),
+    ],
+    {
+      cwd: repoDir,
+      env: {
+        OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
+        OPENAI_API_KEY: 'sk-or-test',
+      },
+    }
+  )
+
+  const profile = JSON.parse(output.trim())
+  assert.equal(profile.harness, 'codex')
+  assert.equal(profile.model, 'openai/gpt-oss-20b:free')
+  assert.equal(profile.model_source, 'agent-profile-free')
 })
 
 test('ralph-story-run completes a simple story in one primary Codex cycle and syncs backlog state', () => {
