@@ -194,13 +194,13 @@ _get_composite_profile() {
 
 _resolve_codex_model() {
   local requested_model="$1"
-  local provider_base="${OPENAI_BASE_URL:-}"
+  local provider_base="${OPENAI_BASE_URL:-${OPENROUTER_BASE_URL:-}}"
   [ -n "$requested_model" ] || return 0
 
   if [[ "$provider_base" == *openrouter.ai* ]]; then
     case "$requested_model" in
       openrouter/*)
-        printf '%s\n' "${requested_model#openrouter/}"
+        printf '%s\n' "$requested_model"
         return
         ;;
       */*)
@@ -232,7 +232,7 @@ _resolve_piagent_model() {
   local requested_model="$1"
   [ -n "$requested_model" ] || return 0
 
-  local provider_base="${PI_BASE_URL:-${OPENAI_BASE_URL:-}}"
+  local provider_base="${PI_BASE_URL:-${OPENAI_BASE_URL:-${OPENROUTER_BASE_URL:-}}}"
 
   if [[ "$provider_base" == *openrouter.ai* ]]; then
     case "$requested_model" in
@@ -301,10 +301,21 @@ _resolve_model_for_harness() {
   esac
 }
 
+_provider_base_uses_openrouter() {
+  local provider_base="${1:-${OPENAI_BASE_URL:-${OPENROUTER_BASE_URL:-}}}"
+  [[ "$provider_base" == *openrouter.ai* ]]
+}
+
 _default_free_model_for_harness() {
   local complexity_tier="${1:-medium}"
   local harness_name="${2:-$(_get_harness)}"
   local requested_model=""
+
+  if [ "$harness_name" = "codex" ] && _provider_base_uses_openrouter; then
+    requested_model="openrouter/free"
+    _resolve_model_for_harness "$requested_model" "$harness_name"
+    return 0
+  fi
 
   case "$complexity_tier" in
     low|medium)
@@ -322,6 +333,23 @@ _default_free_model_for_harness() {
   esac
 
   _resolve_model_for_harness "$requested_model" "$harness_name"
+}
+
+_run_model_selection_is_valid() {
+  local harness_name="$1"
+  local model_name="$2"
+
+  [ -n "$harness_name" ] && [ -n "$model_name" ] || return 1
+  is_model_supported_by_harness "$harness_name" "$model_name" || return 1
+
+  if [ "$harness_name" = "codex" ] && _provider_base_uses_openrouter; then
+    case "$model_name" in
+      openrouter/*) return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+
+  return 0
 }
 
 _workflow_shape_from_composite_profile() {
@@ -1125,6 +1153,9 @@ _apply_agent_profile() {
         free_model=""
       fi
     fi
+    if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ "$effective_harness" = "codex" ] && _provider_base_uses_openrouter; then
+      free_model="$(_resolve_model_for_harness "openrouter/free" "$effective_harness")"
+    fi
 
     dynamic_model="$(_select_dynamic_model_for_agent "$agent_name" "$effective_harness")"
     if [ -n "$dynamic_model" ] && ! is_model_supported_by_harness "$effective_harness" "$dynamic_model"; then
@@ -1170,6 +1201,15 @@ _apply_agent_profile() {
       RALPH_MODEL_SELECTION_SOURCE="dynamic"
     else
       RALPH_MODEL_SELECTION_SOURCE="default"
+    fi
+
+    if [ -n "$suggested_model" ] && ! _run_model_selection_is_valid "$effective_harness" "$suggested_model"; then
+      if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ "$effective_harness" = "codex" ] && _provider_base_uses_openrouter; then
+        suggested_model="$(_resolve_model_for_harness "openrouter/free" "$effective_harness")"
+        RALPH_MODEL_SELECTION_SOURCE="openrouter-free-router"
+      else
+        suggested_model=""
+      fi
     fi
 
     if [ -n "$suggested_model" ]; then

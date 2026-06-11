@@ -17,7 +17,8 @@
         "gpt-4.1",
         "openai/gpt-oss-20b:free",
         "openai/gpt-oss-120b:free",
-        "qwen/qwen3-coder:free"
+        "qwen/qwen3-coder:free",
+        "openrouter/free"
       ],
       "model_parameter": "--model",
       "agent_parameter": "--agent"
