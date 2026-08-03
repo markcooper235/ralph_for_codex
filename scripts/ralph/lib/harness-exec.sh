@@ -153,8 +153,6 @@ _get_agent_profile_field() {
     | if . == null then empty else . end
     | if $profile_key == ".models" then
         if has("models") then .models[$harness_name] // empty else empty end
-      elif $profile_key == ".free_models" then
-        if has("free_models") then .free_models[$harness_name] // empty else empty end
       elif $profile_key == ".lite_models" then
         if has("lite_models") then .lite_models[$harness_name] // empty else empty end
       elif $profile_key == "." then
@@ -301,53 +299,12 @@ _resolve_model_for_harness() {
   esac
 }
 
-_provider_base_uses_openrouter() {
-  local provider_base="${1:-${OPENAI_BASE_URL:-${OPENROUTER_BASE_URL:-}}}"
-  [[ "$provider_base" == *openrouter.ai* ]]
-}
-
-_default_free_model_for_harness() {
-  local complexity_tier="${1:-medium}"
-  local harness_name="${2:-$(_get_harness)}"
-  local requested_model=""
-
-  if [ "$harness_name" = "codex" ] && _provider_base_uses_openrouter; then
-    requested_model="openrouter/free"
-    _resolve_model_for_harness "$requested_model" "$harness_name"
-    return 0
-  fi
-
-  case "$complexity_tier" in
-    low|medium)
-      requested_model="openai/gpt-oss-20b:free"
-      ;;
-    high)
-      requested_model="openai/gpt-oss-120b:free"
-      ;;
-    extreme)
-      requested_model="qwen/qwen3-coder:free"
-      ;;
-    *)
-      requested_model="openai/gpt-oss-120b:free"
-      ;;
-  esac
-
-  _resolve_model_for_harness "$requested_model" "$harness_name"
-}
-
 _run_model_selection_is_valid() {
   local harness_name="$1"
   local model_name="$2"
 
   [ -n "$harness_name" ] && [ -n "$model_name" ] || return 1
   is_model_supported_by_harness "$harness_name" "$model_name" || return 1
-
-  if [ "$harness_name" = "codex" ] && _provider_base_uses_openrouter; then
-    case "$model_name" in
-      openrouter/*) return 0 ;;
-      *) return 1 ;;
-    esac
-  fi
 
   return 0
 }
@@ -1118,7 +1075,7 @@ _apply_agent_profile() {
 
   # Only override model if not explicitly set via command line/environment
   if [ -z "${RALPH_MODEL:-}" ]; then
-    local suggested_model="" preferred_model free_model lite_model dynamic_model tier_model complexity_tier allow_lite=0
+    local suggested_model="" preferred_model lite_model dynamic_model tier_model complexity_tier allow_lite=0
     complexity_tier="$(_story_complexity_tier_from_score "${RALPH_STORY_COMPLEXITY_SCORE:-0}")"
     case "$complexity_tier" in
       low|medium) allow_lite=1 ;;
@@ -1138,23 +1095,6 @@ _apply_agent_profile() {
       if ! is_model_supported_by_harness "$effective_harness" "$lite_model"; then
         lite_model=""
       fi
-    fi
-
-    free_model="$(_get_agent_profile_field "$agent_name" "$effective_harness" '.free_models')"
-    if [ -n "$free_model" ]; then
-      free_model="$(_resolve_model_for_harness "$free_model" "$effective_harness")"
-      if ! is_model_supported_by_harness "$effective_harness" "$free_model"; then
-        free_model=""
-      fi
-    fi
-    if [ -z "$free_model" ]; then
-      free_model="$(_default_free_model_for_harness "$complexity_tier" "$effective_harness")"
-      if ! is_model_supported_by_harness "$effective_harness" "$free_model"; then
-        free_model=""
-      fi
-    fi
-    if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ "$effective_harness" = "codex" ] && _provider_base_uses_openrouter; then
-      free_model="$(_resolve_model_for_harness "openrouter/free" "$effective_harness")"
     fi
 
     dynamic_model="$(_select_dynamic_model_for_agent "$agent_name" "$effective_harness")"
@@ -1184,10 +1124,7 @@ _apply_agent_profile() {
       tier_model=""
     fi
 
-    if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ -n "$free_model" ]; then
-      suggested_model="$free_model"
-      RALPH_MODEL_SELECTION_SOURCE="agent-profile-free"
-    elif [ "$allow_lite" -eq 1 ] && [ -n "$lite_model" ]; then
+    if [ "$allow_lite" -eq 1 ] && [ -n "$lite_model" ]; then
       suggested_model="$lite_model"
       RALPH_MODEL_SELECTION_SOURCE="agent-profile-lite"
     elif [ -n "$tier_model" ]; then
@@ -1204,12 +1141,7 @@ _apply_agent_profile() {
     fi
 
     if [ -n "$suggested_model" ] && ! _run_model_selection_is_valid "$effective_harness" "$suggested_model"; then
-      if [ "${RALPH_FREE_MODE:-0}" = "1" ] && [ "$effective_harness" = "codex" ] && _provider_base_uses_openrouter; then
-        suggested_model="$(_resolve_model_for_harness "openrouter/free" "$effective_harness")"
-        RALPH_MODEL_SELECTION_SOURCE="openrouter-free-router"
-      else
-        suggested_model=""
-      fi
+      suggested_model=""
     fi
 
     if [ -n "$suggested_model" ]; then

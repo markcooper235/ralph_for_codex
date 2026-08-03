@@ -145,3 +145,24 @@ move_sprint_dir() {
   mv "$from_dir" "$to_dir"
   _path_rewrite_files "$to_dir" "$old_prefix" "$new_prefix"
 }
+
+cleanup_legacy_sprint_roots() {
+  local active_sprint="${1:-}"
+  local sprint_root
+  sprint_root="$(ralph_sprints_root)"
+
+  [ -d "$sprint_root" ] || return 0
+
+  local candidate sprint archive_dir
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    sprint="$(basename "$candidate")"
+    [ "$sprint" = "archive" ] && continue
+    [ -n "$active_sprint" ] && [ "$sprint" = "$active_sprint" ] && continue
+
+    archive_dir="$(sprint_archive_dir "$sprint" 2>/dev/null || true)"
+    if [ -n "$archive_dir" ] && [ -d "$archive_dir" ]; then
+      rm -rf "$candidate"
+    fi
+  done < <(find "$sprint_root" -mindepth 1 -maxdepth 1 -type d ! -name archive | sort)
+}

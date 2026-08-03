@@ -7,8 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 RALPH_HARNESS="${RALPH_HARNESS:-codex}"
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 
 load_ralph_env() {
   local env_file="$1"
@@ -31,22 +29,17 @@ source "$SCRIPT_DIR/lib/harness-exec.sh"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/ralph/doctor.sh [--free]
+Usage: ./scripts/ralph/doctor.sh
 
 Sanity checks for running Ralph in the current project.
 
 Options:
-  --free      Preview agent/model routing with the OpenRouter free-tier map
   -h, --help  Show help
-
-Environment:
-  RALPH_FREE_MODE  Prefer free-tier OpenRouter models when set to 1
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --free) RALPH_FREE_MODE=1; export RALPH_FREE_MODE; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "Unknown argument: $1" ;;
   esac

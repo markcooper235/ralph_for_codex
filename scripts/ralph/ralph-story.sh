@@ -31,9 +31,6 @@ if ! load_ralph_env "${SCRIPT_DIR}/.ralph-env"; then
   load_ralph_env "${HOME}/.ralph-env" || true
 fi
 
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
-
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 source "$SCRIPT_DIR/lib/harness-exec.sh"
 source "$SCRIPT_DIR/lib/specify.sh"

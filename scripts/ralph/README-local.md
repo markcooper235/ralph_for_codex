@@ -1,6 +1,6 @@
 # Ralph
 
-Ralph is a Codex-native autonomous loop that executes sprint stories as focused story-level Codex cycles.
+Ralph is a harness-driven autonomous loop that executes sprint stories as focused story-level cycles. Codex handles the single-agent path, and `piagent` handles composite workflows that require subagent delegation.
 
 Ralph uses story-local SpecKit artifacts under each story directory's `.specify/` folder. A repo-wide `specify init` step is optional and not required for normal Ralph workflows.
 
@@ -39,7 +39,7 @@ This document is the installed reference for a Ralph-enabled project. For framew
 # 6. Execute the sprint
 ./scripts/ralph/ralph.sh
 
-# 7. Close the sprint (merges sprint branch to main)
+# 7. Close the sprint (merges sprint branch to the repository target branch)
 ./scripts/ralph/ralph-sprint-commit.sh
 ```
 
@@ -47,7 +47,7 @@ What happens during execution:
 
 - `ralph-story.sh prepare-all --sprint <name>` runs SpecKit analysis for each story (`specify → plan → tasks`), generates `story.json` task containers, validates health, and promotes healthy stories to `ready`
 - `ralph-story.sh prep-status [--details] [--story <ID>]` inspects the latest prep journal and per-story prep stages
-- `ralph.sh` picks up the next eligible story, runs it in one primary Codex cycle via `ralph-story-run.sh`, evaluates binary `checks[]`, uses targeted remediation only when needed, and merges each story branch back to the sprint branch when done
+- `ralph.sh` picks up the next eligible story, resolves the effective harness/model profile, runs the story via `ralph-story-run.sh`, evaluates binary `checks[]`, uses targeted remediation only when needed, and merges each story branch back to the sprint branch when done
 - `ralph-sprint-commit.sh` runs sprint-scoped verification by default, archives sprint artifacts, merges the sprint branch, and deletes it
 
 ---
@@ -62,14 +62,14 @@ A sprint must be closed before the next one is activated.
 ./scripts/ralph/ralph-sprint.sh mark-ready sprint-1
 ./scripts/ralph/ralph-sprint.sh use sprint-1
 ./scripts/ralph/ralph.sh
-./scripts/ralph/ralph-sprint-commit.sh          # closes sprint-1, merges to main
+./scripts/ralph/ralph-sprint-commit.sh          # closes sprint-1, merges to target branch
 
 # Sprint 2
 ./scripts/ralph/ralph-story.sh prepare-all --sprint sprint-2
 ./scripts/ralph/ralph-sprint.sh mark-ready sprint-2
 ./scripts/ralph/ralph-sprint.sh use sprint-2    # activate sprint-2
 ./scripts/ralph/ralph.sh                        # execute sprint-2
-./scripts/ralph/ralph-sprint-commit.sh          # closes sprint-2, merges to main
+./scripts/ralph/ralph-sprint-commit.sh          # closes sprint-2, merges to target branch
 ```
 
 Or let `next --activate` select the next ready sprint automatically:

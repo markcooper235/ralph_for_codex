@@ -12,8 +12,6 @@ PRD_FILE="$SCRIPT_DIR/prd.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
 LAST_BRANCH_FILE="$SCRIPT_DIR/.last-branch"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 TARGET_BRANCH=""
 DRY_RUN=false
@@ -25,7 +23,7 @@ FULL_REGRESSION=false
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target BRANCH] [--dry-run] [--keep] [--skip-regression] [--run-fallow] [--fallow-autofix] [--full-regression] [--free]
+Usage: ./scripts/ralph/ralph-sprint-commit.sh [--target BRANCH] [--dry-run] [--keep] [--skip-regression] [--run-fallow] [--fallow-autofix] [--full-regression]
 
 Behavior:
   1. Validates active sprint exists and all stories are done/abandoned
@@ -44,7 +42,6 @@ Options:
   --run-fallow         Run optional fallow cleanup/checks before regression
   --fallow-autofix     Allow scoped fallow auto-fix during --run-fallow cleanup
   --full-regression    Run repo-wide regression instead of sprint-scoped verification
-  --free               Prefer the OpenRouter free-tier model mapping
   -h, --help           Show this help
 USAGE
 }
@@ -191,11 +188,6 @@ while [ $# -gt 0 ]; do
       ;;
     --full-regression)
       FULL_REGRESSION=true
-      shift
-      ;;
-    --free)
-      RALPH_FREE_MODE=1
-      export RALPH_FREE_MODE
       shift
       ;;
     -h|--help)
@@ -355,6 +347,7 @@ MANIFEST
 TMP_FILE="$(mktemp)"
 jq '.status = "closed" | .activeStoryId = null' "$ARCHIVE_PATH/stories.json" > "$TMP_FILE"
 mv "$TMP_FILE" "$ARCHIVE_PATH/stories.json"
+cleanup_legacy_sprint_roots "$ACTIVE_SPRINT"
 prune_archive_retention 7
 
 git add -A "$SOURCE_SPRINT_DIR" "$ARCHIVE_DIR"

@@ -7,8 +7,6 @@ WORKSPACE_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || 
 if [ -z "$WORKSPACE_ROOT" ]; then
   WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
@@ -17,13 +15,11 @@ SPRINT_BRANCH_PREFIX="ralph/sprint"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/ralph/ralph-status.sh [--prep-details] [--prep-story-limit N] [--free]
+Usage: ./scripts/ralph/ralph-status.sh [--prep-details] [--prep-story-limit N]
 
 Shows the current Ralph workflow state for the active sprint and story,
 including loop status, branch/worktree state, and next action guidance.
 
-Options:
-  --free               Show status using the free-tier routing preview
 EOF
 }
 
@@ -434,11 +430,6 @@ main() {
         [ -n "$prep_story_limit" ] || fail "Missing value for --prep-story-limit"
         [[ "$prep_story_limit" =~ ^[1-9][0-9]*$ ]] || fail "--prep-story-limit must be a positive integer"
         shift 2
-        ;;
-      --free)
-        RALPH_FREE_MODE=1
-        export RALPH_FREE_MODE
-        shift
         ;;
       *)
         fail "Unknown argument: $1"

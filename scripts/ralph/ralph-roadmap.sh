@@ -5,8 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 source "$SCRIPT_DIR/lib/codex-exec.sh"
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 ROADMAP_JSON="$SCRIPT_DIR/roadmap.json"
@@ -49,7 +47,6 @@ Options:
   --capacity-target N       Sprint effort target (default: 8)
   --capacity-ceiling N      Sprint effort ceiling (default: 10)
   --apply-only              Apply existing scripts/ralph/roadmap.json without re-planning
-  --free                    Prefer the OpenRouter free-tier model mapping
   --quiet                   Reduce wrapper output
   -h, --help                Show help
 
@@ -615,11 +612,6 @@ main() {
         ;;
       --apply-only)
         APPLY_ONLY=1
-        shift
-        ;;
-      --free)
-        RALPH_FREE_MODE=1
-        export RALPH_FREE_MODE
         shift
         ;;
       --quiet)

@@ -53,8 +53,6 @@ normalize_claude_openrouter_env
 
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 source "$RALPH_SCRIPT_DIR/lib/sprint-layout.sh"
 source "$RALPH_SCRIPT_DIR/lib/harness-exec.sh"
 source "$RALPH_SCRIPT_DIR/lib/specify.sh"

@@ -11,13 +11,11 @@ SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ARCHIVE_ROOT="$SPRINTS_DIR/archive"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 SPRINT_BRANCH_PREFIX="ralph/sprint"
-RALPH_FREE_MODE="${RALPH_FREE_MODE:-0}"
-export RALPH_FREE_MODE
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/ralph/ralph-sprint.sh [--free] <command> [args]
+Usage: ./scripts/ralph/ralph-sprint.sh <command> [args]
 
 Commands:
   list                              List available sprints
@@ -30,9 +28,6 @@ Commands:
   branch <sprint-name>              Ensure sprint branch exists (ralph/sprint/<sprint-name>)
   status                            Show active sprint + story readiness
   -h, --help                        Show this help
-
-Global options:
-  --free                            Prefer the OpenRouter free-tier model mapping
 
 Remove options:
   --hard                            Permanently delete sprint dirs instead of archiving
@@ -673,11 +668,6 @@ main() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --free)
-        RALPH_FREE_MODE=1
-        export RALPH_FREE_MODE
-        shift
-        ;;
       --)
         shift
         break
