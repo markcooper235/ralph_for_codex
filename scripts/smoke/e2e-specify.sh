@@ -144,6 +144,22 @@ benchmark_init "specify" "specify-pipeline" "$BENCH_FILE"
 log()  { echo "[smoke] $*"; }
 fail() { echo "[smoke] FAIL: $*" >&2; exit 1; }
 
+resolve_smoke_sprint_dir() {
+  local live_dir="$PROJ_DIR/scripts/ralph/sprints/sprint-1"
+  local backlog_dir="$PROJ_DIR/scripts/ralph/backlog/sprint-1"
+  local archive_root="$PROJ_DIR/scripts/ralph/sprints/archive"
+  local archive_dir=""
+
+  [ -f "$live_dir/stories.json" ] && { printf '%s\n' "$live_dir"; return 0; }
+  [ -f "$backlog_dir/stories.json" ] && { printf '%s\n' "$backlog_dir"; return 0; }
+  if [ -d "$archive_root" ]; then
+    archive_dir="$(find "$archive_root" -mindepth 1 -maxdepth 1 -type d -name '*-sprint-1' -print 2>/dev/null | sort -r | head -n1)"
+  fi
+  [ -n "$archive_dir" ] && [ -f "$archive_dir/stories.json" ] \
+    && { printf '%s\n' "$archive_dir"; return 0; }
+  return 1
+}
+
 log "harness: $SMOKE_HARNESS"
 if [ -n "$SMOKE_MODEL" ]; then
   log "model override: $SMOKE_MODEL"
@@ -232,7 +248,7 @@ doctor_check() {
 
 validate_specify_artifacts() {
   local story_id="$1"
-  local story_dir="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$story_id"
+  local story_dir="$SPRINT_DIR/stories/$story_id"
   local specify_dir="$story_dir/.specify"
 
   assert_dir_exists "$specify_dir"
@@ -255,7 +271,7 @@ validate_specify_artifacts() {
 
 validate_story_json() {
   local story_id="$1"
-  local story_file="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$story_id/story.json"
+  local story_file="$SPRINT_DIR/stories/$story_id/story.json"
 
   assert_file_exists "$story_file"
   assert_json_expr "$story_file" '.tasks | length > 0'
@@ -355,9 +371,9 @@ print_context_stats() {
   echo "── prep context stats ───────────────────────────────────────"
   for sid in S-001 S-002 S-003; do
     local prep_context_path story_path input_path
-    prep_context_path="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/.prep-context.json"
-    story_path="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/story.json"
-    input_path="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/.specify/input.md"
+    prep_context_path="$SPRINT_DIR/stories/$sid/.prep-context.json"
+    story_path="$SPRINT_DIR/stories/$sid/story.json"
+    input_path="$SPRINT_DIR/stories/$sid/.specify/input.md"
 
     if [ ! -f "$prep_context_path" ]; then
       echo "  $sid: prep-context MISSING"
@@ -388,7 +404,7 @@ print_context_stats() {
 
 normalize_story_checks() {
   local story_id="$1"
-  local _sf="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$story_id/story.json"
+  local _sf="$SPRINT_DIR/stories/$story_id/story.json"
   [ -f "$_sf" ] || return 0
   local _tmp
   _tmp="$(mktemp)"
@@ -422,7 +438,7 @@ normalize_story_checks() {
 
 reorder_story_tasks() {
   local story_id="$1"
-  local _sf="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$story_id/story.json"
+  local _sf="$SPRINT_DIR/stories/$story_id/story.json"
   [ -f "$_sf" ] || return 0
   local _tmp
   _tmp="$(mktemp)"
@@ -474,14 +490,15 @@ if [ -n "$REUSE_DIR" ]; then
     || fail "--reuse-dir: project directory missing: $PROJ_DIR"
   [ -f "$PROJ_DIR/scripts/ralph/ralph.sh" ] \
     || fail "--reuse-dir: ralph not installed in $PROJ_DIR/scripts/ralph"
-  assert_file_exists "$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories.json"
+  SPRINT_DIR="$(resolve_smoke_sprint_dir)" || fail "--reuse-dir: sprint-1 not found"
+  assert_file_exists "$SPRINT_DIR/stories.json"
   log "  Project and sprint structure OK"
 
   # Reset any story branches left mid-run: "active" → "ready", delete branches.
   log "  Cleaning up mid-run story state..."
   (
     cd "$PROJ_DIR"
-    _sf="scripts/ralph/sprints/sprint-1/stories.json"
+    _sf="${SPRINT_DIR#$PROJ_DIR/}/stories.json"
 
     # Switch to sprint branch — may be on a story branch from a partial run
     _cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
@@ -524,7 +541,7 @@ log "=== Setting up nextjs-phone-validator ==="
 
 cd "$WORK_DIR"
 log "  Running create-next-app..."
-npx create-next-app@latest nextjs-phone-validator \
+npx --yes create-next-app@latest nextjs-phone-validator \
   --typescript \
   --no-tailwind \
   --no-eslint \
@@ -615,6 +632,12 @@ assert_file_exists "$PROJ_DIR/scripts/ralph/ralph-sprint.sh"
 assert_file_exists "$PROJ_DIR/scripts/ralph/ralph-sprint-commit.sh"
 assert_file_exists "$PROJ_DIR/scripts/ralph/doctor.sh"
 
+if [ -f "$REPO_ROOT/scripts/ralph/.ralph-env" ]; then
+  cp "$REPO_ROOT/scripts/ralph/.ralph-env" "$PROJ_DIR/scripts/ralph/.ralph-env"
+  chmod 600 "$PROJ_DIR/scripts/ralph/.ralph-env"
+  log "  Copied local provider configuration into isolated Specify project"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 4: Doctor check (specify CLI required)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -655,7 +678,8 @@ log "=== Creating sprint and stories ==="
     > "$LOG_DIR/story-add-S-003.log" 2>&1
 ) || fail "Sprint and story setup failed"
 
-assert_file_exists "$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories.json"
+SPRINT_DIR="$(resolve_smoke_sprint_dir)" || fail "sprint-1 was not created in backlog or live storage"
+assert_file_exists "$SPRINT_DIR/stories.json"
 
 fi  # end: fresh run vs --reuse-dir
 
@@ -675,10 +699,10 @@ glog="$LOG_DIR/generate-all.log"
 
 for sid in S-001 S-002 S-003; do
   slog="$LOG_DIR/specify-${sid}.log"
-  _sf="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/story.json"
+  _sf="$SPRINT_DIR/stories/$sid/story.json"
 
   if [ -n "$REUSE_DIR" ] \
-      && [ -f "$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/.specify/spec.md" ] \
+      && [ -f "$SPRINT_DIR/stories/$sid/.specify/spec.md" ] \
       && [ -f "$_sf" ]; then
     # --reuse-dir: artifacts already exist — validate only
     log "  [$sid] Reusing existing specify+generate artifacts"
@@ -728,7 +752,8 @@ validate_prep_discipline
 (
   cd "$PROJ_DIR/scripts/ralph"
   ./ralph-sprint.sh restage sprint-1
-  git add sprints/sprint-1/stories.json
+  _stories_rel="${SPRINT_DIR#$PROJ_DIR/scripts/ralph/}/stories.json"
+  git add "$_stories_rel"
   git diff --cached --quiet \
     || git commit -m "chore(ralph): restage sprint for lifecycle test" --quiet
 )
@@ -739,9 +764,9 @@ log "  Sprint restaged to 'planned' for lifecycle coverage"
 #
 # prepare-all = specify-all (no-op: artifacts exist) +
 #               generate-all (no-op: story.json exists) +
-#               health per story + promote planned → ready
-# Using prepare-all exercises the full promotion code path and leaves stories
-# in the correct "ready" state before sprint execution.
+#               health per story + promote stories to ready
+# The sprint itself is marked ready explicitly after the durable planning
+# artifacts are committed.
 # ─────────────────────────────────────────────────────────────────────────────
 
 log "=== Running prepare-all (validate and promote stories to ready) ==="
@@ -757,17 +782,25 @@ validate_prep_observability "$palog"
 # Commit the generated .specify/ and story.json files before sprint activation.
 (
   cd "$PROJ_DIR"
-  git add scripts/ralph/sprints/sprint-1/stories scripts/ralph/sprints/sprint-1/stories.json
+  _sprint_dir_rel="${SPRINT_DIR#$PROJ_DIR/}"
+  git add "$_sprint_dir_rel/stories" "$_sprint_dir_rel/stories.json"
   if ! git diff --cached --quiet; then
     git commit -m "chore(ralph): commit prepared sprint-1 artifacts" --quiet
   fi
 )
 log "  Prepared sprint artifacts committed"
 
+log "=== Marking prepared sprint ready ==="
+if ! (cd "$PROJ_DIR/scripts/ralph" && ./ralph-sprint.sh mark-ready sprint-1) > "$LOG_DIR/sprint-mark-ready.log" 2>&1; then
+  cat "$LOG_DIR/sprint-mark-ready.log" >&2
+  fail "'ralph-sprint.sh mark-ready sprint-1' failed"
+fi
+log "  Sprint marked ready"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 10.5: Activate sprint via 'ralph-sprint.sh use' (Bug 2 lifecycle test)
 #
-# prepare-all promoted stories to "ready" and marked the sprint "ready".
+# prepare-all promoted stories to "ready" and mark-ready promoted the sprint.
 # Activating via `use` exercises the planned → ready → active path that
 # ralph-sprint.sh create bypasses (it activates directly without going through
 # the ready state).
@@ -780,8 +813,10 @@ if ! (cd "$PROJ_DIR/scripts/ralph" && ./ralph-sprint.sh use sprint-1) > "$ulog" 
   fail "'ralph-sprint.sh use sprint-1' failed — see $ulog"
 fi
 
+SPRINT_DIR="$(resolve_smoke_sprint_dir)" || fail "sprint-1 missing after activation"
+
 _sprint_status="$(jq -r '.status // "unknown"' \
-  "$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories.json" 2>/dev/null || echo "unknown")"
+  "$SPRINT_DIR/stories.json" 2>/dev/null || echo "unknown")"
 [ "$_sprint_status" = "active" ] \
   || fail "Sprint should be 'active' after 'use', got '$_sprint_status'"
 assert_file_exists "$PROJ_DIR/scripts/ralph/.active-sprint"
@@ -837,8 +872,9 @@ if [ "$SPRINT_EXIT" -eq 0 ]; then
     cat "$clog" >&2
     COMMIT_EXIT=1
   else
-    # Assert sprint is now closed in stories.json
-    stories_file="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories.json"
+    # Assert sprint is now closed in its archived stories.json.
+    SPRINT_DIR="$(resolve_smoke_sprint_dir)" || fail "sprint-commit: archived sprint-1 not found"
+    stories_file="$SPRINT_DIR/stories.json"
     sprint_status="$(jq -r '.status // "unknown"' "$stories_file" 2>/dev/null || echo "unknown")"
     [ "$sprint_status" = "closed" ] \
       || fail "sprint-commit: expected stories.json status=closed, got '$sprint_status'"
@@ -878,7 +914,7 @@ echo ""
 echo "── specify phase ─────────────────────────────────────────────"
 for sid in S-001 S-002 S-003; do
   slog="$LOG_DIR/specify-${sid}.log"
-  specify_dir="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/.specify"
+  specify_dir="$SPRINT_DIR/stories/$sid/.specify"
   if [ -f "$specify_dir/spec.md" ] && [ -f "$specify_dir/plan.md" ] && [ -f "$specify_dir/tasks.md" ]; then
     spec_words="$(wc -w < "$specify_dir/spec.md")"
     plan_words="$(wc -w < "$specify_dir/plan.md")"
@@ -892,7 +928,7 @@ done
 echo ""
 echo "── generate phase ────────────────────────────────────────────"
 for sid in S-001 S-002 S-003; do
-  story_file="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories/$sid/story.json"
+  story_file="$SPRINT_DIR/stories/$sid/story.json"
   if [ -f "$story_file" ]; then
     task_count="$(jq '.tasks | length' "$story_file" 2>/dev/null || echo '?')"
     echo "  $sid: story.json ($task_count tasks)"
@@ -903,7 +939,7 @@ done
 
 echo ""
 echo "── sprint execution ──────────────────────────────────────────"
-stories_file="$PROJ_DIR/scripts/ralph/sprints/sprint-1/stories.json"
+stories_file="$SPRINT_DIR/stories.json"
 if [ -f "$stories_file" ]; then
   done_count="$(jq '[.stories[] | select(.status == "done")] | length' "$stories_file" 2>/dev/null || echo 0)"
   total_count="$(jq '.stories | length' "$stories_file" 2>/dev/null || echo '?')"
