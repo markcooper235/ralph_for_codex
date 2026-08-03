@@ -510,6 +510,7 @@ test('install auto-configures verify.local.sh for a detected Node/TypeScript rep
     path.join(REPO_ROOT, 'install.sh'),
     '--project', repoDir,
     '--skip-git-check',
+    '--no-setup-harnesses',
     '--no-install-speckit',
     '--verify-setup', 'detect-only',
   ])
@@ -561,6 +562,7 @@ test('install scaffolds Nx typecheck targets and generates an Nx-aware verify.lo
     path.join(REPO_ROOT, 'install.sh'),
     '--project', repoDir,
     '--skip-git-check',
+    '--no-setup-harnesses',
     '--no-install-speckit',
     '--verify-setup', 'detect-only',
   ])
@@ -590,6 +592,7 @@ test('install auto-configures verify.local.sh for a detected Python repo', () =>
     path.join(REPO_ROOT, 'install.sh'),
     '--project', repoDir,
     '--skip-git-check',
+    '--no-setup-harnesses',
     '--no-install-speckit',
     '--verify-setup', 'detect-only',
   ])
@@ -646,6 +649,7 @@ EOF
     path.join(REPO_ROOT, 'install.sh'),
     '--project', repoDir,
     '--skip-git-check',
+    '--no-setup-harnesses',
     '--no-install-speckit',
     '--verify-setup', 'auto',
   ], {

@@ -22,6 +22,7 @@ RALPH_RUNTIME_HOME_CONFIG_FILE="$RALPH_RUNTIME_HOME_DIR/.codex/config.toml"
 RALPH_RUNTIME_PI_AGENT_DIR="$RALPH_RUNTIME_HOME_DIR/.pi/agent"
 RALPH_RUNTIME_PI_SETTINGS_FILE="$RALPH_RUNTIME_PI_AGENT_DIR/settings.json"
 RALPH_RUNTIME_PI_MODELS_FILE="$RALPH_RUNTIME_PI_AGENT_DIR/models.json"
+RALPH_PI_SUBAGENTS_PACKAGE="${RALPH_PI_SUBAGENTS_PACKAGE:-npm:pi-subagents@0.27.0}"
 
 # Source harness capabilities helpers
 source "$HARNESS_LIB_DIR/harness-capabilities.sh"
@@ -442,14 +443,14 @@ EOF
 _seed_ralph_runtime_pi_config() {
   _ensure_ralph_runtime_home
 
-  cat > "$RALPH_RUNTIME_PI_SETTINGS_FILE" <<'EOF'
+  cat > "$RALPH_RUNTIME_PI_SETTINGS_FILE" <<EOF
 {
   "lastChangelogVersion": "0.76.0",
   "defaultProvider": "openai-native",
   "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "medium",
   "packages": [
-    "npm:pi-subagents@0.27.0"
+    "$RALPH_PI_SUBAGENTS_PACKAGE"
   ]
 }
 EOF

@@ -144,9 +144,15 @@ bash /path/to/ralph/install.sh
 Prerequisites:
 
 - [Codex CLI](https://github.com/openai/codex) installed and authenticated
+- PI Agent CLI installed and authenticated when composite execution is used
 - `jq`
 - a git repository
 - SpecKit CLI (`specify`) — required for story preparation (bootstrapped repo-locally during install)
+
+`install.sh` checks both Codex and PI Agent and installs missing harnesses, plus
+the compatible `pi-subagents` extension. Use `--no-setup-harnesses` only for
+offline or test installs. Provider credentials and local harness settings in
+`scripts/ralph/.ralph-env` are never read, copied, or committed by the installer.
 
 ---
 

@@ -12,6 +12,7 @@ set -euo pipefail
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_SOURCE_DIR="$SOURCE_DIR/scripts/ralph"
 source "$RUNTIME_SOURCE_DIR/lib/codex-exec.sh"
+source "$RUNTIME_SOURCE_DIR/lib/harness-setup.sh"
 
 PROJECT_DIR="$(pwd)"
 DEST_DIR_REL="scripts/ralph"
@@ -23,6 +24,7 @@ INSTALL_SPECKIT=1
 MIGRATE_LEGACY=1
 SKIP_GIT_CHECK=0
 VERIFY_SETUP_MODE="auto"
+SETUP_HARNESSES=1
 CODEX_BIN="${CODEX_BIN:-codex}"
 RALPH_HARNISH="${RALPH_HARNISH:-codex}"
 RALPH_MODEL="${RALPH_MODEL:-}"
@@ -43,6 +45,7 @@ Options:
    --migrate-legacy      Migrate any legacy epics.json sprints to stories.json (default)
    --no-migrate-legacy   Skip automatic legacy sprint migration during install
    --verify-setup MODE   Configure verify.local.sh: auto|detect-only|ai|skip (default: auto)
+   --no-setup-harnesses  Do not check or install Codex and Pi harnesses
    --skip-git-check      Allow installing outside a git repo
     --harness HARNESS     Specify harness to use (codex|piagent) (default: codex)
     --model MODEL         Specify model to use with the harness (default: harness-specific)
@@ -87,8 +90,10 @@ while [[ $# -gt 0 ]]; do
       MIGRATE_LEGACY=1; shift;;
     --no-migrate-legacy)
       MIGRATE_LEGACY=0; shift;;
-    --verify-setup)
+     --verify-setup)
       VERIFY_SETUP_MODE="${2:-}"; shift 2;;
+     --no-setup-harnesses)
+       SETUP_HARNESSES=0; shift;;
      --skip-git-check)
        SKIP_GIT_CHECK=1; shift;;
      --harness)
@@ -118,6 +123,12 @@ fi
 
 if [ -z "$DEST_DIR_REL" ]; then
   fail "--dest requires a relative directory"
+fi
+
+if [ "$SETUP_HARNESSES" -eq 1 ]; then
+  ralph_harness_setup_all
+else
+  echo "Skipping external harness setup (--no-setup-harnesses)."
 fi
 
 if [[ "$DEST_DIR_REL" = /* ]]; then
@@ -196,6 +207,7 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/composite-profiles.json" "$DEST_DIR_REL/lib/c
 copy_file "$RUNTIME_SOURCE_DIR/lib/harness-capabilities.json" "$DEST_DIR_REL/lib/harness-capabilities.json"
 copy_file "$RUNTIME_SOURCE_DIR/lib/harness-capabilities.sh" "$DEST_DIR_REL/lib/harness-capabilities.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/harness-exec.sh" "$DEST_DIR_REL/lib/harness-exec.sh"
+copy_file "$RUNTIME_SOURCE_DIR/lib/harness-setup.sh" "$DEST_DIR_REL/lib/harness-setup.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/label-to-agent-mapping.json" "$DEST_DIR_REL/lib/label-to-agent-mapping.json"
 copy_file "$RUNTIME_SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/search.sh" "$DEST_DIR_REL/lib/search.sh"
@@ -1387,8 +1399,32 @@ if [ "${#legacy_sprints[@]}" -gt 0 ]; then
 fi
 
 # Commit installed files into the target repo so they are versioned from day one.
+stage_install_files() {
+  local path
+
+  git add -A -- "$GITIGNORE_DEST"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    [ "$path" = "$DEST_DIR_REL/.ralph-env" ] && continue
+
+    if git check-ignore -q -- "$path" 2>/dev/null; then
+      # Ignore untracked local state, but continue to stage normal install files.
+      if ! git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+        continue
+      fi
+    fi
+    git add -A -- "$path"
+  done < <(
+    {
+      git ls-files -- "$DEST_DIR_REL"
+      find "$DEST_DIR_REL" -type f -print 2>/dev/null
+    } | sort -u
+  )
+}
+
 if [ "$SKIP_GIT_CHECK" -ne 1 ]; then
-  git add -A "$DEST_DIR_REL" "$GITIGNORE_DEST"
+  # Never capture credentials or local harness settings from .ralph-env.
+  stage_install_files
   if ! git diff --cached --quiet; then
     git commit -m "chore: install Ralph workflow tooling into $DEST_DIR_REL"
     echo "Committed Ralph scripts to git."

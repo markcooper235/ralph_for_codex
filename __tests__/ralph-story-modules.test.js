@@ -169,7 +169,7 @@ test('ralph-story lazily loads authoring commands and imports a valid container'
 
 test('installer includes the lifecycle command module', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-module-install-'))
-  const result = spawnSync(installScript, ['--project', root, '--skip-git-check', '--no-install-speckit', '--verify-setup', 'skip'], {
+  const result = spawnSync(installScript, ['--project', root, '--skip-git-check', '--no-setup-harnesses', '--no-install-speckit', '--verify-setup', 'skip'], {
     cwd: repoRoot,
     encoding: 'utf8',
   })
