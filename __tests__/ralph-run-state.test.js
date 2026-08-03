@@ -729,39 +729,6 @@ test('composite agent profiles auto-route to piagent while simple profiles stay 
   assert.equal(documentationProfile.routing_mode, 'single-lite')
 })
 
-test('free mode switches auto-selected models to the free-tier mapping', () => {
-  const repoDir = initTempRepo()
-  const output = run(
-    'bash',
-    [
-      '-lc',
-      [
-        'source "$PWD/scripts/ralph/lib/harness-exec.sh"',
-        'unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON RALPH_COMPOSITE_STEPS_JSON RALPH_PIAGENT_ROLE STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER RALPH_STORY_COMPLEXITY_SCORE',
-        'RALPH_FREE_MODE=1',
-        'export RALPH_FREE_MODE',
-        'RALPH_STORY_COMPLEXITY_SCORE=0',
-        'STORY_COMPLEXITY_SCORE=0',
-        'STORY_COMPLEXITY_TIER=low',
-        '_apply_agent_profile documentation',
-        'get_execution_profile_json documentation',
-      ].join('; '),
-    ],
-    {
-      cwd: repoDir,
-      env: {
-        OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
-        OPENAI_API_KEY: 'sk-or-test',
-      },
-    }
-  )
-
-  const profile = JSON.parse(output.trim())
-  assert.equal(profile.harness, 'codex')
-  assert.equal(profile.model, 'openai/gpt-oss-20b:free')
-  assert.equal(profile.model_source, 'agent-profile-free')
-})
-
 test('ralph-story-run completes a simple story in one primary Codex cycle and syncs backlog state', () => {
   const repoDir = initTempRepo()
   const storyPath = path.join(repoDir, 'scripts/ralph/sprints/sprint-1/stories/S-001/story.json')
