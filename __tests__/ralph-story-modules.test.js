@@ -12,6 +12,7 @@ const storyScript = path.join(repoRoot, 'scripts/ralph/ralph-story.sh')
 const lifecycleModule = path.join(repoRoot, 'scripts/ralph/commands/story/lifecycle.sh')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
+const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
 const installScript = path.join(repoRoot, 'install.sh')
 
 test('story lifecycle module is source-safe', () => {
@@ -34,6 +35,15 @@ test('story health module is source-safe', () => {
 
 test('story authoring module is source-safe', () => {
   const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F cmd_add >/dev/null; declare -F cmd_import_story >/dev/null', 'bash', authoringModule], {
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, '')
+  assert.equal(result.stderr, '')
+})
+
+test('story preparation module is source-safe', () => {
+  const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F cmd_specify_all >/dev/null; declare -F cmd_generate_all >/dev/null; declare -F cmd_prepare_all >/dev/null; declare -F cmd_prep_status >/dev/null', 'bash', preparationModule], {
     encoding: 'utf8',
   })
   assert.equal(result.status, 0, result.stderr)
@@ -131,4 +141,5 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/lifecycle.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/health.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/authoring.sh')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/preparation.sh')), true)
 })
