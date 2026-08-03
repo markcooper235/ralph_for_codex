@@ -139,6 +139,7 @@ fi
 
 mkdir -p "$DEST_DIR_REL"
 mkdir -p "$DEST_DIR_REL/bin" "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
+mkdir -p "$DEST_DIR_REL/commands/story"
 
 copy_file() {
   local src="$1"
@@ -199,6 +200,7 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/label-to-agent-mapping.json" "$DEST_DIR_REL/l
 copy_file "$RUNTIME_SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/search.sh" "$DEST_DIR_REL/lib/search.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/specify.sh" "$DEST_DIR_REL/lib/specify.sh"
+copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/commands/story/lifecycle.sh"
 copy_file "$RUNTIME_SOURCE_DIR/bin/specify" "$DEST_DIR_REL/bin/specify"
 copy_file "$RUNTIME_SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
 copy_file "$RUNTIME_SOURCE_DIR/README-local.md" "$DEST_DIR_REL/README-local.md"
