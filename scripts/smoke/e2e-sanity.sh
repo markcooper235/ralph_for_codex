@@ -270,6 +270,19 @@ commit_framework_baseline() {
   )
 }
 
+install_real_loop_provider_env() {
+  local repo_root="$1"
+  local source_env="$REPO_ROOT/scripts/ralph/.ralph-env"
+  local target_env="$repo_root/scripts/ralph/.ralph-env"
+
+  [ "$FORCE_REAL_CODEX" -eq 1 ] || return 0
+  [ -f "$source_env" ] || return 0
+
+  cp "$source_env" "$target_env"
+  chmod 600 "$target_env"
+  echo "[smoke] copied local provider configuration into isolated real-loop repo"
+}
+
 if [ "$FORCE_REAL_CODEX" -eq 1 ] && [ "$FORCE_MOCK_CODEX" -eq 1 ]; then
   echo "Cannot pass both --real-codex and --mock-codex" >&2
   exit 1
@@ -595,6 +608,7 @@ if [ "$WITH_LOOP" -eq 1 ]; then
 
   SPRINT_REPO="$WORK_DIR/project-loop-sprint"
   cp -a "$TEST_REPO" "$SPRINT_REPO"
+  install_real_loop_provider_env "$SPRINT_REPO"
   echo "[smoke] isolated sprint repo: $SPRINT_REPO"
 
   sprint_tokens=0

@@ -138,11 +138,11 @@ prune_archive_retention() {
   [ -d "$ARCHIVE_DIR" ] || return 0
 
   local -a archive_dirs=()
-  mapfile -t archive_dirs < <(
-    find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@\t%f\n' 2>/dev/null \
-      | sort -nr \
-      | awk -F '\t' '{print $2}'
-  )
+  local archive_path
+  while IFS= read -r archive_path; do
+    [ -n "$archive_path" ] || continue
+    archive_dirs+=("${archive_path##*/}")
+  done < <(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort -r)
 
   [ "${#archive_dirs[@]}" -gt "$keep_count" ] || return 0
 
