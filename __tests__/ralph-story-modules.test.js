@@ -179,6 +179,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/authoring.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/preparation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/lib/story-preparation.sh')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/lib/sprint-layout.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
 })

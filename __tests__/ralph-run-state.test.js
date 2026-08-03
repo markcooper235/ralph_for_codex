@@ -628,6 +628,9 @@ test('specify helper joins sanitized path lists with readable separators', () =>
 
 test('sprint layout helpers resolve from RALPH_SCRIPT_DIR when SCRIPT_DIR is unset', () => {
   const repoDir = initTempRepo()
+  // Shell `pwd` resolves macOS's /var -> /private/var symlink while os.tmpdir()
+  // may retain the logical /var path. Compare canonical paths on both sides.
+  const canonicalRepoDir = fs.realpathSync(repoDir)
   const output = run(
     'bash',
     [
@@ -638,8 +641,8 @@ test('sprint layout helpers resolve from RALPH_SCRIPT_DIR when SCRIPT_DIR is uns
   )
 
   assert.deepEqual(output.trim().split('\n'), [
-    `${path.join(repoDir, 'scripts/ralph/backlog')}`,
-    `${path.join(repoDir, 'scripts/ralph/sprints')}`,
+    `${path.join(canonicalRepoDir, 'scripts/ralph/backlog')}`,
+    `${path.join(canonicalRepoDir, 'scripts/ralph/sprints')}`,
   ])
 })
 

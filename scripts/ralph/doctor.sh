@@ -110,8 +110,9 @@ fi
 
 SPRINT_TEST_FILE="$SCRIPT_DIR/ralph-sprint-test.sh"
 if [ ! -f "$SPRINT_TEST_FILE" ]; then
-  echo "WARN: ralph-sprint-test.sh not found — ralph-sprint-commit.sh will fail without it."
-  echo "      Copy $SCRIPT_DIR/ralph-sprint-test.sh.example to ralph-sprint-test.sh and customize."
+  echo "INFO: optional ralph-sprint-test.sh not found."
+  echo "      It is required only for ralph-sprint-commit.sh --full-regression."
+  echo "      To enable that gate, copy $SCRIPT_DIR/ralph-sprint-test.sh.example and customize it."
 fi
 
 # SpecKit artifacts should be committed with the sprint, not gitignored
