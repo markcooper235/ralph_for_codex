@@ -14,6 +14,8 @@ const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
 const preparationLibrary = path.join(repoRoot, 'scripts/ralph/lib/story-preparation.sh')
+const generationModule = path.join(repoRoot, 'scripts/ralph/commands/story/generation.sh')
+const specificationModule = path.join(repoRoot, 'scripts/ralph/commands/story/specification.sh')
 const installScript = path.join(repoRoot, 'install.sh')
 
 test('story lifecycle module is source-safe', () => {
@@ -35,7 +37,7 @@ test('story health module is source-safe', () => {
 })
 
 test('story authoring module is source-safe', () => {
-  const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F cmd_add >/dev/null; declare -F cmd_import_story >/dev/null', 'bash', authoringModule], {
+  const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F cmd_add >/dev/null; declare -F cmd_import_story >/dev/null; declare -F cmd_import_prd >/dev/null', 'bash', authoringModule], {
     encoding: 'utf8',
   })
   assert.equal(result.status, 0, result.stderr)
@@ -59,6 +61,20 @@ test('story preparation support library is source-safe', () => {
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout, '')
   assert.equal(result.stderr, '')
+})
+
+test('story generation and specification modules are source-safe', () => {
+  for (const [modulePath, functionName] of [
+    [generationModule, 'cmd_generate'],
+    [specificationModule, 'cmd_specify'],
+  ]) {
+    const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F "$2" >/dev/null', 'bash', modulePath, functionName], {
+      encoding: 'utf8',
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout, '')
+    assert.equal(result.stderr, '')
+  }
 })
 
 test('story focus discovery preserves literal paths with the system awk', () => {
@@ -163,4 +179,6 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/authoring.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/preparation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/lib/story-preparation.sh')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
 })

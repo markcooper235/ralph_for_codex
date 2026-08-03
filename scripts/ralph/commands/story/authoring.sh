@@ -156,3 +156,84 @@ cmd_import_story() {
   echo "Imported story container for $story_id: $raw_path"
 }
 
+cmd_import_prd() {
+  resolve_stories_file
+
+  local prd_path="${1:-}"
+  [ -n "$prd_path" ] || prd_path="$SCRIPT_DIR/prd.json"
+  [ -f "$prd_path" ] || fail "PRD file not found: $prd_path"
+
+  jq -e '.userStories | length > 0' "$prd_path" >/dev/null 2>&1 || \
+    fail "No userStories[] found in $prd_path"
+
+  local active_sprint
+  active_sprint="$(get_active_sprint)" || fail "No active sprint."
+
+  local imported=0 skipped=0
+
+  while IFS= read -r us_json; do
+    local us_id us_title us_desc us_ac us_priority us_passes
+    us_id="$(printf '%s' "$us_json" | jq -r '.id')"
+    us_title="$(printf '%s' "$us_json" | jq -r '.title // ""')"
+    us_desc="$(printf '%s' "$us_json" | jq -r '.description // ""')"
+    us_ac="$(printf '%s' "$us_json" | jq -r '(.acceptanceCriteria // []) | join(". ")')"
+    us_priority="$(printf '%s' "$us_json" | jq -r '.priority // 99')"
+    us_passes="$(printf '%s' "$us_json" | jq -r '.passes // false')"
+
+    if [ "$us_passes" = "true" ]; then
+      echo "SKIP $us_id (passes=true): $us_title"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Auto-assign next S-NNN from current max
+    local max_n=0
+    while IFS= read -r existing_id; do
+      local raw_n="${existing_id#S-}"
+      if [[ "$raw_n" =~ ^[0-9]+$ ]]; then
+        local n=$(( 10#$raw_n ))
+        [ "$n" -gt "$max_n" ] && max_n="$n"
+      fi
+    done < <(jq -r '.stories[].id' "$STORIES_FILE")
+    local new_id
+    new_id="$(printf 'S-%03d' $((max_n + 1)))"
+    local sprint_dir_rel
+    sprint_dir_rel="$(dirname "$(sprint_stories_file "$active_sprint")")"
+    sprint_dir_rel="${sprint_dir_rel#${WORKSPACE_ROOT}/}"
+    local story_path="$sprint_dir_rel/stories/$new_id/story.json"
+
+    local tmp
+    tmp="$(mktemp)"
+    jq \
+      --arg id "$new_id" \
+      --arg title "$us_title" \
+      --argjson priority "$us_priority" \
+      --arg status "planned" \
+      --arg goal "$us_desc" \
+      --arg ctx "$us_ac" \
+      --arg path "$story_path" \
+      '.stories += [{
+        "id": $id,
+        "title": $title,
+        "priority": $priority,
+        "effort": 3,
+        "planningSource": "prd-import",
+        "status": $status,
+        "depends_on": [],
+        "story_path": $path,
+        "goal": $goal,
+        "promptContext": $ctx
+      }]' \
+      "$STORIES_FILE" > "$tmp"
+    mv "$tmp" "$STORIES_FILE"
+
+    echo "Imported $us_id → $new_id: $us_title"
+    imported=$((imported + 1))
+  done < <(jq -c '.userStories[]' "$prd_path")
+
+  echo ""
+  echo "Imported: $imported  Skipped (done): $skipped"
+  if [ "$imported" -gt 0 ]; then
+    echo "Next: run './ralph-story.sh specify <ID>' for each story to run SpecKit analysis and create task containers."
+  fi
+}

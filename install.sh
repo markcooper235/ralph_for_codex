@@ -205,6 +205,8 @@ copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/comma
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/health.sh" "$DEST_DIR_REL/commands/story/health.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/authoring.sh" "$DEST_DIR_REL/commands/story/authoring.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/preparation.sh" "$DEST_DIR_REL/commands/story/preparation.sh"
+copy_file "$RUNTIME_SOURCE_DIR/commands/story/generation.sh" "$DEST_DIR_REL/commands/story/generation.sh"
+copy_file "$RUNTIME_SOURCE_DIR/commands/story/specification.sh" "$DEST_DIR_REL/commands/story/specification.sh"
 copy_file "$RUNTIME_SOURCE_DIR/bin/specify" "$DEST_DIR_REL/bin/specify"
 copy_file "$RUNTIME_SOURCE_DIR/templates/prd-intake.md" "$DEST_DIR_REL/templates/prd-intake.md"
 copy_file "$RUNTIME_SOURCE_DIR/README-local.md" "$DEST_DIR_REL/README-local.md"
