@@ -21,6 +21,8 @@ load_ralph_env() {
 if ! load_ralph_env "${SCRIPT_DIR}/.ralph-env"; then
   load_ralph_env "${HOME}/.ralph-env" || true
 fi
+source "$SCRIPT_DIR/lib/provider-env.sh"
+ralph_normalize_provider_env
 
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 source "$SCRIPT_DIR/lib/specify.sh"
@@ -150,6 +152,14 @@ fi
 require_cmd git
 require_cmd jq
 
+for provider_harness in codex piagent; do
+  if provider_route="$(ralph_provider_route_for_harness "$provider_harness")"; then
+    echo "OK: $provider_harness credentials configured via $provider_route environment"
+  else
+    echo "WARN: $provider_harness has no API key configured in .ralph-env"
+  fi
+done
+
 validate_framework_json "$SCRIPT_DIR/lib/agent-profiles.json"
 validate_framework_json "$SCRIPT_DIR/lib/composite-profiles.json"
 validate_framework_json "$SCRIPT_DIR/lib/label-to-agent-mapping.json"
@@ -255,7 +265,7 @@ case "$RALPH_HARNESS" in
     ;;
   piagent)
     echo "OK: pi CLI available"
-    if pi list 2>/dev/null | rg -q '^pi-subagents\b'; then
+    if pi list 2>/dev/null | rg -q '(^|[[:space:]])(npm:)?pi-subagents(@|[[:space:]]|$)'; then
       echo "OK: pi-subagents extension installed"
     else
       echo "WARN: pi-subagents extension not found"

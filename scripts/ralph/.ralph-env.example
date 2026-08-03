@@ -12,6 +12,8 @@
 # This provides a single API key to access multiple model providers.
 # export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
 # export OPENAI_API_KEY="sk-or-..."   # Your OpenRouter API key
+# `CODEX_API_KEY` is also accepted as an alias and normalized to
+# `OPENAI_API_KEY`, which is the variable consumed by the Codex CLI.
 # Claude Code is no longer a Ralph harness, so the Anthropic/OpenRouter
 # Claude routing lines are intentionally left commented out for reference only.
 # export ANTHROPIC_BASE_URL="https://openrouter.ai/api"
@@ -35,6 +37,7 @@
 # For Codex fallback to OpenAI native API:
 #   export OPENAI_API_BASE_NATIVE="https://api.openai.com/v1"
 #   export OPENAI_API_KEY_NATIVE="sk-..."   # Your OpenAI API key
+#   export CODEX_API_KEY_NATIVE="sk-..."    # Accepted alias
 #
 # PI Agent-specific Zen settings are intentionally omitted from Ralph fallback.
 # If you want to burn remaining OpenCode Zen credits, use PI standalone outside

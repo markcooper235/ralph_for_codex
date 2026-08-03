@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+source "$SCRIPT_DIR/lib/provider-env.sh"
+ralph_load_provider_env "$SCRIPT_DIR"
 source "$SCRIPT_DIR/lib/codex-exec.sh"
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 ROADMAP_JSON="$SCRIPT_DIR/roadmap.json"

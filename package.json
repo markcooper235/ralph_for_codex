@@ -2,7 +2,8 @@
   "name": "ralph-for-codex",
   "private": true,
   "scripts": {
-    "test:regression": "node --test __tests__/ralph-run-state.test.js __tests__/ralph-verify.test.js __tests__/ralph-story-modules.test.js",
+    "test:regression": "node --test __tests__/ralph-run-state.test.js __tests__/ralph-verify.test.js __tests__/ralph-story-modules.test.js __tests__/provider-env.test.js",
+    "test:provider-env": "node --test __tests__/provider-env.test.js",
     "test:modules": "node --test __tests__/ralph-story-modules.test.js",
     "test:verify-regression": "node --test __tests__/ralph-verify.test.js"
   }

@@ -30,6 +30,8 @@ load_ralph_env() {
 if ! load_ralph_env "${SCRIPT_DIR}/.ralph-env"; then
   load_ralph_env "${HOME}/.ralph-env" || true
 fi
+source "$SCRIPT_DIR/lib/provider-env.sh"
+ralph_normalize_provider_env
 
 source "$SCRIPT_DIR/lib/sprint-layout.sh"
 source "$SCRIPT_DIR/lib/harness-exec.sh"

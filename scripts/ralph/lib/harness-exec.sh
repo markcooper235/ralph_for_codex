@@ -206,6 +206,10 @@ _resolve_codex_model() {
         printf '%s\n' "$requested_model"
         return
         ;;
+      gpt-*|o[0-9]*)
+        printf 'openai/%s\n' "$requested_model"
+        return
+        ;;
     esac
   fi
 
@@ -245,6 +249,10 @@ _resolve_piagent_model() {
         ;;
       anthropic/*)
         printf 'openrouter/%s\n' "$requested_model"
+        return
+        ;;
+      gpt-*|o[0-9]*)
+        printf 'openrouter/openai/%s\n' "$requested_model"
         return
         ;;
     esac

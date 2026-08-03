@@ -211,6 +211,7 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/harness-setup.sh" "$DEST_DIR_REL/lib/harness-
 copy_file "$RUNTIME_SOURCE_DIR/lib/label-to-agent-mapping.json" "$DEST_DIR_REL/lib/label-to-agent-mapping.json"
 copy_file "$RUNTIME_SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/search.sh" "$DEST_DIR_REL/lib/search.sh"
+copy_file "$RUNTIME_SOURCE_DIR/lib/provider-env.sh" "$DEST_DIR_REL/lib/provider-env.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/specify.sh" "$DEST_DIR_REL/lib/specify.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/sprint-layout.sh" "$DEST_DIR_REL/lib/sprint-layout.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/story-preparation.sh" "$DEST_DIR_REL/lib/story-preparation.sh"
