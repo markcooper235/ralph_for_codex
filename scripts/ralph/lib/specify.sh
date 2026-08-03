@@ -377,7 +377,7 @@ collect_story_focus_hints() {
       | awk '
           length($0) >= 4 &&
           ($0 ~ /\// || $0 ~ /\.[A-Za-z0-9]+$/) &&
-          $0 !~ /^[0-9./-]+$/ &&
+          $0 !~ /^[-0-9.\/]+$/ &&
           $0 !~ /\/[0-9]/ &&
           !seen[$0]++
         '
@@ -395,18 +395,23 @@ collect_story_focus_hints() {
     return 0
   }
 
-  while IFS= read -r keyword; do
-    [ -n "$keyword" ] || continue
-    while IFS= read -r candidate; do
-      [ -n "$candidate" ] || continue
-      case "$candidate" in
-        node_modules/*|.git/*|dist/*|build/*|coverage/*|tmp/*|temp/*|output/*|playwright-report/*|test-results/*)
-          continue
-          ;;
-      esac
-      candidates+=("$candidate")
-        done < <(rg --files "$workspace_root" -g "*${keyword}*" 2>/dev/null | sed "s#^$workspace_root/##" | head -n 4)
-  done < <(specify_story_keywords "$story_text")
+  # Explicit paths in story text are authoritative. Keyword discovery is a
+  # fallback and must not dilute those paths with coincidentally named Ralph
+  # framework files.
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    while IFS= read -r keyword; do
+      [ -n "$keyword" ] || continue
+      while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        case "$candidate" in
+          node_modules/*|.git/*|dist/*|build/*|coverage/*|tmp/*|temp/*|output/*|playwright-report/*|test-results/*)
+            continue
+            ;;
+        esac
+        candidates+=("$candidate")
+      done < <(rg --files "$workspace_root" -g "*${keyword}*" 2>/dev/null | sed "s#^$workspace_root/##" | head -n 4)
+    done < <(specify_story_keywords "$story_text")
+  fi
 
   if [ "${#candidates[@]}" -eq 0 ]; then
     return 0

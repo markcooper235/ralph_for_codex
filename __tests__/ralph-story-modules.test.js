@@ -13,6 +13,7 @@ const lifecycleModule = path.join(repoRoot, 'scripts/ralph/commands/story/lifecy
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
+const preparationLibrary = path.join(repoRoot, 'scripts/ralph/lib/story-preparation.sh')
 const installScript = path.join(repoRoot, 'install.sh')
 
 test('story lifecycle module is source-safe', () => {
@@ -49,6 +50,25 @@ test('story preparation module is source-safe', () => {
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout, '')
   assert.equal(result.stderr, '')
+})
+
+test('story preparation support library is source-safe', () => {
+  const result = spawnSync('bash', ['-c', 'set -u; source "$1"; declare -F prep_record_stage >/dev/null; declare -F write_story_prep_bundle >/dev/null; declare -F compute_story_prep_fingerprint >/dev/null', 'bash', preparationLibrary], {
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, '')
+  assert.equal(result.stderr, '')
+})
+
+test('story focus discovery preserves literal paths with the system awk', () => {
+  const specifyLibrary = path.join(repoRoot, 'scripts/ralph/lib/specify.sh')
+  const script = 'source "$1"; collect_story_focus_hints "$2" "Touch lib/example.ts and __tests__/example.test.ts."'
+  const result = spawnSync('bash', ['-c', script, 'bash', specifyLibrary, repoRoot], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stderr, '')
+  assert.match(result.stdout, /- `lib\/example\.ts`/)
+  assert.match(result.stdout, /- `__tests__\/example\.test\.ts`/)
 })
 
 test('ralph-story lazily loads lifecycle commands and preserves next-id behavior', () => {
@@ -142,4 +162,5 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/health.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/authoring.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/preparation.sh')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/lib/story-preparation.sh')), true)
 })

@@ -200,6 +200,7 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/label-to-agent-mapping.json" "$DEST_DIR_REL/l
 copy_file "$RUNTIME_SOURCE_DIR/lib/editor-intake.sh" "$DEST_DIR_REL/lib/editor-intake.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/search.sh" "$DEST_DIR_REL/lib/search.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/specify.sh" "$DEST_DIR_REL/lib/specify.sh"
+copy_file "$RUNTIME_SOURCE_DIR/lib/story-preparation.sh" "$DEST_DIR_REL/lib/story-preparation.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/commands/story/lifecycle.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/health.sh" "$DEST_DIR_REL/commands/story/health.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/authoring.sh" "$DEST_DIR_REL/commands/story/authoring.sh"
