@@ -583,6 +583,12 @@ fi
 if [ "$WITH_LOOP" -eq 1 ]; then
   echo "[smoke] sprint story-task loop"
   LOOP_CODEX_BIN="$CODEX_BIN_VALUE"
+  LOOP_DISABLE_COMPOSITES=0
+  if [ "$LOOP_CODEX_BIN" = "$REPO_ROOT/scripts/smoke/mock-codex.sh" ]; then
+    # Mock mode promises no external model calls. Prevent agent-profile routing
+    # from switching a mock Codex loop to a real Pi composite execution.
+    LOOP_DISABLE_COMPOSITES=1
+  fi
   RALPH_LOOP_ARGS=(--max-stories 3 --max-retries "$LOOP_RETRY_MAX" --continue-on-failure --harness "$SMOKE_HARNESS")
   [ -n "$SMOKE_MODEL" ] && RALPH_LOOP_ARGS+=(--model "$SMOKE_MODEL")
   [ -n "$SMOKE_AGENT" ] && RALPH_LOOP_ARGS+=(--agent "$SMOKE_AGENT")
@@ -957,7 +963,7 @@ STORYJSON
     ./ralph-sprint.sh mark-ready sprint-1 > "$WORK_DIR/sprint-mark-ready.log" 2>&1
     ./ralph-sprint.sh use sprint-1 > "$WORK_DIR/sprint-use.log" 2>&1
     sprint_loop_start_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
-    run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" RALPH_HARNESS="$SMOKE_HARNESS" RALPH_MODEL="$SMOKE_MODEL" RALPH_AGENT="$SMOKE_AGENT" RALPH_STRUCTURED_OUTPUT=1 ./ralph.sh "${RALPH_LOOP_ARGS[@]}"
+    run_with_retries_logged "$LOOP_RETRY_MAX" "$WORK_DIR/loop.log" "$SPRINT_REPO" timeout 420 env CODEX_BIN="$LOOP_CODEX_BIN" RALPH_HARNESS="$SMOKE_HARNESS" RALPH_MODEL="$SMOKE_MODEL" RALPH_AGENT="$SMOKE_AGENT" RALPH_DISABLE_COMPOSITES="$LOOP_DISABLE_COMPOSITES" RALPH_STRUCTURED_OUTPUT=1 ./ralph.sh "${RALPH_LOOP_ARGS[@]}"
     sprint_loop_end_head="$(git -C "$SPRINT_REPO" rev-parse HEAD)"
 
     jq -e '.passes == true and .status == "done"' "sprints/sprint-1/stories/S-001/story.json" >/dev/null

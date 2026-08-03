@@ -167,6 +167,27 @@ test('ralph-story lazily loads authoring commands and imports a valid container'
   assert.equal(fs.existsSync(storyPath), true)
 })
 
+test('ralph-story add accepts an empty dependency list under strict mode', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-story-add-'))
+  const runtimeRoot = path.join(root, 'scripts/ralph')
+  const storiesFile = path.join(runtimeRoot, 'backlog/sprint-1/stories.json')
+  fs.cpSync(path.join(repoRoot, 'scripts/ralph'), runtimeRoot, { recursive: true })
+  fs.mkdirSync(path.dirname(storiesFile), { recursive: true })
+  fs.writeFileSync(path.join(runtimeRoot, '.active-sprint'), 'sprint-1\n')
+  fs.writeFileSync(storiesFile, JSON.stringify({
+    sprint: 'sprint-1', activeStoryId: null, stories: [],
+  }))
+
+  const result = spawnSync(path.join(runtimeRoot, 'ralph-story.sh'), ['add', '--title', 'No dependencies'], {
+    cwd: root,
+    env: { ...process.env, RALPH_STORIES_FILE: storiesFile },
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const story = JSON.parse(fs.readFileSync(storiesFile, 'utf8')).stories[0]
+  assert.deepEqual(story.depends_on, [])
+})
+
 test('installer includes the lifecycle command module', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-module-install-'))
   const result = spawnSync(installScript, ['--project', root, '--skip-git-check', '--no-setup-harnesses', '--no-install-speckit', '--verify-setup', 'skip'], {

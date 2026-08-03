@@ -52,7 +52,7 @@ cmd_add() {
 
   # Build depends_on array
   local deps_json
-  deps_json="$(parse_depends_on_args "$new_id" "${new_depends[@]}")"
+  deps_json="$(parse_depends_on_args "$new_id" ${new_depends[@]+"${new_depends[@]}"})"
 
   # Determine active sprint for story_path
   local active_sprint
