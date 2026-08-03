@@ -449,7 +449,7 @@ _seed_ralph_runtime_pi_config() {
   "defaultModel": "gpt-5.4",
   "defaultThinkingLevel": "medium",
   "packages": [
-    "npm:pi-subagents"
+    "npm:pi-subagents@0.27.0"
   ]
 }
 EOF

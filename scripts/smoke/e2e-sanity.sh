@@ -292,7 +292,8 @@ echo "[smoke] app mode: $APP_MODE"
 echo "[smoke] harness: $SMOKE_HARNESS"
 
 echo "[smoke] running framework run-state regression test"
-node --test "$REPO_ROOT/__tests__/ralph-run-state.test.js" >/dev/null
+env RALPH_ENABLE_COMPOSITES=1 RALPH_DISABLE_COMPOSITES=0 \
+  node --test "$REPO_ROOT/__tests__/ralph-run-state.test.js" >/dev/null
 
 cd "$TEST_REPO"
 git init -b main >/dev/null
@@ -968,12 +969,12 @@ STORYJSON
       assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" \
         "scripts/ralph/sprints/sprint-1/stories.json" \
         "scripts/ralph/sprints/sprint-1/stories/*/story.json" \
-        "src/index.ts" "tests/hello.test.mjs" "scripts/browser-check.mjs"
+        "src/index.ts" "tests/hello.test.mjs" "scripts/browser-check.mjs" "progress.md"
     else
       assert_commit_range_small_and_simple "$SPRINT_REPO" "$sprint_loop_start_head" "$sprint_loop_end_head" "sprint loop" \
         "scripts/ralph/sprints/sprint-1/stories.json" \
         "scripts/ralph/sprints/sprint-1/stories/*/story.json" \
-        "src/index.ts" "tests/hello.test.mjs"
+        "src/index.ts" "tests/hello.test.mjs" "progress.md"
     fi
 
     if [ "$APP_MODE" = "ui" ]; then
