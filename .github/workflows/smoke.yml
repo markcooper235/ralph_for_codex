@@ -22,6 +22,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '26'
+
+      - name: Install smoke prerequisites
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Set git user name and email
         run: |
           git config --global user.name "Mark Cooper"

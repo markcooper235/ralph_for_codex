@@ -697,6 +697,12 @@ test('sprint layout helpers resolve from RALPH_SCRIPT_DIR when SCRIPT_DIR is uns
 
 test('composite agent profiles auto-route to piagent while simple profiles stay on codex', () => {
   const repoDir = initTempRepo()
+  writeExecutable(
+    path.join(repoDir, 'pi'),
+    `#!/bin/bash
+exit 0
+`
+  )
   const output = run(
     'bash',
     [
@@ -717,7 +723,10 @@ test('composite agent profiles auto-route to piagent while simple profiles stay 
         'get_execution_profile_json documentation',
       ].join('; '),
     ],
-    { cwd: repoDir }
+    {
+      cwd: repoDir,
+      env: { PATH: `${repoDir}:${process.env.PATH}` },
+    }
   )
 
   const [reviewerProfile, documentationProfile] = output.trim().split('\n').map((line) => JSON.parse(line))
