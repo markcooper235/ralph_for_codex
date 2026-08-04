@@ -305,8 +305,13 @@ echo "[smoke] app mode: $APP_MODE"
 echo "[smoke] harness: $SMOKE_HARNESS"
 
 echo "[smoke] running framework run-state regression test"
-env RALPH_ENABLE_COMPOSITES=1 RALPH_DISABLE_COMPOSITES=0 \
-  node --test "$REPO_ROOT/__tests__/ralph-run-state.test.js" >/dev/null
+RUN_STATE_LOG="$WORK_DIR/run-state-regression.log"
+if ! env RALPH_ENABLE_COMPOSITES=1 RALPH_DISABLE_COMPOSITES=0 \
+  node --test "$REPO_ROOT/__tests__/ralph-run-state.test.js" >"$RUN_STATE_LOG" 2>&1; then
+  echo "[smoke] framework run-state regression test failed; output follows" >&2
+  cat "$RUN_STATE_LOG" >&2
+  exit 1
+fi
 
 cd "$TEST_REPO"
 git init -b main >/dev/null

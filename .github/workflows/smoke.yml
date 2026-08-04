@@ -27,4 +27,34 @@ jobs:
           git config --global user.name "Mark Cooper"
           git config --global user.email "markcooper235@github.com"
       - name: Run install-repo smoke suite
-        run: bash scripts/smoke/e2e-sanity.sh --ci
+        run: |
+          set -o pipefail
+          mkdir -p smoke-artifacts
+          bash scripts/smoke/e2e-sanity.sh --ci 2>&1 | tee smoke-artifacts/smoke-run.log
+
+      - name: Collect smoke diagnostics
+        if: failure()
+        run: |
+          mkdir -p smoke-artifacts/logs
+          for smoke_dir in /tmp/ralph-smoke-*; do
+            [ -d "$smoke_dir" ] || continue
+            smoke_name="$(basename "$smoke_dir")"
+            mkdir -p "smoke-artifacts/logs/$smoke_name"
+            find "$smoke_dir" -maxdepth 1 -type f -name '*.log' \
+              -exec cp {} "smoke-artifacts/logs/$smoke_name/" \;
+            if [ -d "$smoke_dir/project" ]; then
+              tar -czf "smoke-artifacts/$smoke_name-project.tar.gz" \
+                --exclude='node_modules' \
+                --exclude='dist' \
+                --exclude='scripts/ralph/runtime/home' \
+                -C "$smoke_dir" project
+            fi
+          done
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-diagnostics
+          path: smoke-artifacts
+          if-no-files-found: warn
