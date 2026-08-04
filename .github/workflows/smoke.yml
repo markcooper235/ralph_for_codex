@@ -8,6 +8,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      - name: Install test prerequisites
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
+      - name: Run regression suite
+        run: npm run test:regression
+
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -61,4 +80,62 @@ jobs:
         with:
           name: smoke-diagnostics
           path: smoke-artifacts
+          if-no-files-found: warn
+
+  mock-loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+
+      - name: Install smoke prerequisites
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
+      - name: Set git user name and email
+        run: |
+          git config --global user.name "Mark Cooper"
+          git config --global user.email "markcooper235@github.com"
+
+      - name: Run mock sprint loop smoke suite
+        run: |
+          set -o pipefail
+          mkdir -p mock-loop-artifacts
+          bash scripts/smoke/e2e-sanity.sh --ci --with-loop 2>&1 | tee mock-loop-artifacts/smoke-run.log
+
+      - name: Collect mock loop diagnostics
+        if: failure()
+        run: |
+          mkdir -p mock-loop-artifacts/logs
+          for smoke_dir in /tmp/ralph-smoke-*; do
+            [ -d "$smoke_dir" ] || continue
+            smoke_name="$(basename "$smoke_dir")"
+            mkdir -p "mock-loop-artifacts/logs/$smoke_name"
+            find "$smoke_dir" -maxdepth 1 -type f -name '*.log' \
+              -exec cp {} "mock-loop-artifacts/logs/$smoke_name/" \;
+            for project_dir in "$smoke_dir"/project "$smoke_dir"/project-loop-sprint; do
+              [ -d "$project_dir" ] || continue
+              project_name="$(basename "$project_dir")"
+              tar -czf "mock-loop-artifacts/$smoke_name-$project_name.tar.gz" \
+                --exclude='node_modules' \
+                --exclude='dist' \
+                --exclude='scripts/ralph/runtime/home' \
+                -C "$smoke_dir" "$project_name"
+            done
+          done
+
+      - name: Upload mock loop diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-loop-diagnostics
+          path: mock-loop-artifacts
           if-no-files-found: warn
