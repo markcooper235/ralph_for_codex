@@ -854,6 +854,10 @@ build_execution_files_json() {
 }
 
 build_execution_checks_json() {
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/execution-plan.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/execution-plan.mjs" checks "$STORY_FILE" "$TARGET_TASK_ID" > "$EXEC_BUNDLE_CHECKS_PATH"
+    return $?
+  fi
   jq -c --arg target "$TARGET_TASK_ID" '
     [
       .tasks[]
