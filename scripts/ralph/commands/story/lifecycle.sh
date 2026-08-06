@@ -86,15 +86,20 @@ cmd_use() {
 
 cmd_start_next() {
   resolve_stories_file
-  local next_id story_path tmp story_branch active_sprint sprint_branch
+  local next_id story_path tmp started_id story_branch active_sprint sprint_branch
   next_id="$(cmd_next_id)"
   [ -n "$next_id" ] || fail "No eligible story to start."
   story_path="$(resolve_story_path "$next_id")"
   [ -f "$story_path" ] || fail "story.json not found for $next_id: $story_path
   Run: ./ralph-story.sh generate $next_id"
-  tmp="$(mktemp)"
-  jq --arg id "$next_id" '(.stories[] | select(.id == $id) | .status) = "active" | .activeStoryId = $id' "$STORIES_FILE" > "$tmp"
-  mv "$tmp" "$STORIES_FILE"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/start-next.mjs" ]; then
+    started_id="$(node "$SCRIPT_DIR/core/cli/start-next.mjs" "$STORIES_FILE")" || return $?
+    [ "$started_id" = "$next_id" ] || fail "Started story mismatch: expected $next_id, got $started_id"
+  else
+    tmp="$(mktemp)"
+    jq --arg id "$next_id" '(.stories[] | select(.id == $id) | .status) = "active" | .activeStoryId = $id' "$STORIES_FILE" > "$tmp"
+    mv "$tmp" "$STORIES_FILE"
+  fi
   echo "Started story: $next_id"
 
   git -C "$WORKSPACE_ROOT" add "$STORIES_FILE" 2>/dev/null || true

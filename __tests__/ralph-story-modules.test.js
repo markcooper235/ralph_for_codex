@@ -12,6 +12,7 @@ const storyScript = path.join(repoRoot, 'scripts/ralph/ralph-story.sh')
 const lifecycleModule = path.join(repoRoot, 'scripts/ralph/commands/story/lifecycle.sh')
 const nodeNextIdCli = path.join(repoRoot, 'scripts/ralph/core/cli/next-id.mjs')
 const nodeStatusCli = path.join(repoRoot, 'scripts/ralph/core/cli/update-story-status.mjs')
+const nodeStartNextCli = path.join(repoRoot, 'scripts/ralph/core/cli/start-next.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -173,6 +174,31 @@ test('Node story status mutations preserve CLI output and write atomically', () 
   assert.equal(fs.readdirSync(root).some((entry) => entry.endsWith('.tmp')), false)
 })
 
+test('Node start-next transition selects and activates the next story atomically', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-start-next-'))
+  const storiesFile = path.join(root, 'stories.json')
+  fs.writeFileSync(storiesFile, JSON.stringify({
+    sprint: 'sprint-1',
+    activeStoryId: null,
+    stories: [
+      { id: 'S-001', priority: 1, status: 'ready', depends_on: ['S-003'] },
+      { id: 'S-002', priority: 2, status: 'ready', depends_on: [] },
+      { id: 'S-003', priority: 3, status: 'done', depends_on: [] },
+    ],
+  }, null, 2) + '\n')
+
+  const result = spawnSync(process.execPath, [nodeStartNextCli, storiesFile], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, 'S-001\n')
+  const backlog = JSON.parse(fs.readFileSync(storiesFile, 'utf8'))
+  assert.equal(backlog.activeStoryId, 'S-001')
+  assert.equal(backlog.stories[0].status, 'active')
+  assert.equal(fs.readdirSync(root).some((entry) => entry.endsWith('.tmp')), false)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -268,10 +294,12 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/lib/provider-env.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/next-id.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/update-story-status.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/start-next.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/select-next-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/update-story-status.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/start-next-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/backlog-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
