@@ -454,6 +454,11 @@ resolve_project_command() {
 
 build_project_command_map_json() {
   local workspace_root="${1:-$PWD}"
+  local runtime_base="${RALPH_SCRIPT_DIR:-${SCRIPT_DIR:-}}"
+  if command -v node >/dev/null 2>&1 && [ -f "$runtime_base/core/cli/project-commands.mjs" ]; then
+    node "$runtime_base/core/cli/project-commands.mjs" "$workspace_root"
+    return $?
+  fi
   local typecheck_cmd lint_cmd test_cmd build_cmd
 
   typecheck_cmd="$(resolve_project_command "$workspace_root" typecheck 2>/dev/null || true)"
