@@ -224,6 +224,7 @@ copy_file "$RUNTIME_SOURCE_DIR/core/cli/codex-exec.mjs" "$DEST_DIR_REL/core/cli/
 copy_file "$RUNTIME_SOURCE_DIR/core/cli/pi-exec.mjs" "$DEST_DIR_REL/core/cli/pi-exec.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/domain/sprint.mjs" "$DEST_DIR_REL/core/domain/sprint.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/domain/story.mjs" "$DEST_DIR_REL/core/domain/story.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/domain/task.mjs" "$DEST_DIR_REL/core/domain/task.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/select-next-story.mjs" "$DEST_DIR_REL/core/application/select-next-story.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/update-story-status.mjs" "$DEST_DIR_REL/core/application/update-story-status.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/start-next-story.mjs" "$DEST_DIR_REL/core/application/start-next-story.mjs"

@@ -18,6 +18,7 @@ const ensureStoryBranch = path.join(repoRoot, 'scripts/ralph/core/application/en
 const ensureStoryBranchCli = path.join(repoRoot, 'scripts/ralph/core/cli/ensure-story-branch.mjs')
 const codexExecCli = path.join(repoRoot, 'scripts/ralph/core/cli/codex-exec.mjs')
 const piExecCli = path.join(repoRoot, 'scripts/ralph/core/cli/pi-exec.mjs')
+const taskDomain = path.join(repoRoot, 'scripts/ralph/core/domain/task.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -274,6 +275,33 @@ test('Node Pi adapter preserves prompt, workspace, and selected flags', () => {
   assert.match(result.stdout, /ENV:bypassed/)
 })
 
+test('Node task domain preserves dependency blocking and completion rules', async () => {
+  const {
+    applyTaskResult,
+    storyIsComplete,
+    taskDependenciesMet,
+    verificationDecision,
+  } = await import(taskDomain)
+  let story = {
+    status: 'active',
+    passes: false,
+    tasks: [
+      { id: 'T-001', status: 'pending', passes: false, depends_on: [] },
+      { id: 'T-002', status: 'pending', passes: false, depends_on: ['T-001'] },
+      { id: 'T-003', status: 'pending', passes: false, depends_on: ['T-404'] },
+    ],
+  }
+  assert.equal(taskDependenciesMet(story, 'T-002'), false)
+  assert.deepEqual(verificationDecision(story, 'T-002'), { state: 'blocked', failureSeen: true })
+  story = applyTaskResult(story, 'T-001', true)
+  assert.equal(taskDependenciesMet(story, 'T-002'), true)
+  assert.deepEqual(verificationDecision(story, 'T-002'), { state: 'ready', failureSeen: false })
+  story = applyTaskResult(story, 'T-002', true)
+  story = applyTaskResult(story, 'T-003', true)
+  story = { ...story, status: 'done', passes: true }
+  assert.equal(storyIsComplete(story), true)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -375,6 +403,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/pi-exec.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/task.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/select-next-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/update-story-status.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/start-next-story.mjs')), true)
