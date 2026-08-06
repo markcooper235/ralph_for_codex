@@ -711,6 +711,13 @@ capture_failing_fingerprints() {
 }
 
 dependency_handoff_json() {
+  local active_sprint stories_file
+  active_sprint="$(awk 'NF {print; exit}' "$RALPH_SCRIPT_DIR/.active-sprint" 2>/dev/null || true)"
+  stories_file="$(sprint_stories_file "$active_sprint" 2>/dev/null || true)"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/dependency-handoff.mjs" ] && [ -f "$stories_file" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/dependency-handoff.mjs" "$STORY_FILE" "$stories_file" "$WORKSPACE_ROOT"
+    return $?
+  fi
   local entries='[]'
   while IFS= read -r dep_id; do
     [ -z "$dep_id" ] && continue
