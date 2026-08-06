@@ -551,6 +551,24 @@ task_passes() {
   jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .passes // false' "$STORY_FILE"
 }
 
+pending_task_ids() {
+  local target="${1:-}"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" task-ids "$STORY_FILE" "$target" 2>/dev/null | jq -r '.[]'
+    return $?
+  fi
+  jq -r --arg target "$target" '.tasks[] | select(.passes != true) | select($target == "" or .id == $target) | .id' "$STORY_FILE"
+}
+
+task_checks() {
+  local task_id="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" task-checks "$STORY_FILE" "$task_id" 2>/dev/null | jq -r '.[]'
+    return $?
+  fi
+  jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .checks[]?' "$STORY_FILE"
+}
+
 deps_met() {
   local task_id="$1"
   local failure_seen="${2:-false}"
@@ -721,7 +739,7 @@ capture_failing_fingerprints() {
   local task_ids=()
   while IFS= read -r tid; do
     task_ids+=("$tid")
-  done < <(jq -r '.tasks[].id' "$STORY_FILE")
+  done < <(pending_task_ids)
 
   local task_id
   for task_id in "${task_ids[@]}"; do
@@ -733,7 +751,7 @@ capture_failing_fingerprints() {
       if ! (cd "$WORKSPACE_ROOT" && eval "$check") >/dev/null 2>&1; then
         echo "${task_id}|${check_num}|$(check_fp "$check" "$task_id")" >> "$out"
       fi
-    done < <(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .checks[]?' "$STORY_FILE")
+    done < <(task_checks "$task_id")
   done
 }
 
@@ -1286,7 +1304,7 @@ verify_story() {
     printf '[]' > "$bundle_file"
 
     local check_num=0 check failed=0 check_total
-    check_total="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | (.checks // []) | length' "$STORY_FILE" 2>/dev/null || echo 0)"
+    check_total="$(task_checks "$task_id" | wc -l | awk '{print $1}')"
     while IFS= read -r check; do
       [ -z "$check" ] && continue
       check_num=$((check_num + 1))
@@ -1333,7 +1351,7 @@ verify_story() {
         mv "${bundle_file}.next" "$bundle_file"
       fi
       rm -f "$stdout_tmp" "$stderr_tmp"
-    done < <(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .checks[]?' "$STORY_FILE")
+    done < <(task_checks "$task_id")
 
     if [ "$failed" -eq 0 ]; then
       mark_task_done "$task_id"
@@ -1367,7 +1385,7 @@ verify_story() {
 
     rm -f "$fp_file" "$fail_file" "$bundle_file"
     break
-  done < <(if [ -n "$TARGET_TASK_ID" ]; then printf '%s\n' "$TARGET_TASK_ID"; else jq -r '.tasks[].id' "$STORY_FILE"; fi)
+  done < <(if [ -n "$TARGET_TASK_ID" ]; then printf '%s\n' "$TARGET_TASK_ID"; else pending_task_ids; fi)
 
   clear_story_runtime_check_context
   [ -z "$VERIFY_FAILED_TASK_ID" ]
