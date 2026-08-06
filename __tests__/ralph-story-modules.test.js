@@ -26,6 +26,7 @@ const executionContextCli = path.join(repoRoot, 'scripts/ralph/core/cli/executio
 const dependencyHandoffCli = path.join(repoRoot, 'scripts/ralph/core/cli/dependency-handoff.mjs')
 const executionFilesCli = path.join(repoRoot, 'scripts/ralph/core/cli/execution-files.mjs')
 const projectCommandsCli = path.join(repoRoot, 'scripts/ralph/core/cli/project-commands.mjs')
+const storyRuntimeCli = path.join(repoRoot, 'scripts/ralph/core/cli/story-runtime.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -433,6 +434,23 @@ test('project command CLI preserves supported package script mappings', () => {
   })
 })
 
+test('story runtime CLI writes an atomic manifest with normalized fields', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-story-runtime-'))
+  const manifestPath = path.join(root, 'story-summary.json')
+  const values = [
+    'S-001', 'Fixture', '/tmp/story.json', '/tmp/runtime', '/tmp/logs', 'verifying',
+    '2026-01-01T00:00:00Z', '2026-01-01T00:01:00Z', '2026-01-01T00:00:30Z',
+    'T-001', 'npm test', 'Verified task T-001', '', '', '', '1', '2', '3', '4000', '{"harness":"codex"}',
+  ]
+  const result = spawnSync(process.execPath, [storyRuntimeCli, manifestPath, ...values], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  assert.equal(manifest.story_id, 'S-001')
+  assert.equal(manifest.current_check_index, 2)
+  assert.deepEqual(manifest.execution_profile, { harness: 'codex' })
+  assert.equal(fs.readdirSync(root).some((entry) => entry.endsWith('.tmp')), false)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -539,6 +557,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/dependency-handoff.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/execution-files.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/project-commands.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/story-runtime.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/task.mjs')), true)
@@ -555,6 +574,8 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/dependency-handoff.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/execution-files.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/project-commands.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/story-runtime.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/runtime-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/paths.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)

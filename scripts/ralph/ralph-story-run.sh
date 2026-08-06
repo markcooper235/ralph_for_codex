@@ -377,6 +377,17 @@ ensure_story_runtime_dir() {
 write_story_runtime_manifest() {
   local phase="$1"
   local manifest_tmp
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/story-runtime.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/story-runtime.mjs" "$STORY_MANIFEST_PATH" \
+      "$STORY_ID" "$STORY_TITLE" "$STORY_FILE" "$STORY_RUNTIME_DIR" "$STORY_LOG_DIR" "$phase" \
+      "$STORY_RUNTIME_STARTED_AT" "$(timestamp_utc)" "$STORY_RUNTIME_LAST_PROGRESS_AT" \
+      "$STORY_RUNTIME_CURRENT_TASK_ID" "$STORY_RUNTIME_CURRENT_CHECK" "$STORY_RUNTIME_LAST_COMPLETED_MILESTONE" \
+      "$VERIFY_FAILED_TASK_ID" "$VERIFY_FAILED_BUNDLE_PATH" "$VERIFY_FAILED_SUMMARY_PATH" \
+      "${STORY_RUNTIME_ATTEMPT:-0}" "${STORY_RUNTIME_CURRENT_CHECK_INDEX:-0}" \
+      "${STORY_RUNTIME_CURRENT_CHECK_TOTAL:-0}" \
+      "$(elapsed_ms_since_epoch "$STORY_RUNTIME_STARTED_EPOCH")" "${STORY_EXECUTION_PROFILE_JSON:-null}"
+    return $?
+  fi
   manifest_tmp="$(mktemp)"
   jq -n \
     --arg story_id "$STORY_ID" \
