@@ -151,7 +151,7 @@ fi
 mkdir -p "$DEST_DIR_REL"
 mkdir -p "$DEST_DIR_REL/bin" "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
 mkdir -p "$DEST_DIR_REL/commands/story"
-mkdir -p "$DEST_DIR_REL/core/cli" "$DEST_DIR_REL/core/domain" "$DEST_DIR_REL/core/application" "$DEST_DIR_REL/core/repositories"
+mkdir -p "$DEST_DIR_REL/core/cli" "$DEST_DIR_REL/core/domain" "$DEST_DIR_REL/core/application" "$DEST_DIR_REL/core/repositories" "$DEST_DIR_REL/core/ports"
 
 copy_file() {
   local src="$1"
@@ -224,7 +224,9 @@ copy_file "$RUNTIME_SOURCE_DIR/core/domain/story.mjs" "$DEST_DIR_REL/core/domain
 copy_file "$RUNTIME_SOURCE_DIR/core/application/select-next-story.mjs" "$DEST_DIR_REL/core/application/select-next-story.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/update-story-status.mjs" "$DEST_DIR_REL/core/application/update-story-status.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/start-next-story.mjs" "$DEST_DIR_REL/core/application/start-next-story.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/application/ensure-story-branch.mjs" "$DEST_DIR_REL/core/application/ensure-story-branch.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/repositories/backlog-repository.mjs" "$DEST_DIR_REL/core/repositories/backlog-repository.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/ports/git.mjs" "$DEST_DIR_REL/core/ports/git.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/commands/story/lifecycle.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/health.sh" "$DEST_DIR_REL/commands/story/health.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/authoring.sh" "$DEST_DIR_REL/commands/story/authoring.sh"

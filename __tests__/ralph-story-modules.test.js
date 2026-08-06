@@ -13,6 +13,8 @@ const lifecycleModule = path.join(repoRoot, 'scripts/ralph/commands/story/lifecy
 const nodeNextIdCli = path.join(repoRoot, 'scripts/ralph/core/cli/next-id.mjs')
 const nodeStatusCli = path.join(repoRoot, 'scripts/ralph/core/cli/update-story-status.mjs')
 const nodeStartNextCli = path.join(repoRoot, 'scripts/ralph/core/cli/start-next.mjs')
+const gitPort = path.join(repoRoot, 'scripts/ralph/core/ports/git.mjs')
+const ensureStoryBranch = path.join(repoRoot, 'scripts/ralph/core/application/ensure-story-branch.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -199,6 +201,25 @@ test('Node start-next transition selects and activates the next story atomically
   assert.equal(fs.readdirSync(root).some((entry) => entry.endsWith('.tmp')), false)
 })
 
+test('story branch application uses the Git port without invoking Git directly', async () => {
+  const { ensureStoryBranch: ensure } = await import(ensureStoryBranch)
+  const calls = []
+  const branches = new Set(['ralph/sprint/1'])
+  const git = {
+    async hasBranch(name) { return branches.has(name) },
+    async createBranch(name, parent) { calls.push(['create', name, parent]); branches.add(name) },
+    async checkout(name) { calls.push(['checkout', name]) },
+    async branchParent() { return '' },
+    async setBranchParent(name, parent) { calls.push(['parent', name, parent]) },
+  }
+  const result = await ensure({ git, storyBranch: 'ralph/story/S-001', sprintBranch: 'ralph/sprint/1' })
+  assert.deepEqual(result, { action: 'create', branch: 'ralph/story/S-001', parent: 'ralph/sprint/1' })
+  assert.deepEqual(calls, [
+    ['create', 'ralph/story/S-001', 'ralph/sprint/1'],
+    ['parent', 'ralph/story/S-001', 'ralph/sprint/1'],
+  ])
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -300,7 +321,9 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/select-next-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/update-story-status.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/start-next-story.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/ensure-story-branch.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/backlog-repository.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
 })

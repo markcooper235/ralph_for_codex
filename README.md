@@ -413,7 +413,7 @@ Notes:
 | `ralph-roadmap.sh` | Create or refine the durable roadmap and seed sprint backlogs |
 | `ralph-sprint.sh` | Manage sprint containers and sprint readiness |
 | `ralph-story.sh` | Manage stories: specify, generate, health, start-next, and more |
-| `core/` | Node core services introduced incrementally behind shell-compatible commands; next-id, status mutations, and start-next are now backed by the core |
+| `core/` | Node core services introduced incrementally behind shell-compatible commands; next-id, status mutations, start-next, and the Git branch port are now covered |
 | `ralph-story-run.sh` | Execute the active story in one primary Codex cycle with shell verification |
 | `ralph.sh` | Sprint execution loop: start-next → ralph-story-run.sh → repeat |
 | `ralph-status.sh` | Show current sprint, story, branch, and loop state |
