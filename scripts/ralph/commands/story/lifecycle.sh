@@ -155,6 +155,12 @@ cmd_set_status() {
   local story_id="${1:-}" new_status="${2:-}" valid_statuses tmp
   [ -n "$story_id" ] && [ -n "$new_status" ] || fail "Usage: ralph-story.sh set-status <ID> <STATUS>"
   resolve_stories_file
+
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/update-story-status.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/update-story-status.mjs" set-status "$STORIES_FILE" "$story_id" "$new_status"
+    return $?
+  fi
+
   valid_statuses="planned ready active done abandoned blocked"
   printf '%s\n' "$valid_statuses" | tr ' ' '\n' | rg -qx -- "$new_status" || fail "Invalid status '$new_status'. Valid: $valid_statuses"
   tmp="$(mktemp)"
@@ -167,6 +173,12 @@ cmd_abandon() {
   local story_id="${1:-}" reason="${2:-}" tmp
   [ -n "$story_id" ] || fail "Usage: ralph-story.sh abandon <ID> [REASON]"
   resolve_stories_file
+
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/update-story-status.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/update-story-status.mjs" abandon "$STORIES_FILE" "$story_id" "$reason"
+    return $?
+  fi
+
   tmp="$(mktemp)"
   jq --arg id "$story_id" --arg r "$reason" '(.stories[] | select(.id == $id)) |= . + {"status": "abandoned", "abandonReason": $r}' "$STORIES_FILE" > "$tmp"
   mv "$tmp" "$STORIES_FILE"

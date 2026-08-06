@@ -77,6 +77,7 @@ What happens:
 - `ralph.sh` picks up the next eligible story, runs it via `ralph-story-run.sh`, validates binary checks, and merges the story branch back to the sprint branch
 - `ralph-sprint-commit.sh` runs sprint-scoped verification by default, archives sprint artifacts, and merges to `main`/`master`
 - `ralph-story.sh next-id` is dispatched through the first read-only Node core vertical slice, with a Bash/JQ fallback when Node is unavailable
+- `ralph-story.sh set-status` and `abandon` now use the Node core's atomic backlog repository, with the same shell-compatible output
 
 ### Multi-Sprint Workflow
 

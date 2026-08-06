@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 export async function readBacklog(filePath) {
   let raw
@@ -20,4 +21,32 @@ export async function readBacklog(filePath) {
   }
 
   return backlog
+}
+
+export async function writeBacklogAtomic(filePath, backlog) {
+  const directory = dirname(filePath)
+  await mkdir(directory, { recursive: true })
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  const contents = `${JSON.stringify(backlog, null, 2)}\n`
+  let handle
+
+  try {
+    handle = await open(temporaryPath, 'wx', 0o600)
+    await handle.writeFile(contents, 'utf8')
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+    await rename(temporaryPath, filePath)
+
+    const directoryHandle = await open(directory, 'r')
+    try {
+      await directoryHandle.sync()
+    } finally {
+      await directoryHandle.close()
+    }
+  } catch (error) {
+    if (handle) await handle.close().catch(() => {})
+    await unlink(temporaryPath).catch(() => {})
+    throw new Error(`Unable to write stories backlog atomically: ${filePath}`, { cause: error })
+  }
 }
