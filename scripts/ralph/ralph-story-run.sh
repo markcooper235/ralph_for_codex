@@ -535,11 +535,19 @@ story_is_complete() {
 
 task_status() {
   local task_id="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" task-status "$STORY_FILE" "$task_id" 2>/dev/null || true
+    return 0
+  fi
   jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .status // "pending"' "$STORY_FILE"
 }
 
 task_passes() {
   local task_id="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/story-query.mjs" task-passes "$STORY_FILE" "$task_id" 2>/dev/null || printf 'false\n'
+    return 0
+  fi
   jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .passes // false' "$STORY_FILE"
 }
 
