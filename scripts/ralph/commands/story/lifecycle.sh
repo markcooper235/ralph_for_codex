@@ -112,19 +112,23 @@ cmd_start_next() {
     active_sprint="$(get_active_sprint 2>/dev/null || echo "")"
     sprint_branch=""
     [ -n "$active_sprint" ] && sprint_branch="ralph/sprint/$active_sprint"
-    if git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$story_branch" 2>/dev/null; then
-      git -C "$WORKSPACE_ROOT" checkout "$story_branch"
-      if [ -n "$sprint_branch" ] && [ -z "$(branch_parent_from_upstream "$story_branch")" ]; then
-        set_branch_parent "$story_branch" "$sprint_branch"
-      fi
-      echo "Checked out story branch: $story_branch"
-    elif [ -n "$sprint_branch" ] && git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$sprint_branch" 2>/dev/null; then
-      git -C "$WORKSPACE_ROOT" checkout -b "$story_branch" "$sprint_branch"
-      set_branch_parent "$story_branch" "$sprint_branch"
-      echo "Created story branch: $story_branch (from $sprint_branch)"
+    if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/ensure-story-branch.mjs" ]; then
+      node "$SCRIPT_DIR/core/cli/ensure-story-branch.mjs" "$WORKSPACE_ROOT" "$story_branch" "$sprint_branch" || return $?
     else
-      git -C "$WORKSPACE_ROOT" checkout -b "$story_branch"
-      echo "Created story branch: $story_branch (from current HEAD)"
+      if git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$story_branch" 2>/dev/null; then
+        git -C "$WORKSPACE_ROOT" checkout "$story_branch"
+        if [ -n "$sprint_branch" ] && [ -z "$(branch_parent_from_upstream "$story_branch")" ]; then
+          set_branch_parent "$story_branch" "$sprint_branch"
+        fi
+        echo "Checked out story branch: $story_branch"
+      elif [ -n "$sprint_branch" ] && git -C "$WORKSPACE_ROOT" show-ref --verify --quiet "refs/heads/$sprint_branch" 2>/dev/null; then
+        git -C "$WORKSPACE_ROOT" checkout -b "$story_branch" "$sprint_branch"
+        set_branch_parent "$story_branch" "$sprint_branch"
+        echo "Created story branch: $story_branch (from $sprint_branch)"
+      else
+        git -C "$WORKSPACE_ROOT" checkout -b "$story_branch"
+        echo "Created story branch: $story_branch (from current HEAD)"
+      fi
     fi
   fi
 

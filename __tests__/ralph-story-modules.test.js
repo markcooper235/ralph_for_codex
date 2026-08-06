@@ -15,6 +15,7 @@ const nodeStatusCli = path.join(repoRoot, 'scripts/ralph/core/cli/update-story-s
 const nodeStartNextCli = path.join(repoRoot, 'scripts/ralph/core/cli/start-next.mjs')
 const gitPort = path.join(repoRoot, 'scripts/ralph/core/ports/git.mjs')
 const ensureStoryBranch = path.join(repoRoot, 'scripts/ralph/core/application/ensure-story-branch.mjs')
+const ensureStoryBranchCli = path.join(repoRoot, 'scripts/ralph/core/cli/ensure-story-branch.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -220,6 +221,27 @@ test('story branch application uses the Git port without invoking Git directly',
   ])
 })
 
+test('process-backed Git adapter preserves story branch creation output', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-git-adapter-'))
+  const run = (args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' })
+  assert.equal(run(['init', '-q']).status, 0)
+  assert.equal(run(['config', 'user.email', 'ralph@example.test']).status, 0)
+  assert.equal(run(['config', 'user.name', 'Ralph Test']).status, 0)
+  fs.writeFileSync(path.join(root, 'README.md'), 'fixture\n')
+  assert.equal(run(['add', 'README.md']).status, 0)
+  assert.equal(run(['commit', '-qm', 'fixture']).status, 0)
+  assert.equal(run(['checkout', '-qb', 'ralph/sprint/1']).status, 0)
+
+  const result = spawnSync(process.execPath, [ensureStoryBranchCli, root, 'ralph/story/S-001', 'ralph/sprint/1'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, 'Created story branch: ralph/story/S-001 (from ralph/sprint/1)\n')
+  assert.equal(run(['branch', '--show-current']).stdout.trim(), 'ralph/story/S-001')
+  assert.equal(run(['for-each-ref', '--format=%(upstream:short)', 'refs/heads/ralph/story/S-001']).stdout.trim(), 'ralph/sprint/1')
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -316,6 +338,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/next-id.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/update-story-status.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/start-next.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/ensure-story-branch.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/select-next-story.mjs')), true)
@@ -324,6 +347,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/ensure-story-branch.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/backlog-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
 })

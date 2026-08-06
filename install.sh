@@ -151,7 +151,7 @@ fi
 mkdir -p "$DEST_DIR_REL"
 mkdir -p "$DEST_DIR_REL/bin" "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
 mkdir -p "$DEST_DIR_REL/commands/story"
-mkdir -p "$DEST_DIR_REL/core/cli" "$DEST_DIR_REL/core/domain" "$DEST_DIR_REL/core/application" "$DEST_DIR_REL/core/repositories" "$DEST_DIR_REL/core/ports"
+mkdir -p "$DEST_DIR_REL/core/cli" "$DEST_DIR_REL/core/domain" "$DEST_DIR_REL/core/application" "$DEST_DIR_REL/core/repositories" "$DEST_DIR_REL/core/ports" "$DEST_DIR_REL/core/adapters"
 
 copy_file() {
   local src="$1"
@@ -219,6 +219,7 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/story-preparation.sh" "$DEST_DIR_REL/lib/stor
 copy_file "$RUNTIME_SOURCE_DIR/core/cli/next-id.mjs" "$DEST_DIR_REL/core/cli/next-id.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/cli/update-story-status.mjs" "$DEST_DIR_REL/core/cli/update-story-status.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/cli/start-next.mjs" "$DEST_DIR_REL/core/cli/start-next.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/cli/ensure-story-branch.mjs" "$DEST_DIR_REL/core/cli/ensure-story-branch.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/domain/sprint.mjs" "$DEST_DIR_REL/core/domain/sprint.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/domain/story.mjs" "$DEST_DIR_REL/core/domain/story.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/application/select-next-story.mjs" "$DEST_DIR_REL/core/application/select-next-story.mjs"
@@ -227,6 +228,7 @@ copy_file "$RUNTIME_SOURCE_DIR/core/application/start-next-story.mjs" "$DEST_DIR
 copy_file "$RUNTIME_SOURCE_DIR/core/application/ensure-story-branch.mjs" "$DEST_DIR_REL/core/application/ensure-story-branch.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/repositories/backlog-repository.mjs" "$DEST_DIR_REL/core/repositories/backlog-repository.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/ports/git.mjs" "$DEST_DIR_REL/core/ports/git.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/adapters/git-process.mjs" "$DEST_DIR_REL/core/adapters/git-process.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/commands/story/lifecycle.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/health.sh" "$DEST_DIR_REL/commands/story/health.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/authoring.sh" "$DEST_DIR_REL/commands/story/authoring.sh"
