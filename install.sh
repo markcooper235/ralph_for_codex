@@ -151,6 +151,7 @@ fi
 mkdir -p "$DEST_DIR_REL"
 mkdir -p "$DEST_DIR_REL/bin" "$DEST_DIR_REL/lib" "$DEST_DIR_REL/templates"
 mkdir -p "$DEST_DIR_REL/commands/story"
+mkdir -p "$DEST_DIR_REL/core/cli" "$DEST_DIR_REL/core/domain" "$DEST_DIR_REL/core/application" "$DEST_DIR_REL/core/repositories"
 
 copy_file() {
   local src="$1"
@@ -215,6 +216,10 @@ copy_file "$RUNTIME_SOURCE_DIR/lib/provider-env.sh" "$DEST_DIR_REL/lib/provider-
 copy_file "$RUNTIME_SOURCE_DIR/lib/specify.sh" "$DEST_DIR_REL/lib/specify.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/sprint-layout.sh" "$DEST_DIR_REL/lib/sprint-layout.sh"
 copy_file "$RUNTIME_SOURCE_DIR/lib/story-preparation.sh" "$DEST_DIR_REL/lib/story-preparation.sh"
+copy_file "$RUNTIME_SOURCE_DIR/core/cli/next-id.mjs" "$DEST_DIR_REL/core/cli/next-id.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/domain/sprint.mjs" "$DEST_DIR_REL/core/domain/sprint.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/application/select-next-story.mjs" "$DEST_DIR_REL/core/application/select-next-story.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/repositories/backlog-repository.mjs" "$DEST_DIR_REL/core/repositories/backlog-repository.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/lifecycle.sh" "$DEST_DIR_REL/commands/story/lifecycle.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/health.sh" "$DEST_DIR_REL/commands/story/health.sh"
 copy_file "$RUNTIME_SOURCE_DIR/commands/story/authoring.sh" "$DEST_DIR_REL/commands/story/authoring.sh"

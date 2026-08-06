@@ -35,6 +35,13 @@ cmd_show() {
 
 cmd_next_id() {
   resolve_stories_file
+
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/next-id.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/next-id.mjs" "$STORIES_FILE"
+    return $?
+  fi
+
+  # Compatibility fallback for installations without Node.js.
   jq -r '.stories | map(select(.status == "ready" or .status == "planned")) | sort_by([.priority, .id]) | .[] | .id' "$STORIES_FILE" |
     while IFS= read -r sid; do
       local deps_ok=true dep dep_status

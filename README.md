@@ -76,6 +76,7 @@ What happens:
 - `ralph-story.sh prep-status [--details] [--story <ID>]` inspects the latest prep journal and per-story prep stages
 - `ralph.sh` picks up the next eligible story, runs it via `ralph-story-run.sh`, validates binary checks, and merges the story branch back to the sprint branch
 - `ralph-sprint-commit.sh` runs sprint-scoped verification by default, archives sprint artifacts, and merges to `main`/`master`
+- `ralph-story.sh next-id` is dispatched through the first read-only Node core vertical slice, with a Bash/JQ fallback when Node is unavailable
 
 ### Multi-Sprint Workflow
 
@@ -411,6 +412,7 @@ Notes:
 | `ralph-roadmap.sh` | Create or refine the durable roadmap and seed sprint backlogs |
 | `ralph-sprint.sh` | Manage sprint containers and sprint readiness |
 | `ralph-story.sh` | Manage stories: specify, generate, health, start-next, and more |
+| `core/` | Read-only Node core services introduced incrementally behind shell-compatible commands |
 | `ralph-story-run.sh` | Execute the active story in one primary Codex cycle with shell verification |
 | `ralph.sh` | Sprint execution loop: start-next → ralph-story-run.sh → repeat |
 | `ralph-status.sh` | Show current sprint, story, branch, and loop state |
