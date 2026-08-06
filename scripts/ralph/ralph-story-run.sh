@@ -770,6 +770,10 @@ pending_task_ids_json() {
 }
 
 build_execution_context_json() {
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/execution-context.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/execution-context.mjs" "$STORY_FILE" "$EXEC_BUNDLE_DEPENDENCIES_PATH" "$TARGET_TASK_ID" > "$EXEC_BUNDLE_CONTEXT_PATH"
+    return $?
+  fi
   local deps_json task_ids_json
   deps_json="$(dependency_handoff_json)"
   task_ids_json="$(pending_task_ids_json)"
