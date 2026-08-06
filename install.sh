@@ -251,6 +251,7 @@ copy_file "$RUNTIME_SOURCE_DIR/core/application/story-runtime.mjs" "$DEST_DIR_RE
 copy_file "$RUNTIME_SOURCE_DIR/core/application/story-query.mjs" "$DEST_DIR_REL/core/application/story-query.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/repositories/runtime-repository.mjs" "$DEST_DIR_REL/core/repositories/runtime-repository.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/domain/paths.mjs" "$DEST_DIR_REL/core/domain/paths.mjs"
+copy_file "$RUNTIME_SOURCE_DIR/core/domain/validation.mjs" "$DEST_DIR_REL/core/domain/validation.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/ports/git.mjs" "$DEST_DIR_REL/core/ports/git.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/adapters/git-process.mjs" "$DEST_DIR_REL/core/adapters/git-process.mjs"
 copy_file "$RUNTIME_SOURCE_DIR/core/adapters/codex-process.mjs" "$DEST_DIR_REL/core/adapters/codex-process.mjs"

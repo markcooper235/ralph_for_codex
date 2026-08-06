@@ -1,5 +1,6 @@
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { validateBacklog } from '../domain/validation.mjs'
 
 export async function readBacklog(filePath) {
   let raw
@@ -16,11 +17,11 @@ export async function readBacklog(filePath) {
     throw new Error(`Invalid stories backlog JSON: ${filePath}`, { cause: error })
   }
 
-  if (!backlog || typeof backlog !== 'object' || !Array.isArray(backlog.stories)) {
-    throw new Error(`Invalid stories backlog shape: ${filePath}`)
+  try {
+    return validateBacklog(backlog)
+  } catch (error) {
+    throw new Error(`${error.message}: ${filePath}`, { cause: error })
   }
-
-  return backlog
 }
 
 export async function writeBacklogAtomic(filePath, backlog) {

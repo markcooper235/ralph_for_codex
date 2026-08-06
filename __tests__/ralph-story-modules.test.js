@@ -28,6 +28,7 @@ const executionFilesCli = path.join(repoRoot, 'scripts/ralph/core/cli/execution-
 const projectCommandsCli = path.join(repoRoot, 'scripts/ralph/core/cli/project-commands.mjs')
 const storyRuntimeCli = path.join(repoRoot, 'scripts/ralph/core/cli/story-runtime.mjs')
 const storyQueryCli = path.join(repoRoot, 'scripts/ralph/core/cli/story-query.mjs')
+const validationDomain = path.join(repoRoot, 'scripts/ralph/core/domain/validation.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -467,6 +468,12 @@ test('story query CLI preserves task reads and metadata', () => {
   assert.deepEqual(JSON.parse(metadata.stdout), { storyId: 'S-001', title: 'Fixture', branchName: 'story/S-001', agent: '' })
 })
 
+test('Node repository validation rejects malformed durable shapes', async () => {
+  const { validateBacklog, validateStory } = await import(validationDomain)
+  assert.throws(() => validateBacklog({ stories: [{ title: 'missing id' }] }), /every story must have a string id/)
+  assert.throws(() => validateStory({ tasks: [{ title: 'missing id' }] }), /every task must have a string id/)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -595,6 +602,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/story-query.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/runtime-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/paths.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/validation.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/codex-process.mjs')), true)

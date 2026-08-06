@@ -1,5 +1,6 @@
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { validateStory } from '../domain/validation.mjs'
 
 export async function readStory(filePath) {
   let raw
@@ -14,10 +15,11 @@ export async function readStory(filePath) {
   } catch (error) {
     throw new Error(`Invalid story JSON: ${filePath}`, { cause: error })
   }
-  if (!story || typeof story !== 'object' || !Array.isArray(story.tasks)) {
-    throw new Error(`Invalid story shape: ${filePath}`)
+  try {
+    return validateStory(story)
+  } catch (error) {
+    throw new Error(`${error.message}: ${filePath}`, { cause: error })
   }
-  return story
 }
 
 export async function writeStoryAtomic(filePath, story) {
