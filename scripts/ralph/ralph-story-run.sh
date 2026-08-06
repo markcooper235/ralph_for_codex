@@ -552,6 +552,10 @@ set_task_field() {
   local task_id="$1"
   local field="$2"
   local value="$3"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" set-task-field "$STORY_FILE" "$task_id" "$field" "$value"
+    return $?
+  fi
   local tmp
   tmp="$(mktemp)"
   jq --arg id "$task_id" --arg field "$field" --argjson val "$value" \
@@ -563,6 +567,10 @@ set_task_field() {
 set_story_field() {
   local field="$1"
   local value="$2"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" set-story-field "$STORY_FILE" "$field" "$value"
+    return $?
+  fi
   local tmp
   tmp="$(mktemp)"
   jq --arg field "$field" --argjson val "$value" '.[$field] = $val' "$STORY_FILE" > "$tmp"
