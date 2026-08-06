@@ -16,6 +16,7 @@ const nodeStartNextCli = path.join(repoRoot, 'scripts/ralph/core/cli/start-next.
 const gitPort = path.join(repoRoot, 'scripts/ralph/core/ports/git.mjs')
 const ensureStoryBranch = path.join(repoRoot, 'scripts/ralph/core/application/ensure-story-branch.mjs')
 const ensureStoryBranchCli = path.join(repoRoot, 'scripts/ralph/core/cli/ensure-story-branch.mjs')
+const codexExecCli = path.join(repoRoot, 'scripts/ralph/core/cli/codex-exec.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -242,6 +243,21 @@ test('process-backed Git adapter preserves story branch creation output', () => 
   assert.equal(run(['for-each-ref', '--format=%(upstream:short)', 'refs/heads/ralph/story/S-001']).stdout.trim(), 'ralph/sprint/1')
 })
 
+test('Node Codex adapter preserves prompt, workspace, and selected flags', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-codex-adapter-'))
+  const mock = path.join(root, 'mock-codex.sh')
+  fs.writeFileSync(mock, '#!/bin/bash\nif [ "$1" = "--yolo" ] && [ "$2" = "exec" ] && [ "$3" = "--help" ]; then echo "Run Codex non-interactively"; exit 0; fi\nprintf "ARGS:%s\\n" "$*"\ncat\n')
+  fs.chmodSync(mock, 0o755)
+  const result = spawnSync(process.execPath, [codexExecCli, 'hello from ralph', root, '--model', 'fixture-model', '--', '--json'], {
+    cwd: repoRoot,
+    env: { ...process.env, CODEX_BIN: mock },
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /ARGS:--yolo exec --model fixture-model --json/)
+  assert.match(result.stdout, /hello from ralph/)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -339,6 +355,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/update-story-status.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/start-next.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/ensure-story-branch.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/codex-exec.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/select-next-story.mjs')), true)
@@ -348,6 +365,8 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/backlog-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/codex-process.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/harness.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/generation.sh')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/commands/story/specification.sh')), true)
 })

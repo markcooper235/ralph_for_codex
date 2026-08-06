@@ -1195,7 +1195,16 @@ _codex_exec_prompt() {
   local agent_args=()
   [ -n "${RALPH_AGENT:-}" ] && harness_supports_agent_selection "codex" && agent_args=(--agent "$RALPH_AGENT")
   _seed_ralph_runtime_home_config
-  
+
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_RUNTIME_BASE_DIR/core/cli/codex-exec.mjs" ]; then
+    local node_args=()
+    [ -n "$runtime_profile" ] && node_args+=(--profile "$runtime_profile")
+    [ -n "${RALPH_MODEL:-}" ] && harness_supports_model_selection "codex" && node_args+=(--model "$RALPH_MODEL")
+    [ -n "${RALPH_AGENT:-}" ] && harness_supports_agent_selection "codex" && node_args+=(--agent "$RALPH_AGENT")
+    node "$RALPH_RUNTIME_BASE_DIR/core/cli/codex-exec.mjs" "$prompt" "$workspace" "${node_args[@]}" -- "$@"
+    return $?
+  fi
+
   if _supports_codex_yolo; then
     (
       _ensure_ralph_runtime_home
