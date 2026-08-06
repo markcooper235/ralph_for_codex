@@ -571,6 +571,10 @@ set_story_field() {
 
 mark_task_done() {
   local task_id="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" set-task-result "$STORY_FILE" "$task_id" true
+    return $?
+  fi
   local tmp
   tmp="$(mktemp)"
   jq --arg id "$task_id" \
@@ -581,6 +585,10 @@ mark_task_done() {
 
 mark_task_failed() {
   local task_id="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" set-task-result "$STORY_FILE" "$task_id" false
+    return $?
+  fi
   local tmp
   tmp="$(mktemp)"
   jq --arg id "$task_id" \
@@ -590,6 +598,10 @@ mark_task_failed() {
 }
 
 mark_story_done() {
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/update-story.mjs" complete "$STORY_FILE"
+    return $?
+  fi
   local tmp
   tmp="$(mktemp)"
   jq '. + {"status": "done", "passes": true}' "$STORY_FILE" > "$tmp"

@@ -20,6 +20,7 @@ const codexExecCli = path.join(repoRoot, 'scripts/ralph/core/cli/codex-exec.mjs'
 const piExecCli = path.join(repoRoot, 'scripts/ralph/core/cli/pi-exec.mjs')
 const taskDomain = path.join(repoRoot, 'scripts/ralph/core/domain/task.mjs')
 const verificationCli = path.join(repoRoot, 'scripts/ralph/core/cli/verification.mjs')
+const updateStoryCli = path.join(repoRoot, 'scripts/ralph/core/cli/update-story.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -318,6 +319,23 @@ test('verification CLI matches task-domain decisions and story completion exit c
   assert.equal(decision.stdout, 'ready\n')
 })
 
+test('Node story result mutations write atomically and preserve CLI state', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-story-write-'))
+  const storyPath = path.join(root, 'story.json')
+  fs.writeFileSync(storyPath, JSON.stringify({
+    status: 'active', passes: false,
+    tasks: [{ id: 'T-001', status: 'pending', passes: false, depends_on: [] }],
+  }) + '\n')
+  const result = spawnSync(process.execPath, [updateStoryCli, 'set-task-result', storyPath, 'T-001', 'true'], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  const complete = spawnSync(process.execPath, [updateStoryCli, 'complete', storyPath], { encoding: 'utf8' })
+  assert.equal(complete.status, 0, complete.stderr)
+  const story = JSON.parse(fs.readFileSync(storyPath, 'utf8'))
+  assert.equal(story.status, 'done')
+  assert.equal(story.tasks[0].status, 'done')
+  assert.equal(fs.readdirSync(root).some((entry) => entry.endsWith('.tmp')), false)
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -418,6 +436,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/codex-exec.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/pi-exec.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/verification.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/update-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/task.mjs')), true)
@@ -428,6 +447,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/backlog-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/repositories/story-repository.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/verification.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/update-story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/codex-process.mjs')), true)
