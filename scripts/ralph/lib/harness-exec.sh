@@ -1296,6 +1296,21 @@ _piagent_exec_prompt() {
   [ -n "$resolved_model" ] && pi_args+=("--model" "$resolved_model")
   [ -n "$pi_api_key" ] && pi_args+=("--api-key" "$pi_api_key")
 
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_RUNTIME_BASE_DIR/core/cli/pi-exec.mjs" ]; then
+    (
+      cd "$workspace"
+      _ensure_ralph_runtime_home
+      export HOME="$RALPH_RUNTIME_HOME_DIR"
+      export PI_CODING_AGENT_DIR="$RALPH_RUNTIME_HOME_DIR/.pi/agent"
+      export XDG_CONFIG_HOME="$RALPH_RUNTIME_HOME_DIR/.config"
+      export XDG_CACHE_HOME="$RALPH_RUNTIME_HOME_DIR/.cache"
+      export XDG_STATE_HOME="$RALPH_RUNTIME_HOME_DIR/.local/state"
+      export XDG_DATA_HOME="$RALPH_RUNTIME_HOME_DIR/.local/share"
+      node "$RALPH_RUNTIME_BASE_DIR/core/cli/pi-exec.mjs" "$prompt" "$workspace" "${pi_args[@]}" -- "$@"
+    )
+    return $?
+  fi
+
   pi_args+=("$@")
   pi_args+=("$prompt")
 
