@@ -53,6 +53,27 @@ scripts/ralph/core/
     story.schema.json
 ```
 
+## Implemented Migration Stages
+
+The current main branch has completed and committed these compatibility-gated
+stages:
+
+- backlog selection and atomic status mutations (`next-id`, `set-status`, `abandon`, `start-next`);
+- Git branch planning plus the process-backed Git adapter;
+- Codex and Pi process execution behind the harness port;
+- task dependency/completion rules and verification decisions;
+- atomic story task/result/field writes;
+- execution-plan, context, dependency-handoff, file-scope, and project-command services;
+- atomic story runtime manifest writes and centralized story queries;
+- repository shape validation for durable backlog/story inputs.
+
+Every stage retains a shell fallback, has parity or adapter coverage, and is
+validated by the full regression suite and `e2e-sanity.sh --ci --with-loop`.
+The remaining shell responsibilities are process orchestration, acceptance
+check execution, heartbeat timing, operator output, and compatibility fallback
+paths. Those are intentionally kept at the boundary until their process and
+runtime contracts are separately characterized.
+
 Start with plain ESM JavaScript, JSDoc types, Node's built-in test runner, and
 no runtime dependencies. Introduce TypeScript only if schema-derived types or
 the application layer becomes difficult to maintain with JSDoc.
@@ -76,7 +97,7 @@ the application layer becomes difficult to maintain with JSDoc.
 
 ## First Vertical Slice
 
-Implement `next-id` first. It is read-only, deterministic, and exercises the
+The initial `next-id` slice was implemented first. It is read-only, deterministic, and exercises the
 important repository/domain split:
 
 - repository loads and validates `stories.json`;
@@ -84,8 +105,10 @@ important repository/domain split:
 - shell wrapper preserves current output and missing-dependency behavior;
 - fixture tests run Bash and Node implementations against identical inputs.
 
-Follow it with `set-status` and `abandon`, which establish atomic writes and
-transition validation before Git-aware `start-next` is attempted.
+It was followed by `set-status`, `abandon`, and `start-next`, which established
+atomic writes, transition validation, and the Git port boundary. Subsequent
+execution and runtime services now follow the same shell-compatible migration
+pattern.
 
 ## Compatibility Gates
 

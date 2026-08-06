@@ -78,6 +78,7 @@ What happens:
 - `ralph-sprint-commit.sh` runs sprint-scoped verification by default, archives sprint artifacts, and merges to `main`/`master`
 - `ralph-story.sh next-id` is dispatched through the first read-only Node core vertical slice, with a Bash/JQ fallback when Node is unavailable
 - `ralph-story.sh set-status` and `abandon` now use the Node core's atomic backlog repository, with the same shell-compatible output
+- story execution now uses Node services for task verification, atomic story state, execution-bundle assembly, project command discovery, and runtime manifests; shell remains the compatibility dispatcher and check/heartbeat runner
 
 ### Multi-Sprint Workflow
 
@@ -413,7 +414,7 @@ Notes:
 | `ralph-roadmap.sh` | Create or refine the durable roadmap and seed sprint backlogs |
 | `ralph-sprint.sh` | Manage sprint containers and sprint readiness |
 | `ralph-story.sh` | Manage stories: specify, generate, health, start-next, and more |
-| `core/` | Node core services introduced incrementally behind shell-compatible commands; next-id, status mutations, start-next, and the Git branch port are now covered |
+| `core/` | Node core services introduced incrementally behind shell-compatible commands; backlog/story state, execution planning, Git, Codex, Pi, and runtime services are covered |
 | `ralph-story-run.sh` | Execute the active story in one primary Codex cycle with shell verification |
 | `ralph.sh` | Sprint execution loop: start-next → ralph-story-run.sh → repeat |
 | `ralph-status.sh` | Show current sprint, story, branch, and loop state |
