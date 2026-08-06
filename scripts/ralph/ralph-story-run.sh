@@ -511,6 +511,10 @@ stop_heartbeat() {
 }
 
 story_is_complete() {
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/verification.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/verification.mjs" story-complete "$STORY_FILE" >/dev/null 2>&1
+    return $?
+  fi
   jq -e '
     (.status // "") == "done"
     and (.passes // false) == true
@@ -530,6 +534,11 @@ task_passes() {
 
 deps_met() {
   local task_id="$1"
+  local failure_seen="${2:-false}"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/verification.mjs" ]; then
+    [ "$(node "$RALPH_SCRIPT_DIR/core/cli/verification.mjs" task-decision "$STORY_FILE" "$task_id" "$failure_seen" 2>/dev/null)" = "ready" ]
+    return $?
+  fi
   local deps
   deps="$(jq -r --arg id "$task_id" '.tasks[] | select(.id == $id) | .depends_on[]?' "$STORY_FILE")"
   while IFS= read -r dep; do
@@ -1187,19 +1196,22 @@ verify_story() {
   VERIFY_FAILED_SUMMARY_PATH=""
 
   local failure_seen=0
+  local failure_seen_flag=false
   local task_id
   while IFS= read -r task_id; do
     [ -n "$task_id" ] || continue
     STORY_RUNTIME_CURRENT_TASK_ID="$task_id"
     touch_story_runtime_progress "Verifying task $task_id"
 
-    if [ "$failure_seen" -eq 1 ] && ! deps_met "$task_id"; then
+    if [ "$failure_seen" -eq 1 ] && ! deps_met "$task_id" true; then
       set_task_field "$task_id" "status" '"blocked"'
       set_task_field "$task_id" "passes" 'false'
       continue
     fi
 
-    if ! deps_met "$task_id"; then
+    failure_seen_flag=false
+    [ "$failure_seen" -eq 1 ] && failure_seen_flag=true
+    if ! deps_met "$task_id" "$failure_seen_flag"; then
       set_task_field "$task_id" "status" '"blocked"'
       set_task_field "$task_id" "passes" 'false'
       failure_seen=1
