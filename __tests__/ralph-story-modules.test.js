@@ -24,6 +24,7 @@ const updateStoryCli = path.join(repoRoot, 'scripts/ralph/core/cli/update-story.
 const executionPlanCli = path.join(repoRoot, 'scripts/ralph/core/cli/execution-plan.mjs')
 const executionContextCli = path.join(repoRoot, 'scripts/ralph/core/cli/execution-context.mjs')
 const dependencyHandoffCli = path.join(repoRoot, 'scripts/ralph/core/cli/dependency-handoff.mjs')
+const executionFilesCli = path.join(repoRoot, 'scripts/ralph/core/cli/execution-files.mjs')
 const healthModule = path.join(repoRoot, 'scripts/ralph/commands/story/health.sh')
 const authoringModule = path.join(repoRoot, 'scripts/ralph/commands/story/authoring.sh')
 const preparationModule = path.join(repoRoot, 'scripts/ralph/commands/story/preparation.sh')
@@ -392,6 +393,30 @@ test('dependency handoff CLI preserves completed dependency metadata', () => {
   }])
 })
 
+test('execution files CLI preserves scope/test extraction and safety filters', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ralph-execution-files-'))
+  const storyPath = path.join(root, 'story.json')
+  const contextPath = path.join(root, 'context.json')
+  fs.writeFileSync(storyPath, JSON.stringify({ tasks: [{
+    id: 'T-001', passes: false, scope: ['src/a.js', 'docs/guide.md', 'node_modules/x.js'],
+    checks: ['test -f src/a.test.js', 'grep -n needle src/a.js'],
+  }] }))
+  fs.writeFileSync(contextPath, JSON.stringify({ dependency_handoff: [{ files_touched: ['src/dependency.js', 'coverage/out'] }] }))
+  const result = spawnSync(process.execPath, [executionFilesCli, storyPath, contextPath], { encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), {
+    writable_scope: ['src/a.js'],
+    nearest_tests: ['src/a.test.js', 'src/a.js'],
+    dependency_files: ['src/dependency.js'],
+    blocked_paths: [
+      'node_modules/**', '.next/**', 'coverage/**', 'dist/**', 'build/**',
+      'vendor/**', 'scripts/ralph/runtime/**', 'dist-docs/**',
+      'scripts/ralph/README-local.md', 'scripts/ralph/doctor.sh',
+      'scripts/ralph/lib/specify.sh',
+    ],
+  })
+})
+
 test('ralph-story help does not load the lifecycle module', () => {
   const source = fs.readFileSync(storyScript, 'utf8')
   assert.match(source, /list\|show\|next\|next-id\|use\|start-next\|tasks\|set-status\|abandon/)
@@ -496,6 +521,7 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/execution-plan.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/execution-context.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/dependency-handoff.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/cli/execution-files.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/sprint.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/story.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/task.mjs')), true)
@@ -510,6 +536,8 @@ test('installer includes the lifecycle command module', () => {
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/execution-plan.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/execution-context.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/dependency-handoff.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/application/execution-files.mjs')), true)
+  assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/domain/paths.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/ports/git.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/git-process.mjs')), true)
   assert.equal(fs.existsSync(path.join(root, 'scripts/ralph/core/adapters/codex-process.mjs')), true)

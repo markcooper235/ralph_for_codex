@@ -812,6 +812,10 @@ build_execution_commands_json() {
 }
 
 build_execution_files_json() {
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/execution-files.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/execution-files.mjs" "$STORY_FILE" "$EXEC_BUNDLE_CONTEXT_PATH" "$TARGET_TASK_ID" > "$EXEC_BUNDLE_FILES_PATH"
+    return $?
+  fi
   local task_scopes_json tests_json dep_files_json
   task_scopes_json="$(jq -c --arg target "$TARGET_TASK_ID" '
     [
