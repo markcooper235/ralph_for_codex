@@ -1,5 +1,3 @@
-export const TASK_STATUSES = ['pending', 'active', 'done', 'failed', 'blocked']
-
 function taskById(story, taskId) {
   return (story.tasks ?? []).find((task) => String(task.id) === String(taskId))
 }

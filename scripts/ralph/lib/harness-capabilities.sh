@@ -104,14 +104,6 @@ get_harness_provider() {
   echo "$provider"
 }
 
-# Get access method for a harness
-get_harness_access_method() {
-  local harness="$1"
-  local capabilities_file="$(_get_capabilities_file)"
-  local method
-  method="$(_load_json_value "$capabilities_file" ".harnesses.$harness.access_method // empty")"
-  echo "$method"
-}
 # Get default agent for a harness
 get_harness_default_agent() {
   local harness="$1"
@@ -183,10 +175,6 @@ _get_static_models_json() {
   local harness="$1"
   local capabilities_file="$(_get_capabilities_file)"
   jq -c --arg harness "$harness" '.harnesses[$harness].available_models // []' "$capabilities_file" 2>/dev/null || echo "[]"
-}
-
-_normalize_model_list_json() {
-  jq -Rsc 'split("\n") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0)) | unique'
 }
 
 _models_endpoint_for_base_url() {
