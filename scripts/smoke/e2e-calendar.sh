@@ -891,12 +891,7 @@ import type { Config } from 'jest'
 const config: Config = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: {
-        module: 'commonjs',
-        moduleResolution: 'node',
-        experimentalDecorators: true,
-        emitDecoratorMetadata: true,
-      },
+      tsconfig: 'tsconfig.jest.json',
     }],
   },
   testEnvironment: 'node',
@@ -906,6 +901,21 @@ const config: Config = {
 
 export default config
 TS
+
+cat > tsconfig.jest.json <<'JSON'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["jest", "node"]
+  }
+}
+JSON
 
 # Minimal baseline spec replacing deleted generated one
 cat > src/app/app.spec.ts <<'SPEC'
