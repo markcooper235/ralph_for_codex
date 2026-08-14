@@ -290,8 +290,9 @@ validate_roadmap_json() {
     all(.sprints[];
       .name and (.name | test("^sprint-[a-z0-9-]+$")) and
       .title and .goal and
-      .capacityTarget == $target and
-      .capacityCeiling == $ceiling and
+      (.capacityTarget | type == "number") and
+      (.capacityTarget >= 1 and .capacityTarget <= .capacityCeiling) and
+      (.capacityCeiling == $ceiling) and
       (.stories | type == "array") and
       ([.stories[]?.effort] | all(. == 1 or . == 2 or . == 3 or . == 5))
     )

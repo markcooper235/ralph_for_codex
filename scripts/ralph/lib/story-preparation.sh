@@ -228,6 +228,10 @@ prep_record_stage() {
   local stage_path
   stage_path="$(prep_stage_status_path "$story_id" "$stage" 2>/dev/null || true)"
   [ -n "$stage_path" ] || return 0
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" record "$RALPH_PREP_RUN_DIR" "$story_id" "$stage" "$status" "$detail" "$artifacts_json" "$duration_ms" "$execution_profile_json"
+    return $?
+  fi
   mkdir -p "$(dirname "$stage_path")"
   jq -n \
     --arg storyId "$story_id" \
@@ -263,6 +267,10 @@ prep_touch_summary() {
   local summary_path tmp rollup_json effective_phase
   summary_path="$(prep_summary_path 2>/dev/null || true)"
   [ -n "$summary_path" ] && [ -f "$summary_path" ] || return 0
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" touch "$RALPH_PREP_RUN_DIR" "$phase" "$active_story_id" "$active_stage" "$execution_profile_json"
+    return $?
+  fi
   rollup_json="$(prep_collect_stage_rollup "$summary_path")"
   effective_phase="$phase"
   if [ -n "$active_stage" ] && [ "$active_stage" != "null" ]; then
@@ -313,6 +321,10 @@ prep_finalize_summary() {
   local summary_path tmp rollup_json
   summary_path="$(prep_summary_path 2>/dev/null || true)"
   [ -n "$summary_path" ] && [ -f "$summary_path" ] || return 0
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/prep-journal.mjs" finalize "$RALPH_PREP_RUN_DIR" "$final_status"
+    return $?
+  fi
   rollup_json="$(prep_collect_stage_rollup "$summary_path")"
   tmp="$(mktemp)"
   jq \
@@ -830,6 +842,13 @@ compute_story_prep_fingerprint() {
   local dependency_context="${10:-}"
   local repo_briefing_hash focus_json dependency_context_json payload
 
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/prep-fingerprint.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/prep-fingerprint.mjs" \
+      "$story_id" "$sprint" "$title" "$goal" "$prompt_context" "$repo_briefing_abs" \
+      "$command_map_json" "$depends_on_json" "$focus_hints" "$dependency_context"
+    return $?
+  fi
+
   if [ -n "$repo_briefing_abs" ] && [ -f "$repo_briefing_abs" ]; then
     repo_briefing_hash="$(hash_text < "$repo_briefing_abs")"
   else
@@ -879,4 +898,3 @@ sanitize_dep_file_list() {
     | sanitize_specify_paths \
     | join_with_comma_space
 }
-

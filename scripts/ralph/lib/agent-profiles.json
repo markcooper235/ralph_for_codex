@@ -1,5 +1,59 @@
 {
   "profiles": {
+    "mechanics-auditor": {
+      "description": "Repo-specific Fantasy AGE mechanics audit work: rules inventory, discrepancy analysis, variance classification, and remediation sequencing",
+      "repo_specific": true,
+      "composite_profile": "fanout_research_v1",
+      "piagent_agent": "researcher",
+      "models": {"codex": "gpt-5.4", "piagent": "gpt-5.4"},
+      "system_prompt_addition": "You are the Fantasy AGE mechanics auditor for this repository. Anchor findings to Fantasy AGE 2e rules, separate deviations from inert variances, avoid premature implementation, and leave behind decision-grade audit artifacts with explicit evidence.",
+      "temperature": 0.1,
+      "max_tokens": 5000
+    },
+    "rules-remediator": {
+      "description": "Repo-specific Fantasy AGE rules remediation work: source-level mechanics correction, careful refactoring, and proof-oriented verification",
+      "repo_specific": true,
+      "composite_profile": "chain_implement_verify_v1",
+      "piagent_agent": "worker",
+      "models": {"codex": "gpt-5.4", "piagent": "gpt-5.4"},
+      "system_prompt_addition": "You are the Fantasy AGE rules remediator for this repository. Correct mechanics at the source seam, preserve deterministic behavior, avoid downstream clamps, and prefer small but durable refactors that make later rules drift less likely.",
+      "temperature": 0.1,
+      "max_tokens": 5000,
+      "lite_models": {"codex": "gpt-5.4-mini", "piagent": "gpt-5.4-mini"}
+    },
+    "conformance-engineer": {
+      "description": "Repo-specific conformance and acceptance harness work for Fantasy AGE rules verification",
+      "repo_specific": true,
+      "composite_profile": "chain_verify_v1",
+      "piagent_agent": "worker",
+      "models": {"codex": "gpt-5.4", "piagent": "gpt-5.4"},
+      "system_prompt_addition": "You are the conformance engineer for this repository. Build behavior-verifying harnesses, discrepancy reporting, and acceptance surfaces that make the rules posture explicit, maintainable, and hard to silently regress.",
+      "temperature": 0.1,
+      "max_tokens": 4500,
+      "lite_models": {"codex": "gpt-5.4-mini", "piagent": "gpt-5.4-mini"}
+    },
+    "quality-auditor": {
+      "description": "Repo-specific code quality audit work focused on correctness risk, ownership seams, duplication, and maintainability",
+      "repo_specific": true,
+      "composite_profile": "chain_review_v1",
+      "piagent_agent": "reviewer",
+      "models": {"codex": "gpt-5.4", "piagent": "gpt-5.4"},
+      "system_prompt_addition": "You are the code quality auditor for this repository. Find structural issues that threaten correctness or future safe development, distinguish local cleanup from seam extraction, and keep the audit evidence-based and implementation-ready.",
+      "temperature": 0.15,
+      "max_tokens": 4500,
+      "lite_models": {"codex": "gpt-5.4-mini", "piagent": "gpt-5.4-mini"}
+    },
+    "quality-remediator": {
+      "description": "Repo-specific quality remediation work: consolidate rules logic, clean boundaries, and improve maintainability without regressions",
+      "repo_specific": true,
+      "composite_profile": "chain_implement_verify_v1",
+      "piagent_agent": "worker",
+      "models": {"codex": "gpt-5.4", "piagent": "gpt-5.4"},
+      "system_prompt_addition": "You are the quality remediator for this repository. Favor elegant simplification, single authoritative seams, and durable maintainability improvements that reduce the chance of future mechanics drift.",
+      "temperature": 0.15,
+      "max_tokens": 4500,
+      "lite_models": {"codex": "gpt-5.4-mini", "piagent": "gpt-5.4-mini"}
+    },
     "researcher": {
       "description": "Investigation, debugging, exploration tasks requiring deep analysis",
       "composite_profile": "fanout_research_v1",

@@ -44,6 +44,32 @@ harness_supports_agent_selection() {
   [ "$supported" = "true" ]
 }
 
+# Check if a harness exposes the named acceptance promise set.
+harness_supports_acceptance_promise_set() {
+  local harness="$1"
+  local promise_set="$2"
+  local capabilities_file="$(_get_capabilities_file)"
+  local supported
+  supported="$(_load_json_value "$capabilities_file" ".harnesses.$harness.acceptance_promises.$promise_set.distinguishes_backend_complete // false")"
+  [ "$supported" = "true" ]
+}
+
+# Get acceptance promise set metadata for a harness.
+get_harness_acceptance_promise_set_json() {
+  local harness="$1"
+  local promise_set="$2"
+  local capabilities_file="$(_get_capabilities_file)"
+  _load_json_value "$capabilities_file" ".harnesses.$harness.acceptance_promises.$promise_set // empty"
+}
+
+# Get acceptance loop ids for a promise set.
+get_harness_acceptance_loop_ids_json() {
+  local harness="$1"
+  local promise_set="$2"
+  local capabilities_file="$(_get_capabilities_file)"
+  _load_json_value "$capabilities_file" ".harnesses.$harness.acceptance_promises.$promise_set.loop_ids // []"
+}
+
 # Get default model for a harness
 get_harness_default_model() {
   local harness="$1"

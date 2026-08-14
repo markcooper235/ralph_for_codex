@@ -8,6 +8,16 @@
 
 cmd_list() {
   resolve_stories_file
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/story-list.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/story-list.mjs" "$STORIES_FILE" | jq -r '
+      (.activeStoryId // "") as $active |
+      "Sprint: \(.sprint)   active=\($active // "none")\n",
+      "",
+      "ID         PRI    EFF    STATUS       TITLE",
+      "---------- ------ ------ ------------ -----",
+      (.stories[] | ((if .id == $active then "->" else "  " end) + " " + (.id|tostring) + " " + ((.priority // "")|tostring) + " " + ((.effort // "")|tostring) + " " + ((.status // "")|tostring) + " " + ((.title // "")|tostring)))'
+    return $?
+  fi
   local sprint active_id marker
   sprint="$(jq -r '.sprint' "$STORIES_FILE")"
   active_id="$(jq -r '.activeStoryId // "none"' "$STORIES_FILE")"
@@ -28,6 +38,10 @@ cmd_show() {
   local story_id="${1:-}" story_path
   [ -n "$story_id" ] || fail "Usage: ralph-story.sh show <ID>"
   resolve_stories_file
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/story-show.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/story-show.mjs" "$STORIES_FILE" "$story_id"
+    return $?
+  fi
   story_path="$(resolve_story_path "$story_id")"
   [ -f "$story_path" ] || fail "story.json not found at: $story_path"
   jq '.' "$story_path"
@@ -63,6 +77,13 @@ cmd_next_id() {
 
 cmd_next() {
   resolve_stories_file
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/story-show.mjs" ]; then
+    local next_id
+    next_id="$(cmd_next_id)"
+    [ -n "$next_id" ] || { echo "No eligible story found."; return 0; }
+    node "$SCRIPT_DIR/core/cli/story-show.mjs" "$STORIES_FILE" "$next_id"
+    return $?
+  fi
   local next_id
   next_id="$(cmd_next_id)"
   [ -n "$next_id" ] || { echo "No eligible story found."; return 0; }
@@ -73,6 +94,10 @@ cmd_use() {
   local story_id="${1:-}" exists story_path tmp
   [ -n "$story_id" ] || fail "Usage: ralph-story.sh use <ID>"
   resolve_stories_file
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/activate-story.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/activate-story.mjs" "$STORIES_FILE" "$story_id"
+    return $?
+  fi
   exists="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | .id' "$STORIES_FILE")"
   [ -n "$exists" ] || fail "Story $story_id not found."
   story_path="$(resolve_story_path "$story_id")"
@@ -148,6 +173,15 @@ cmd_tasks() {
   local story_id="${1:-}" story_path
   [ -n "$story_id" ] || fail "Usage: ralph-story.sh tasks <ID>"
   resolve_stories_file
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/story-tasks.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/story-tasks.mjs" "$STORIES_FILE" "$story_id" | jq -r '
+      "Tasks for story \(.storyId):\n",
+      "",
+      "ID       STATUS   TITLE",
+      "-------- -------- -----",
+      (.tasks[] | ((.id|tostring) + " " + ((.status // "pending")|tostring) + " " + ((.title // "")|tostring)))'
+    return $?
+  fi
   story_path="$(resolve_story_path "$story_id")"
   [ -f "$story_path" ] || fail "story.json not found at: $story_path"
   echo "Tasks for story $story_id:"

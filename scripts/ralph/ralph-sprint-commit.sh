@@ -137,6 +137,14 @@ prune_archive_retention() {
   local keep_count="${1:-7}"
   [ -d "$ARCHIVE_DIR" ] || return 0
 
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/archive-retention.mjs" ]; then
+    while IFS= read -r archive_path; do
+      [ -n "$archive_path" ] || continue
+      echo "Compressed archived sprint: $archive_path"
+    done < <(node "$SCRIPT_DIR/core/cli/archive-retention.mjs" "$ARCHIVE_DIR" "$keep_count" | jq -r '.[]')
+    return $?
+  fi
+
   local -a archive_dirs=()
   local archive_path
   while IFS= read -r archive_path; do

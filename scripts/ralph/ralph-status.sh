@@ -440,6 +440,13 @@ main() {
   local active_sprint stories_file current_branch sprint_branch loop_state worktree_state sprint_story_id
   active_sprint="$(get_active_sprint || true)"
 
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/status-report.mjs" ]; then
+    local node_loop_state="stopped"
+    pgrep -af 'scripts/ralph/ralph\.sh' >/dev/null 2>&1 && node_loop_state="running"
+    node "$SCRIPT_DIR/core/cli/status-report.mjs" "$WORKSPACE_ROOT" "$SCRIPT_DIR" "$active_sprint" "$prep_details" "$prep_story_limit" "$node_loop_state"
+    exit $?
+  fi
+
   if [ -z "$active_sprint" ]; then
     echo "Active sprint: (none)"
     render_loop_line

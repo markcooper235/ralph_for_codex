@@ -11,6 +11,10 @@ _health_story() {
   story_path="$(resolve_story_path "$story_id")"
   local story_status
   story_status="$(jq -r --arg id "$story_id" '.stories[] | select(.id == $id) | .status' "$STORIES_FILE")"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/story-health.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/story-health.mjs" "$story_path" "$story_id" "$story_status"
+    return $?
+  fi
   local issues=0
 
   echo "[$story_id] $story_status"

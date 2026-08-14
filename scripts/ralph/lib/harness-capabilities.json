@@ -17,7 +17,20 @@
         "gpt-4.1"
       ],
       "model_parameter": "--model",
-      "agent_parameter": "--agent"
+      "agent_parameter": "--agent",
+      "acceptance_promises": {
+        "roadmap_product_completion": {
+          "enforcement": "product-complete",
+          "distinguishes_backend_complete": true,
+          "loop_ids": [
+            "tactical-launch-action-flow",
+            "reconnect-control-restoration",
+            "environment-interaction",
+            "bounded-offline-continuity",
+            "governance-publish-promote-restore"
+          ]
+        }
+      }
     },
     "piagent": {
       "name": "PI Agent",
@@ -37,7 +50,20 @@
         "gpt-4.1"
       ],
       "model_parameter": "--model",
-      "agent_parameter": null
+      "agent_parameter": null,
+      "acceptance_promises": {
+        "roadmap_product_completion": {
+          "enforcement": "product-complete",
+          "distinguishes_backend_complete": true,
+          "loop_ids": [
+            "tactical-launch-action-flow",
+            "reconnect-control-restoration",
+            "environment-interaction",
+            "bounded-offline-continuity",
+            "governance-publish-promote-restore"
+          ]
+        }
+      }
     }
   }
 }

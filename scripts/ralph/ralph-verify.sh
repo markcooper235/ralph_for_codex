@@ -71,6 +71,10 @@ TEST_SCRIPT=""
 TEST_SCRIPT_SUPPORTS_TARGETING=0
 
 collect_changed_files() {
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/verification-scope.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/verification-scope.mjs" changed "$WORKSPACE_ROOT"
+    return $?
+  fi
   {
     git diff --name-only --diff-filter=ACMRTUXB HEAD || true
     git ls-files --others --exclude-standard || true
@@ -80,6 +84,15 @@ collect_changed_files() {
 story_scope_files() {
   [ -n "$STORY_PATH" ] || fail "--story PATH is required for $MODE verification"
   [ -f "$STORY_PATH" ] || fail "Story file not found: $STORY_PATH"
+
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/verification-scope.mjs" ]; then
+    if [ "$MODE" = "task" ]; then
+      node "$SCRIPT_DIR/core/cli/verification-scope.mjs" task "$WORKSPACE_ROOT" "$STORY_PATH" "$TASK_ID"
+    else
+      node "$SCRIPT_DIR/core/cli/verification-scope.mjs" story "$WORKSPACE_ROOT" "$STORY_PATH"
+    fi
+    return $?
+  fi
 
   if [ "$MODE" = "task" ]; then
     [ -n "$TASK_ID" ] || fail "--task-id is required for --task verification"
@@ -122,6 +135,10 @@ resolve_sprint_branch() {
 sprint_scope_files() {
   local sprint_branch merge_target merge_base
   sprint_branch="$(resolve_sprint_branch)"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/verification-scope.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/verification-scope.mjs" sprint "$WORKSPACE_ROOT" '' '' "$sprint_branch"
+    return $?
+  fi
   git show-ref --verify --quiet "refs/heads/$sprint_branch" || fail "Sprint branch not found: $sprint_branch"
   merge_target="$(git for-each-ref --format='%(upstream:short)' "refs/heads/$sprint_branch" 2>/dev/null | head -n1)"
   [ -n "$merge_target" ] || merge_target="$(git show-ref --verify --quiet refs/heads/master && echo master || echo main)"

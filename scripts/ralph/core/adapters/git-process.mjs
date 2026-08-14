@@ -42,5 +42,35 @@ export function createGitProcessAdapter({ cwd }) {
     async setBranchParent(branchName, parentBranch) {
       await runGit(cwd, ['branch', `--set-upstream-to=${parentBranch}`, branchName])
     },
+
+    async stageAll() {
+      await runGit(cwd, ['add', '-A', '.'])
+    },
+
+    async hasCachedChanges() {
+      try {
+        await runGit(cwd, ['diff', '--cached', '--quiet'])
+        return false
+      } catch (error) {
+        if (error?.code === 1) return true
+        throw error
+      }
+    },
+
+    async commit(message) {
+      await runGit(cwd, ['commit', '-m', message])
+    },
+
+    async mergeNoFastForward(branchName, message) {
+      await runGit(cwd, ['-c', 'merge.renames=false', 'merge', '--no-ff', branchName, '-m', message])
+    },
+
+    async deleteBranch(branchName) {
+      try {
+        await runGit(cwd, ['branch', '-d', branchName])
+      } catch {
+        await runGit(cwd, ['branch', '-D', branchName])
+      }
+    },
   }
 }

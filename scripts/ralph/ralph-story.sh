@@ -10,6 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export RALPH_SCRIPT_DIR="${RALPH_SCRIPT_DIR:-$SCRIPT_DIR}"
 SPRINTS_DIR="$SCRIPT_DIR/sprints"
 ACTIVE_SPRINT_FILE="$SCRIPT_DIR/.active-sprint"
 STORIES_FILE="${RALPH_STORIES_FILE:-}"
@@ -462,6 +463,11 @@ validate_story_container_file() {
   local expected_story_id="$2"
   local expected_sprint="$3"
 
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/validate-story-container.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/validate-story-container.mjs" "$story_path" "$expected_story_id" "$expected_sprint"
+    return $?
+  fi
+
   jq -e '.' "$story_path" >/dev/null 2>&1 || fail "Invalid JSON: $story_path"
   jq -e --arg id "$expected_story_id" '.storyId == $id' "$story_path" >/dev/null 2>&1 \
     || fail "Imported story.json storyId must be $expected_story_id"
@@ -487,6 +493,10 @@ story_is_unrecovered_migration_placeholder() {
 
 infer_checks_from_text() {
   local text="$1"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/infer-checks.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/infer-checks.mjs" "$text"
+    return $?
+  fi
   local checks="[]"
 
   if printf '%s\n' "$text" | rg -qi '(^|[^[:alnum:]_])(typecheck|tsc|type check|type-check)($|[^[:alnum:]_])'; then

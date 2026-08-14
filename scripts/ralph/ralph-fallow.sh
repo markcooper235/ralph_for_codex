@@ -738,6 +738,12 @@ build_report() {
     files_json="[]"
   fi
 
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/fallow-report.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/fallow-report.mjs" "$REPORT_FILE" "$STORY_ID" "$files_json" "$FALLOW_ISSUES" "$DEAD_CODE_ISSUES"
+    echo "$total"
+    return 0
+  fi
+
   jq -n \
     --arg story_id   "$STORY_ID" \
     --arg timestamp  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

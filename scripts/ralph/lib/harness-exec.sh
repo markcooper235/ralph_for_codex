@@ -17,6 +17,7 @@ COMPOSITE_PROFILES_FILE="$HARNESS_LIB_DIR/composite-profiles.json"
 LABEL_MAPPING_FILE="$HARNESS_LIB_DIR/label-to-agent-mapping.json"
 HARNESS_CAPABILITIES_FILE="$HARNESS_LIB_DIR/harness-capabilities.json"
 RALPH_RUNTIME_HOME_DIR="${RALPH_HOME_DIR:-$RALPH_RUNTIME_BASE_DIR/runtime/home}"
+export RALPH_RUNTIME_HOME_DIR
 RALPH_REPO_ROOT="$(cd "$HARNESS_LIB_DIR/../../.." && pwd)"
 RALPH_RUNTIME_HOME_CONFIG_FILE="$RALPH_RUNTIME_HOME_DIR/.codex/config.toml"
 RALPH_RUNTIME_PI_AGENT_DIR="$RALPH_RUNTIME_HOME_DIR/.pi/agent"
@@ -1180,6 +1181,30 @@ _apply_agent_profile() {
   
 }
 
+# Build the execution profile for a named acceptance promise set.
+get_acceptance_execution_profile_json() {
+  local promise_set="${1:-roadmap_product_completion}"
+  local effective_agent="${2:-${RALPH_AGENT:-default}}"
+  local effective_harness promise_json
+  effective_harness="$(_resolve_effective_harness)"
+
+  if ! harness_supports_acceptance_promise_set "$effective_harness" "$promise_set"; then
+    echo "ERROR: Harness '$effective_harness' does not support acceptance promise set '$promise_set'." >&2
+    return 1
+  fi
+
+  promise_json="$(get_harness_acceptance_promise_set_json "$effective_harness" "$promise_set")"
+  jq -n \
+    --argjson execution "$(get_execution_profile_json "$effective_agent")" \
+    --arg promise_set "$promise_set" \
+    --argjson acceptance "$promise_json" \
+    '{
+      execution: $execution,
+      acceptance_promise_set: $promise_set,
+      acceptance: $acceptance
+    }'
+}
+
 # Harness-specific execution functions
 
 _codex_exec_prompt() {
@@ -1325,6 +1350,17 @@ _piagent_exec_prompt() {
     export XDG_DATA_HOME="$RALPH_RUNTIME_HOME_DIR/.local/share"
     PI_PERMISSION_LEVEL=bypassed pi -p "${pi_args[@]}"
   )
+}
+
+# Execute a prompt with an acceptance promise profile attached.
+harness_exec_acceptance_prompt() {
+  local prompt="$1"
+  local workspace="${2:-$PWD}"
+  local promise_set="${3:-roadmap_product_completion}"
+  shift 3 || true
+  local acceptance_profile
+  acceptance_profile="$(get_acceptance_execution_profile_json "$promise_set" "${RALPH_AGENT:-default}")" || return 1
+  harness_exec_prompt "$(printf 'Acceptance profile:\n%s\n\n%s\n' "$acceptance_profile" "$prompt")" "$workspace" "$@"
 }
 
 # Dispatcher function

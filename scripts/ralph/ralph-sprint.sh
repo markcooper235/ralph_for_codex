@@ -120,6 +120,10 @@ ensure_sprint_branch_exists() {
   fi
 
   base_branch="$(default_base_branch)"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/ensure-sprint-branch.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/ensure-sprint-branch.mjs" "$WORKSPACE_ROOT" "$sprint_branch" "$base_branch"
+    return $?
+  fi
   git branch "$sprint_branch" "$base_branch"
   set_branch_parent "$sprint_branch" "$base_branch"
   echo "Created sprint branch: $sprint_branch (from $base_branch)"
@@ -143,7 +147,11 @@ get_sprint_status() {
   local sf
   sf="$(sprint_stories_file "$sprint")"
   [ -f "$sf" ] || { echo "planned"; return 0; }
-  jq -r '.status // "planned"' "$sf"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/sprint-state.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/sprint-state.mjs" get-status "$sf"
+  else
+    jq -r '.status // "planned"' "$sf"
+  fi
 }
 
 set_sprint_status() {
@@ -152,9 +160,13 @@ set_sprint_status() {
   local sf tmp
   sf="$(sprint_stories_file "$sprint")"
   [ -f "$sf" ] || fail "Sprint stories file not found: $sf"
-  tmp="$(mktemp)"
-  jq --arg s "$new_status" '.status = $s' "$sf" > "$tmp"
-  mv "$tmp" "$sf"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/sprint-state.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/sprint-state.mjs" set-status "$sf" "$new_status"
+  else
+    tmp="$(mktemp)"
+    jq --arg s "$new_status" '.status = $s' "$sf" > "$tmp"
+    mv "$tmp" "$sf"
+  fi
 }
 
 commit_sprint_ready_checkpoint() {
@@ -172,7 +184,11 @@ commit_sprint_ready_checkpoint() {
 
 get_active_sprint() {
   if [ -f "$ACTIVE_SPRINT_FILE" ]; then
-    awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/sprint-state.mjs" ]; then
+      node "$SCRIPT_DIR/core/cli/sprint-state.mjs" get-active "$ACTIVE_SPRINT_FILE"
+    else
+      awk 'NF {print; exit}' "$ACTIVE_SPRINT_FILE"
+    fi
     return 0
   fi
   return 1
@@ -180,7 +196,11 @@ get_active_sprint() {
 
 set_active_sprint() {
   local sprint="$1"
-  echo "$sprint" > "$ACTIVE_SPRINT_FILE"
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/sprint-state.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/sprint-state.mjs" set-active "$ACTIVE_SPRINT_FILE" "$sprint" >/dev/null
+  else
+    echo "$sprint" > "$ACTIVE_SPRINT_FILE"
+  fi
 }
 
 activate_sprint() {

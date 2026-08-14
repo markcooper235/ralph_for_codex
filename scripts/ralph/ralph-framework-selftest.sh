@@ -19,7 +19,6 @@ SELFTEST_TMP_BASE="${RALPH_SELFTEST_TMP_BASE:-$HOME/.cache}"
 KEEP_WORKTREE=0
 EXERCISE_PREP=0
 HEARTBEAT_INTERVAL="${RALPH_HEARTBEAT_INTERVAL_SECONDS:-5}"
-SELFTEST_LOOP_DISABLE_COMPOSITES="${RALPH_SELFTEST_LOOP_DISABLE_COMPOSITES:-0}"
 
 usage() {
   cat <<'EOF'
@@ -36,7 +35,6 @@ worktree. Validates:
 
 Options:
   --exercise-prepare   Also run prepare-all on a generated micro sprint
-  --disable-composites-loop Disable composite orchestration during the live loop
   --keep-worktree      Keep the temporary worktree for inspection
   -h, --help           Show help
 EOF
@@ -605,12 +603,14 @@ validate_complexity_and_tier_matrix() {
     esac
 
     local profile_json
+    RALPH_HARNESS=codex
+    export RALPH_HARNESS
 
-    unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_PIAGENT_ROLE \
-      RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
       RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
       RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
-      RALPH_COMPOSITE_STEPS_JSON STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
       RALPH_STORY_COMPLEXITY_SCORE
     RALPH_STORY_COMPLEXITY_SCORE=0
     STORY_COMPLEXITY_SCORE=0
@@ -622,13 +622,34 @@ validate_complexity_and_tier_matrix() {
       and .model == "gpt-5.4-mini"
       and .model_source == "agent-profile"
       and .composite_profile == null
+      and .workflow_shape == "linear"
+      and .routing_mode == "single-lite"
     ' >/dev/null || fail "simple tier routing failed for documentation profile"
 
-    unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_PIAGENT_ROLE \
-      RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
       RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
       RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
-      RALPH_COMPOSITE_STEPS_JSON STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER RALPH_STORY_COMPLEXITY_SCORE
+    RALPH_STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_TIER=medium
+    _apply_agent_profile documentation
+    profile_json="$(get_execution_profile_json documentation)"
+    printf '%s' "$profile_json" | jq -e '
+      .execution_tier == "simple"
+      and .model == "gpt-5.4-mini"
+      and .model_source == "agent-profile"
+      and .composite_profile == null
+      and .workflow_shape == "linear"
+      and .routing_mode == "single-lite"
+    ' >/dev/null || fail "medium routing failed for documentation profile"
+
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+      RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
+      RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
       RALPH_STORY_COMPLEXITY_SCORE
     RALPH_STORY_COMPLEXITY_SCORE=0
     STORY_COMPLEXITY_SCORE=0
@@ -636,20 +657,45 @@ validate_complexity_and_tier_matrix() {
     _apply_agent_profile reviewer
     profile_json="$(get_execution_profile_json reviewer)"
     printf '%s' "$profile_json" | jq -e '
+      .execution_tier == "composite-lite"
+      and .model == "gpt-5.4-mini"
+      and .model_source == "agent-profile-lite"
+      and .composite_profile == "chain_review_v1"
+      and .workflow_shape == "verify-heavy"
+      and .routing_mode == "composite-lite"
+    ' >/dev/null || fail "composite-lite routing failed for reviewer low-complexity profile"
+
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+      RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
+      RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_STORY_COMPLEXITY_SCORE RALPH_HARNESS
+    RALPH_HARNESS=piagent
+    export RALPH_HARNESS
+    RALPH_STORY_COMPLEXITY_SCORE=0
+    STORY_COMPLEXITY_SCORE=0
+    STORY_COMPLEXITY_TIER=low
+    _apply_agent_profile reviewer
+    profile_json="$(get_execution_profile_json reviewer)"
+    printf '%s' "$profile_json" | jq -e '
       .harness == "piagent"
-      and .harness_source == "composite-auto"
       and .execution_tier == "composite-lite"
       and .model == "gpt-5.4-mini"
       and .model_source == "agent-profile-lite"
-      and .piagent_role == "reviewer"
       and .composite_profile == "chain_review_v1"
-    ' >/dev/null || fail "composite-lite tier routing failed for reviewer low-complexity profile"
+      and .workflow_shape == "verify-heavy"
+      and .routing_mode == "composite-lite"
+    ' >/dev/null || fail "composite-lite routing failed for reviewer piagent low-complexity profile"
 
-    unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_PIAGENT_ROLE \
-      RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+    RALPH_HARNESS=codex
+    export RALPH_HARNESS
+
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
       RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
       RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
-      RALPH_COMPOSITE_STEPS_JSON STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
       RALPH_STORY_COMPLEXITY_SCORE
     RALPH_STORY_COMPLEXITY_SCORE=40
     STORY_COMPLEXITY_SCORE=40
@@ -657,20 +703,19 @@ validate_complexity_and_tier_matrix() {
     _apply_agent_profile reviewer
     profile_json="$(get_execution_profile_json reviewer)"
     printf '%s' "$profile_json" | jq -e '
-      .harness == "piagent"
-      and .harness_source == "composite-auto"
-      and .execution_tier == "full-composite"
+      .execution_tier == "full-composite"
       and .model == "gpt-5.4"
       and .model_source == "complexity-tier-high"
-      and .piagent_role == "reviewer"
       and .composite_profile == "chain_review_v1"
-    ' >/dev/null || fail "full-composite tier routing failed for reviewer high-complexity profile"
+      and .workflow_shape == "verify-heavy"
+      and .routing_mode == "composite-high"
+    ' >/dev/null || fail "high routing failed for reviewer profile"
 
-    unset RALPH_HARNESS_OVERRIDE RALPH_HARNESS_SELECTION_SOURCE RALPH_PIAGENT_ROLE \
-      RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
       RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
       RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
-      RALPH_COMPOSITE_STEPS_JSON STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
       RALPH_STORY_COMPLEXITY_SCORE
     RALPH_STORY_COMPLEXITY_SCORE=60
     STORY_COMPLEXITY_SCORE=60
@@ -678,14 +723,53 @@ validate_complexity_and_tier_matrix() {
     _apply_agent_profile researcher
     profile_json="$(get_execution_profile_json researcher)"
     printf '%s' "$profile_json" | jq -e '
-      .harness == "piagent"
-      and .harness_source == "composite-auto"
-      and .execution_tier == "full-composite"
+      .execution_tier == "full-composite"
       and .model == "gpt-5.5"
       and .model_source == "complexity-tier-extreme"
-      and .piagent_role == "researcher"
       and .composite_profile == "fanout_research_v1"
-    ' >/dev/null || fail "full-composite tier routing failed for researcher extreme-complexity profile"
+      and .workflow_shape == "parallelizable"
+      and .routing_mode == "composite-high"
+    ' >/dev/null || fail "composite-high routing failed for researcher extreme-complexity profile"
+
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+      RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
+      RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      RALPH_PREP_PHASE STORY_RUNTIME_PHASE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_STORY_COMPLEXITY_SCORE
+    RALPH_STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_TIER=medium
+    RALPH_PREP_PHASE=specify
+    _apply_agent_profile reviewer
+    profile_json="$(get_execution_profile_json reviewer)"
+    printf '%s' "$profile_json" | jq -e '
+      .model == "gpt-5.4-mini"
+      and .model_source == "agent-profile-lite"
+      and .composite_profile == "chain_review_v1"
+      and .execution_tier == "composite-lite"
+    ' >/dev/null || fail "planning phase reviewer profile routing failed"
+
+    unset RALPH_MODEL RALPH_MODEL_SELECTION_SOURCE RALPH_EXECUTION_TIER \
+      RALPH_COMPOSITE_PROFILE RALPH_COMPOSITE_PROFILE_JSON RALPH_COMPOSITE_SHAPE \
+      RALPH_COMPOSITE_REQUIRED_EXTENSIONS_JSON RALPH_COMPOSITE_SUBAGENT_ROLES_JSON \
+      RALPH_COMPOSITE_STEPS_JSON RALPH_WORKFLOW_SHAPE RALPH_ROUTING_MODE \
+      RALPH_PREP_PHASE STORY_RUNTIME_PHASE \
+      STORY_COMPLEXITY_SCORE STORY_COMPLEXITY_TIER \
+      RALPH_STORY_COMPLEXITY_SCORE
+    RALPH_STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_SCORE=20
+    STORY_COMPLEXITY_TIER=medium
+    STORY_RUNTIME_PHASE=running-primary
+    _apply_agent_profile reviewer
+    profile_json="$(get_execution_profile_json reviewer)"
+    printf '%s' "$profile_json" | jq -e '
+      .model == "gpt-5.4-mini"
+      and .model_source == "agent-profile-lite"
+      and .composite_profile == "chain_review_v1"
+      and .execution_tier == "composite-lite"
+    ' >/dev/null || fail "execution phase reviewer profile routing failed"
   )
 }
 
@@ -709,7 +793,7 @@ wait_for_live_status_and_isolation() {
   local env_file="$ARTIFACT_DIR/codex-env.out"
   local manifest_file=""
   local timeout_epoch=$(( $(date +%s) + 240 ))
-  local harness_pid=""
+  local pi_pid=""
 
   while [ "$(date +%s)" -lt "$timeout_epoch" ]; do
     (
@@ -734,12 +818,12 @@ wait_for_live_status_and_isolation() {
 
   timeout_epoch=$(( $(date +%s) + 120 ))
   while [ "$(date +%s)" -lt "$timeout_epoch" ]; do
-    harness_pid="$(pgrep -f "pi -p" | head -n1 || true)"
-    [ -n "$harness_pid" ] && break
+    pi_pid="$(pgrep -f "pi -p" | head -n1 || true)"
+    [ -n "$pi_pid" ] && break
     sleep 1
   done
-  if [ -n "$harness_pid" ] && [ -r "/proc/$harness_pid/environ" ]; then
-    tr '\0' '\n' < "/proc/$harness_pid/environ" > "$env_file"
+  if [ -n "$pi_pid" ] && [ -r "/proc/$pi_pid/environ" ]; then
+    tr '\0' '\n' < "/proc/$pi_pid/environ" > "$env_file"
     assert_contains "$env_file" "HOME=$WORKTREE_DIR/scripts/ralph/runtime/home" "piagent child env"
     assert_contains "$env_file" "PI_CODING_AGENT_DIR=$WORKTREE_DIR/scripts/ralph/runtime/home/.pi/agent" "piagent child env"
   else
@@ -773,9 +857,7 @@ run_loop_and_closeout() {
 
   (
     cd "$WORKTREE_DIR"
-    RALPH_HEARTBEAT_INTERVAL_SECONDS="$HEARTBEAT_INTERVAL" \
-    RALPH_DISABLE_COMPOSITES="$SELFTEST_LOOP_DISABLE_COMPOSITES" \
-    ./scripts/ralph/ralph.sh > "$ARTIFACT_DIR/loop.out" 2>&1
+    RALPH_HEARTBEAT_INTERVAL_SECONDS="$HEARTBEAT_INTERVAL" ./scripts/ralph/ralph.sh > "$ARTIFACT_DIR/loop.out" 2>&1
   ) &
   local loop_pid=$!
 
@@ -809,8 +891,6 @@ parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --exercise-prepare) EXERCISE_PREP=1; shift ;;
-      --disable-composites-loop) SELFTEST_LOOP_DISABLE_COMPOSITES=1; shift ;;
-      --full-composite-loop) SELFTEST_LOOP_DISABLE_COMPOSITES=0; shift ;;
       --keep-worktree) KEEP_WORKTREE=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) fail "Unknown option: $1" ;;

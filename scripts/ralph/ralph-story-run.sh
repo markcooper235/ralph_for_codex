@@ -706,6 +706,10 @@ extract_check_file() {
 check_fp() {
   local check="$1"
   local task_id="$2"
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/check-fingerprint.mjs" ]; then
+    node "$RALPH_SCRIPT_DIR/core/cli/check-fingerprint.mjs" "$STORY_FILE" "$WORKSPACE_ROOT" "$task_id" "$check"
+    return $?
+  fi
   local ref
   ref="$(extract_check_file "$check")"
   if [ -n "$ref" ]; then
@@ -748,7 +752,7 @@ capture_failing_fingerprints() {
     while IFS= read -r check; do
       [ -z "$check" ] && continue
       check_num=$((check_num + 1))
-      if ! (cd "$WORKSPACE_ROOT" && eval "$check") >/dev/null 2>&1; then
+      if ! node "$RALPH_SCRIPT_DIR/core/cli/run-check.mjs" "$WORKSPACE_ROOT" "${RALPH_CHECK_TIMEOUT_MS:-0}" "$check" >/dev/null 2>&1; then
         echo "${task_id}|${check_num}|$(check_fp "$check" "$task_id")" >> "$out"
       fi
     done < <(task_checks "$task_id")
@@ -1305,6 +1309,9 @@ verify_story() {
 
     local check_num=0 check failed=0 check_total
     check_total="$(task_checks "$task_id" | wc -l | awk '{print $1}')"
+    local task_results_tmp
+    task_results_tmp="$(mktemp)"
+    node "$RALPH_SCRIPT_DIR/core/cli/run-task-checks.mjs" "$STORY_FILE" "$WORKSPACE_ROOT" "$task_id" "${RALPH_CHECK_TIMEOUT_MS:-0}" >"$task_results_tmp" 2>/dev/null || :
     while IFS= read -r check; do
       [ -z "$check" ] && continue
       check_num=$((check_num + 1))
@@ -1314,13 +1321,17 @@ verify_story() {
       set_story_runtime_check_context "$task_id" "$check_num" "$check_total" "$check"
       log "Verifying task $task_id check $check_num/$check_total"
       start_heartbeat "verify:$task_id:$check_num"
-      if (cd "$WORKSPACE_ROOT" && eval "$check") >"$stdout_tmp" 2>"$stderr_tmp"; then
+      local check_result_json
+      check_result_json="$(jq -c --argjson index "$check_num" '.checks[] | select(.checkIndex == $index)' "$task_results_tmp" 2>/dev/null || printf '{}')"
+      check_exit="$(jq -r '.exitCode // 1' <<< "$check_result_json")"
+      jq -r '.stdout // ""' <<< "$check_result_json" >"$stdout_tmp"
+      jq -r '.stderr // ""' <<< "$check_result_json" >"$stderr_tmp"
+      if jq -e '.passed == true' <<< "$check_result_json" >/dev/null; then
         stop_heartbeat
         :
       else
         stop_heartbeat
         failed=1
-        check_exit=$?
         echo "${task_id}|${check_num}|$(check_fp "$check" "$task_id")" >> "$fp_file"
         printf '%s\n' "$check" >> "$fail_file"
         local stdout_path stderr_path bundle_entry
@@ -1352,6 +1363,7 @@ verify_story() {
       fi
       rm -f "$stdout_tmp" "$stderr_tmp"
     done < <(task_checks "$task_id")
+    rm -f "$task_results_tmp"
 
     if [ "$failed" -eq 0 ]; then
       mark_task_done "$task_id"
@@ -1437,7 +1449,12 @@ merge_story_branch() {
   [ -n "$story_branch" ] && [ -n "$sprint" ] || return 0
 
   sprint_branch="ralph/sprint/$sprint"
-  merge_target="$(git -C "$WORKSPACE_ROOT" for-each-ref --format='%(upstream:short)' "refs/heads/$story_branch" 2>/dev/null | head -n1)"
+  merge_target=""
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/git-branch.mjs" ]; then
+    merge_target="$(node "$RALPH_SCRIPT_DIR/core/cli/git-branch.mjs" parent "$WORKSPACE_ROOT" "$story_branch" 2>/dev/null || true)"
+  else
+    merge_target="$(git -C "$WORKSPACE_ROOT" for-each-ref --format='%(upstream:short)' "refs/heads/$story_branch" 2>/dev/null | head -n1)"
+  fi
   [ -n "$merge_target" ] || merge_target="$sprint_branch"
   meta_stories_file="$(sprint_stories_file "$sprint")"
 
@@ -1452,6 +1469,24 @@ merge_story_branch() {
 
   # Stage the verified story checkpoint before we merge so the sprint closeout
   # gate never sees story-owned implementation changes lingering uncommitted.
+  if command -v node >/dev/null 2>&1 && [ -f "$RALPH_SCRIPT_DIR/core/cli/merge-story-branch.mjs" ]; then
+    log "--- Merging $STORY_ID → parent branch ---"
+    merge_result="$(node "$RALPH_SCRIPT_DIR/core/cli/merge-story-branch.mjs" "$WORKSPACE_ROOT" "$story_branch" "$merge_target" "$STORY_ID" "$story_title")" || {
+      log "WARN: Merge conflict merging $story_branch → $merge_target. Resolve manually then delete the story branch."
+      return 0
+    }
+    if [ "$merge_result" = "merged" ]; then
+      rm -f \
+        "$STORY_DIR"/.task-log-*.txt \
+        "$STORY_DIR"/.fallow-autofix.txt \
+        "$STORY_DIR"/.fallow-report.json
+      log "Merged and deleted story branch: $story_branch"
+    else
+      log "Story branch merge skipped: $merge_result"
+    fi
+    return 0
+  fi
+
   git -C "$WORKSPACE_ROOT" add -A .
 
   if ! git -C "$WORKSPACE_ROOT" diff --cached --quiet 2>/dev/null; then

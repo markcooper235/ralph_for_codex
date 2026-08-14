@@ -33,32 +33,51 @@ _path_rewrite_files() {
 
 _unique_existing_sprint_dir() {
   local sprint="$1"
-  local -a matches=()
+  local -a backlog_matches=() live_matches=() archive_matches=()
   local candidate
 
-  for candidate in \
-    "$(ralph_backlog_root)/$sprint" \
-    "$(ralph_sprints_root)/$sprint"
-  do
-    if [ -d "$candidate" ]; then
-      matches+=("$candidate")
-    fi
-  done
+  # A planned backlog and an archived copy commonly share the same sprint
+  # name. The current backlog is authoritative for planning/lifecycle
+  # operations; an active live sprint is authoritative when no backlog copy
+  # exists. Only duplicate candidates within the same lifecycle tier are
+  # ambiguous and should fail closed.
+  candidate="$(ralph_backlog_root)/$sprint"
+  [ -d "$candidate" ] && backlog_matches+=("$candidate")
+  candidate="$(ralph_sprints_root)/$sprint"
+  [ -d "$candidate" ] && live_matches+=("$candidate")
 
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    matches+=("$candidate")
+    archive_matches+=("$candidate")
   done < <(
     find "$(ralph_archive_root)" -mindepth 1 -maxdepth 1 -type d \
       \( -name "*-$sprint" -o -name "$sprint" \) 2>/dev/null | sort
   )
 
-  case "${#matches[@]}" in
+  if [ "${#backlog_matches[@]}" -eq 1 ]; then
+    printf '%s\n' "${backlog_matches[0]}"
+    return 0
+  fi
+  if [ "${#backlog_matches[@]}" -gt 1 ]; then
+    printf 'ERROR: duplicate backlog sprint directories found for %s:\n' "$sprint" >&2
+    printf '  %s\n' "${backlog_matches[@]}" >&2
+    return 2
+  fi
+  if [ "${#live_matches[@]}" -eq 1 ]; then
+    printf '%s\n' "${live_matches[0]}"
+    return 0
+  fi
+  if [ "${#live_matches[@]}" -gt 1 ]; then
+    printf 'ERROR: duplicate live sprint directories found for %s:\n' "$sprint" >&2
+    printf '  %s\n' "${live_matches[@]}" >&2
+    return 2
+  fi
+  case "${#archive_matches[@]}" in
     0) return 1 ;;
-    1) printf '%s\n' "${matches[0]}" ;;
+    1) printf '%s\n' "${archive_matches[0]}" ;;
     *)
       printf 'ERROR: duplicate sprint directories found for %s:\n' "$sprint" >&2
-      printf '  %s\n' "${matches[@]}" >&2
+      printf '  %s\n' "${archive_matches[@]}" >&2
       return 2
       ;;
   esac

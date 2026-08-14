@@ -243,6 +243,11 @@ prune_runtime_runs() {
   local keep_count="${2:-3}"
   [ -d "$runs_dir" ] || return 0
 
+  if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/core/cli/runtime-cleanup.mjs" ]; then
+    node "$SCRIPT_DIR/core/cli/runtime-cleanup.mjs" "$runs_dir" "$keep_count" >/dev/null
+    return $?
+  fi
+
   local run_paths=()
   while IFS= read -r path; do
     [ -n "$path" ] || continue
