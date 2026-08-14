@@ -1357,12 +1357,12 @@ ensure_repo_local_speckit() {
 }
 
 
-# Sprint-aware bootstrap directories (sprints and tasks created by ralph-roadmap.sh).
+# Sprint-aware bootstrap directory. Planned and archived sprint artifacts use
+# the canonical scripts/ralph/backlog and scripts/ralph/sprints layout.
 mkdir -p \
+  "$DEST_DIR_REL/backlog" \
   "$DEST_DIR_REL/sprints" \
-  "$DEST_DIR_REL/tasks" \
-  "$DEST_DIR_REL/tasks/archive/sprints" \
-  "$DEST_DIR_REL/tasks/archive/prds"
+  "$DEST_DIR_REL/sprints/archive"
 
 # Keep generated files out of git noise.
 GITIGNORE_SOURCE="$SOURCE_DIR/.gitignore"

@@ -108,7 +108,7 @@ Use `AGENTS.md` for the broad operating model. Use this file when you need deepe
 - On story completion, `ralph-story-run.sh` automatically merges the story branch into the sprint branch using `--no-ff` and deletes the story branch.
 - If the merge has conflicts, the story branch is left intact for manual resolution.
 - Sprint closeout via `ralph-sprint-commit.sh` requires all stories to be `done` or `abandoned`; it will not proceed with `active`, `planned`, or `ready` stories remaining.
-- `ralph-sprint-commit.sh` archives sprint metadata to `tasks/archive/sprints/` before merging.
+- `ralph-sprint-commit.sh` archives sprint metadata to `scripts/ralph/sprints/archive/` before merging.
 - Sprint branches are deleted after merge by default; pass `--keep` to retain.
 - `ralph-sprint-test.sh` is optional. When a repo chooses to include it, `ralph-sprint-commit.sh` should treat it as the project-specific explicit sprint closeout gate.
 
@@ -125,7 +125,7 @@ Use `AGENTS.md` for the broad operating model. Use this file when you need deepe
 
 ## Archive And Merge Policy
 
-- Sprint-level archive is written to `tasks/archive/sprints/<sprint-name>/` by `ralph-sprint-commit.sh`.
+- Sprint-level archive is written to `scripts/ralph/sprints/archive/<sprint-name>/` by `ralph-sprint-commit.sh`.
 - `.active-prd` includes explicit `baseBranch`; scripts should use it before fallback target inference when it exists.
 - Transient per-story files (`.task-log-*.txt`, `.fallow-report.json`, `.fallow-autofix.txt`) are cleaned up automatically after a successful story merge.
 - Runtime journals under `scripts/ralph/runtime/` are intentionally preserved across successful runs and normal cleanup, but pruned to the most recent 3 run directories.

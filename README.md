@@ -333,7 +333,7 @@ scripts/ralph/
 - `.specify/` — SpecKit artifacts (spec.md, plan.md, tasks.md)
 - `roadmap-source.md`, `roadmap.json`, `roadmap.md`
 - git history
-- archived sprint artifacts under `tasks/archive/sprints/`
+- archived sprint artifacts under `scripts/ralph/sprints/archive/`
 
 ### Transient artifacts (untracked)
 
