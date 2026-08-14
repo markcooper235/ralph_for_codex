@@ -232,6 +232,11 @@ run_sprint_commit() {
 
   # Assert sprint is now closed in stories.json
   local stories_file="$proj_dir/scripts/ralph/sprints/$sprint/stories.json"
+  if [ ! -f "$stories_file" ]; then
+    stories_file="$(find "$proj_dir/scripts/ralph/sprints/archive" -type f -name stories.json -print 2>/dev/null | while IFS= read -r candidate; do
+      [ "$(jq -r '.sprint // empty' "$candidate" 2>/dev/null)" = "$sprint" ] && printf '%s\n' "$candidate"
+    done | sort | tail -n1)"
+  fi
   local sprint_status
   sprint_status="$(jq -r '.status // "unknown"' "$stories_file" 2>/dev/null || echo "unknown")"
   [ "$sprint_status" = "closed" ] \
@@ -281,6 +286,7 @@ validate_sprint() {
   local ralph_dir="$1"
   local sprint="$2"
   local stories_file="$ralph_dir/sprints/$sprint/stories.json"
+  [ -f "$stories_file" ] || stories_file="$ralph_dir/backlog/$sprint/stories.json"
 
   [ -f "$stories_file" ] || fail "stories.json not found: $stories_file"
   jq -e '.' "$stories_file" > /dev/null || fail "stories.json is invalid JSON"
@@ -319,6 +325,7 @@ prepare_and_activate() {
   local sprint="${3:-sprint-1}"
   local ralph_dir="$proj_dir/scripts/ralph"
   local sf="$ralph_dir/sprints/$sprint/stories.json"
+  [ -f "$sf" ] || sf="$ralph_dir/backlog/$sprint/stories.json"
 
   log "  Resetting $proj_label $sprint to 'planned' for lifecycle coverage..."
   (
@@ -336,21 +343,30 @@ prepare_and_activate() {
     fail "prepare-all failed for $proj_label $sprint — see $palog"
   fi
 
+  local readylog="$LOG_DIR/${proj_label}-${sprint}-mark-ready.log"
+  if ! (cd "$ralph_dir" && ./ralph-sprint.sh mark-ready "$sprint") > "$readylog" 2>&1; then
+    cat "$readylog" >&2
+    fail "mark-ready failed for $proj_label $sprint — see $readylog"
+  fi
+
   # Commit any prepare-all changes to stories.json before activating
   (
     cd "$proj_dir"
-    git add -A "scripts/ralph/sprints/$sprint/"
+    [ -d "scripts/ralph/backlog/$sprint" ] && git add -A "scripts/ralph/backlog/$sprint/"
+    [ -d "scripts/ralph/sprints/$sprint" ] && git add -A "scripts/ralph/sprints/$sprint/"
     git diff --cached --quiet \
       || git commit -m "chore(ralph): prepare-all promote $proj_label $sprint" --quiet
   )
 
   local ulog="$LOG_DIR/${proj_label}-${sprint}-use.log"
   log "  Activating $proj_label $sprint via 'ralph-sprint.sh use'..."
+  (cd "$ralph_dir" && ./ralph-sprint.sh mark-ready "$sprint") >/dev/null 2>&1 || true
   if ! (cd "$ralph_dir" && ./ralph-sprint.sh use "$sprint") > "$ulog" 2>&1; then
     cat "$ulog" >&2
     fail "ralph-sprint.sh use failed for $proj_label $sprint — see $ulog"
   fi
 
+  sf="$ralph_dir/sprints/$sprint/stories.json"
   local sprint_status
   sprint_status="$(jq -r '.status // "unknown"' "$sf" 2>/dev/null || echo "unknown")"
   [ "$sprint_status" = "active" ] \
@@ -542,7 +558,7 @@ if [ "$GENERATED" -eq 1 ]; then
   generate_stories "$NEXTJS_DIR" "nextjs"
 else
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-1/stories/S-001"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-001 -) <<'STORYJSON'
 {
   "version": 1,
@@ -615,7 +631,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-1/stories/S-002"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-002 -) <<'STORYJSON'
 {
   "version": 1,
@@ -686,7 +702,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-002"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-1/stories/S-003"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-003 -) <<'STORYJSON'
 {
   "version": 1,
@@ -757,7 +773,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-003"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-1/stories/S-004"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-1/stories/S-004"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-004 -) <<'STORYJSON'
 {
   "version": 1,
@@ -844,7 +860,7 @@ log "=== Setting up angular-calendar ==="
 
 cd "$WORK_DIR"
 log "  Running ng new..."
-npx @angular/cli@latest new angular-calendar \
+npx @angular/cli@21 new angular-calendar \
   --routing=false \
   --style=css \
   --skip-git \
@@ -952,7 +968,7 @@ if [ "$GENERATED" -eq 1 ]; then
   generate_stories "$ANGULAR_DIR" "angular"
 else
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-1/stories/S-001"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-001 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1025,7 +1041,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-001"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-1/stories/S-002"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-002 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1096,7 +1112,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-002"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-1/stories/S-003"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-003 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1167,7 +1183,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-003"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-1/stories/S-004"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-1/stories/S-004"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-004 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1416,7 +1432,7 @@ commit_baseline "$NEXTJS_DIR" "chore(smoke): nextjs-calendar sprint-2 infra"
 
 # ── NextJS sprint-2 story.json definitions ─────────────────────────────────────
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-001"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-2/stories/S-001"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-001 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1488,7 +1504,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-001"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-002"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-2/stories/S-002"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-002 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1560,7 +1576,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-002"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-003"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-2/stories/S-003"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-003 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1632,7 +1648,7 @@ mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-003"
 }
 STORYJSON
 
-mkdir -p "$NEXTJS_DIR/scripts/ralph/sprints/sprint-2/stories/S-004"
+mkdir -p "$NEXTJS_DIR/scripts/ralph/backlog/sprint-2/stories/S-004"
 (cd "$NEXTJS_DIR/scripts/ralph" && ./ralph-story.sh import-story S-004 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1772,7 +1788,7 @@ mkdir -p "$ANGULAR_DIR/src/app/components/event-form"
 
 # ── Angular sprint-2 story.json definitions ────────────────────────────────────
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-001"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-2/stories/S-001"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-001 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1845,7 +1861,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-001"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-002"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-2/stories/S-002"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-002 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1918,7 +1934,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-002"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-003"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-2/stories/S-003"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-003 -) <<'STORYJSON'
 {
   "version": 1,
@@ -1991,7 +2007,7 @@ mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-003"
 }
 STORYJSON
 
-mkdir -p "$ANGULAR_DIR/scripts/ralph/sprints/sprint-2/stories/S-004"
+mkdir -p "$ANGULAR_DIR/scripts/ralph/backlog/sprint-2/stories/S-004"
 (cd "$ANGULAR_DIR/scripts/ralph" && ./ralph-story.sh import-story S-004 -) <<'STORYJSON'
 {
   "version": 1,

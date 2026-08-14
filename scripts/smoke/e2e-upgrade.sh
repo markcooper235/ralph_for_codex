@@ -94,7 +94,8 @@ RALPH_DIR="$TEST_REPO/scripts/ralph"
 mkdir -p \
   "$RALPH_DIR/tasks/prds" \
   "$RALPH_DIR/tasks/archive/sprint-1/2026-01-15-epic-001" \
-  "$RALPH_DIR/tasks/archive/sprint-1/2026-01-16-epic-002"
+  "$RALPH_DIR/tasks/archive/sprint-1/2026-01-16-epic-002" \
+  "$RALPH_DIR/sprints/sprint-1"
 
 cat > "$RALPH_DIR/sprints/sprint-1/epics.json" <<'JSON'
 {
